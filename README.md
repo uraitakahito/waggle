@@ -30,7 +30,7 @@ docker compose -f compose.prod.yaml --profile run up --build --abort-on-containe
 If you already have a BrowserHive instance running somewhere, you can run waggle directly:
 
 ```sh
-nvm use                                   # Node 22 (see .nvmrc)
+nvm use                                   # Node 24 (see .nvmrc)
 npm ci
 npm run build
 node dist/cli.js \

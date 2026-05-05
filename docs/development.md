@@ -2,13 +2,11 @@
 
 ## Prerequisites
 
-- Node.js 22 (the version in `.nvmrc`). `nvm use` if you have nvm installed.
-- npm 10+ (ships with Node 22).
+- Node.js 24 (the version in `.nvmrc`). `nvm use` if you have nvm installed.
+- npm 11+ (ships with Node 24).
 - Docker 25+ with BuildKit. Required for the Compose stacks but not for host-only development.
 - `curl` on PATH — `setup.sh` uses it to download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned `uraitakahito/hello-javascript` template tag.
 - A BrowserHive instance reachable at `BROWSERHIVE_SERVER` for end-to-end runs. The Compose stacks bring one up; otherwise you can point at a remote.
-
-`WAGGLE_NODE_VERSION` (default `22`) controls which Node version the dev image installs via nvm at build time. Override in your shell environment before `./setup.sh` to pin a specific 22.x patch.
 
 ## First-time setup
 
@@ -48,7 +46,7 @@ docker compose -f compose.dev.yaml up --build -d
 
 Watch the rendering Chromium tabs at `http://localhost:6080/` and `http://localhost:6081/`.
 
-Drop into the container's interactive `zsh` — `.zshrc` sources nvm so `node` / `npm` resolve to the version installed at build time (`WAGGLE_NODE_VERSION`, default `22`):
+Drop into the container's interactive `zsh` — `.zshrc` sources nvm so `node` / `npm` resolve to the version baked into the dev image by the `hello-javascript` template (Node 24.14.1):
 
 ```sh
 docker compose -f compose.dev.yaml exec waggle zsh

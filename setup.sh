@@ -23,7 +23,6 @@ Bootstraps waggle's dev environment by:
 
        USER_ID, GROUP_ID            detected via `id -u` / `id -g`
        TZ                           from $TZ if set, otherwise Asia/Tokyo
-       WAGGLE_NODE_VERSION          = 22 (passed to Dockerfile.dev's nvm)
        BROWSERHIVE_REF              = main
        CHROMIUM_SERVER_REF          = main
        BROWSERHIVE_HOST_PORT        = 8080
@@ -87,7 +86,6 @@ cat > .env <<EOF
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 TZ=${TZ:-Asia/Tokyo}
-WAGGLE_NODE_VERSION=22
 BROWSERHIVE_REF=main
 CHROMIUM_SERVER_REF=main
 BROWSERHIVE_HOST_PORT=8080
