@@ -2,8 +2,6 @@
 
 Higher-level capture client and orchestrator built on top of [BrowserHive](https://github.com/uraitakahito/browserhive). Reads URLs from a YAML data file, submits them to a BrowserHive instance, and (in later stages) tracks lifecycle and persists artefacts.
 
-The Stage 0 surface mirrors BrowserHive's `examples/data-client.ts`: fire-and-forget submission with a 202-keyed summary. Subsequent stages add status polling, artefact storage, retry/resume, observability, service mode, and pipeline hooks. See [`docs/roadmap.md`](docs/roadmap.md) for the staged plan.
-
 > The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance) bees use to direct hive-mates to nectar — fitting for a client that tells the BrowserHive what to capture.
 
 ## Quickstart (Docker Compose)
