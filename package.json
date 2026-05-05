@@ -18,7 +18,7 @@
     "openapi"
   ],
   "scripts": {
-    "dev": "tsx src/cli.ts",
+    "dev": "npm run build && node dist/cli.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -45,7 +45,6 @@
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.4.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.18.0",
     "vitest": "^2.1.0"

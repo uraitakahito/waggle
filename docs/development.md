@@ -25,7 +25,7 @@ npm run check              # typecheck + lint + format:check + tests
 
 | Command                           | What it does                                                          |
 | --------------------------------- | --------------------------------------------------------------------- |
-| `npm run dev -- <args>`           | Run the CLI from source via tsx (no build step).                      |
+| `npm run dev -- <args>`           | Build then run the CLI (`tsc` followed by `node dist/cli.js`).        |
 | `npm run build`                   | Emit JS/d.ts to `dist/` using `tsconfig.build.json`.                  |
 | `npm run typecheck`               | `tsc --noEmit`. Includes test files and `*.config.ts`.                |
 | `npm run lint` / `lint:fix`       | ESLint flat config (typescript-eslint recommendedTypeChecked).        |
@@ -57,14 +57,14 @@ The dev image does not bundle waggle's `node_modules`; install once on the first
 ```sh
 # inside the container shell:
 npm ci                                                                # first time only
-npx tsx src/cli.ts --data data/sample.yaml --jpeg --html --limit 5
+npm run dev -- --data data/sample.yaml --jpeg --html --limit 5
 ```
 
 For one-liner invocations from outside the container, `zsh -ic` is needed so the rc files load nvm:
 
 ```sh
 docker compose -f compose.dev.yaml exec -T waggle \
-  zsh -ic 'cd /app && npx tsx src/cli.ts --data data/sample.yaml --jpeg --limit 1'
+  zsh -ic 'cd /app && npm run dev -- --data data/sample.yaml --jpeg --limit 1'
 ```
 
 To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, fire one capture, exit):

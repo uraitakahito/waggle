@@ -3,7 +3,7 @@
 # Differences from compose.dev.yaml:
 #   - chromium-server-{1,2} use the headless production Dockerfile and
 #     do not expose noVNC ports.
-#   - waggle uses the multi-stage `runtime` target (no tsx, runs dist/).
+#   - waggle uses the multi-stage `runtime` target (runs compiled dist/).
 #   - both browserhive and the chromium servers carry `restart: unless-stopped`.
 #   - browserhive has an HTTP healthcheck; waggle waits for it.
 #

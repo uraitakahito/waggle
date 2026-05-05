@@ -1,12 +1,30 @@
 {
+  // Inherits all options from tsconfig.json; the overrides below switch
+  // emit on and pin the build output layout. Kept as a separate config so
+  // the root tsconfig (which also covers test/ and *.config.ts) can stay
+  // `noEmit: true` for editor / CI typecheck use.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    /*
+     * Emit
+     * https://www.typescriptlang.org/tsconfig/#Emit_6246
+     */
+    // Override the parent's `noEmit: true` — this config exists to
+    // actually produce dist/.
     "noEmit": false,
+    // Specify an output folder for all emitted files
+    "outDir": "dist",
+    // Root of the source tree; preserves the src/ -> dist/ directory mapping
+    "rootDir": "src",
+    // Generate .d.ts files alongside the .js output
     "declaration": true,
+    // Create sourcemaps for the emitted .d.ts files
     "declarationMap": true,
+    // Create source map files for the emitted .js files
     "sourceMap": true,
+    // Cache file path for incremental builds. No-op today because neither
+    // `incremental` nor `composite` is enabled; flip one of those on if
+    // build times become a concern.
     "tsBuildInfoFile": "./.tsbuildinfo"
   },
   "include": ["src/**/*"],
