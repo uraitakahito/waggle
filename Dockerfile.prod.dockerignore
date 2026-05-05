@@ -9,3 +9,4 @@
 !tsconfig.build.json
 !openapi/
 !src/
+!db/

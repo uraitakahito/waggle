@@ -1,27 +1,26 @@
 /**
  * Client CLI option parser.
  *
- * `--server` and `--tls-ca-cert` fall back to `BROWSERHIVE_SERVER` /
- * `BROWSERHIVE_TLS_CA_CERT` when not given on the command line. Per-job
- * flags (`--data`, `--png`, `--jpeg`, `--html`, `--limit`,
- * `--dismiss-banners`, `--accept-language`) intentionally have no env
- * equivalents — they are caller-side intent, not deployment configuration.
+ * `--server`, `--tls-ca-cert`, and `--database-url` fall back to their
+ * matching env vars (`BROWSERHIVE_SERVER`, `BROWSERHIVE_TLS_CA_CERT`,
+ * `DATABASE_URL`) when omitted on the command line. Per-job flags
+ * (`--png`, `--jpeg`, `--html`, `--limit`, `--dismiss-banners`,
+ * `--accept-language`) intentionally have no env equivalents — they
+ * are caller-side intent, not deployment configuration.
  *
  * `--server` has no commander-level default. When omitted, the generated
  * SDK falls back to its built-in baseUrl (extracted from `servers[0].url`
  * in `openapi/browserhive.yaml` at generation time), keeping the spec as
  * the single source of truth for the default address.
- *
- * Ported from upstream BrowserHive `src/cli/client-cli.ts` with the CLI
- * name changed from `browserhive-example` to `waggle`.
  */
 import { Command, InvalidArgumentError, Option } from "commander";
 import { logger } from "../logger.js";
+import { redactDatabaseUrl } from "../db/pool.js";
 import type { CaptureFormats } from "../types/capture.js";
 
 export interface ClientOptions {
   server?: string;
-  data: string;
+  databaseUrl: string;
   png?: boolean;
   jpeg?: boolean;
   html?: boolean;
@@ -57,9 +56,16 @@ export const createProgram = (): Command => {
   program
     .name("waggle")
     .description(
-      "BrowserHive capture client — submit capture requests from a YAML data file (fire-and-forget)",
+      "BrowserHive capture client — submit capture requests sourced from Postgres (fire-and-forget)",
     )
-    .requiredOption("--data <path>", "YAML data file path")
+    .addOption(
+      new Option(
+        "--database-url <url>",
+        "Postgres connection string (e.g. postgres://user:pass@host:5432/db). Required.",
+      )
+        .env("DATABASE_URL")
+        .makeOptionMandatory(true),
+    )
     .addOption(
       new Option(
         "--server <url>",
@@ -101,7 +107,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
   program.parse(argv);
 
   const opts = program.opts<{
-    data: string;
+    databaseUrl: string;
     server?: string;
     png?: boolean;
     jpeg?: boolean;
@@ -115,7 +121,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
   }>();
 
   return {
-    data: opts.data,
+    databaseUrl: opts.databaseUrl,
     ...(opts.server !== undefined && { server: opts.server }),
     ...(opts.png !== undefined && { png: opts.png }),
     ...(opts.jpeg !== undefined && { jpeg: opts.jpeg }),
@@ -146,7 +152,7 @@ export const logClientConfig = (options: ClientOptions): void => {
       tls: options.tlsCaCert
         ? { enabled: true, caCertPath: options.tlsCaCert }
         : { enabled: false },
-      data: options.data,
+      database: redactDatabaseUrl(options.databaseUrl),
       captureFormats: getCaptureFormats(options),
       dismissBanners: options.dismissBanners ?? false,
       acceptLanguage: options.acceptLanguage ?? null,

@@ -6,7 +6,7 @@
 - npm 11+ (ships with Node 24).
 - Docker 25+ with BuildKit. Required for the Compose stacks but not for host-only development.
 - `curl` on PATH — `setup.sh` uses it to download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned `uraitakahito/hello-javascript` template tag.
-- A BrowserHive instance reachable at `BROWSERHIVE_SERVER` for end-to-end runs. The Compose stacks bring one up; otherwise you can point at a remote.
+- A BrowserHive instance reachable at `BROWSERHIVE_SERVER` and a Postgres reachable at `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up; otherwise you can point at remotes.
 
 ## First-time setup
 
@@ -32,6 +32,8 @@ npm run check              # typecheck + lint + format:check + tests
 | `npm run format` / `format:check` | Prettier; `.prettierignore` skips `dist/` and `src/http/generated/`.  |
 | `npm test` / `test:watch`         | Vitest unit tests under `test/`.                                      |
 | `npm run check`                   | Combined typecheck + lint + format:check + test (run before pushing). |
+| `npm run db:migrate`              | Build then apply pending `db/migrations/*.sql` to `DATABASE_URL`.     |
+| `npm run db:seed`                 | Build then apply `db/seeds/sample.sql` (idempotent fixture).          |
 | `npm run openapi:generate`        | Regenerate `src/http/generated/` from `openapi/browserhive.yaml`.     |
 | `npm run openapi:check`           | Generate then verify `git diff --exit-code` (CI drift gate).          |
 | `npm run openapi:sync`            | Pull the latest `openapi.yaml` from upstream BrowserHive's `main`.    |
@@ -52,39 +54,62 @@ Drop into the container's interactive `zsh` — `.zshrc` sources nvm so `node` /
 docker compose -f compose.dev.yaml exec waggle zsh
 ```
 
-The dev image does not bundle waggle's `node_modules`; install once on the first session, then fire ad-hoc capture runs:
+The dev image does not bundle waggle's `node_modules`; install once on the first session, then apply migrations and seed before firing capture runs:
 
 ```sh
 # inside the container shell:
-npm ci                                                                # first time only
-npm run dev -- --data data/sample.yaml --jpeg --html --limit 5
+npm ci                        # first time only
+npm run db:migrate            # first time / when schema changes
+npm run db:seed               # populate urls with the bundled fixture
+npm run dev -- --jpeg --html --limit 5
 ```
+
+`DATABASE_URL` is wired by `compose.dev.yaml` to the in-stack `postgres` service.
 
 For one-liner invocations from outside the container, `zsh -ic` is needed so the rc files load nvm:
 
 ```sh
 docker compose -f compose.dev.yaml exec -T waggle \
-  zsh -ic 'cd /app && npm run dev -- --data data/sample.yaml --jpeg --limit 1'
+  zsh -ic 'cd /app && npm run dev -- --jpeg --limit 1'
 ```
 
-To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, fire one capture, exit):
+To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, apply migrations, seed sample data, fire one capture, exit):
 
 ```sh
 docker compose -f compose.prod.yaml --profile run up --build --abort-on-container-exit
 ```
 
-`--abort-on-container-exit` stops the BrowserHive + chromium services as soon as `waggle-prod` exits — without it, `up` keeps following the long-running services after waggle is done.
+`waggle-migrator` and `waggle-seeder` are dependencies of `waggle` in the run profile, so the schema is created and the fixture is loaded before the CLI queries `urls`. `--abort-on-container-exit` stops the BrowserHive + chromium services as soon as `waggle-prod` exits.
 
-## Working against an external BrowserHive
+## Working against external Postgres / BrowserHive
 
-If your BrowserHive runs elsewhere, point waggle at it directly:
+If your BrowserHive and/or Postgres run elsewhere, point waggle at them directly:
 
 ```sh
+DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
 BROWSERHIVE_SERVER=https://browserhive.example/ \
-  npm run dev -- --data data/sample.yaml --jpeg --limit 3
+  npm run db:migrate
+DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
+BROWSERHIVE_SERVER=https://browserhive.example/ \
+  npm run dev -- --jpeg --limit 3
 ```
 
 For TLS with a custom CA, set `NODE_EXTRA_CA_CERTS` to the CA certificate file path before invoking the CLI. The `--tls-ca-cert` flag is logged for visibility but does not change Node's trust store on its own — the env var is the authoritative knob.
+
+For Postgres TLS, encode the relevant parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
+
+## Migrations
+
+Migration files live under `db/migrations/<NNNN>_<description>.sql`. The runner (`src/db/migrate.ts`) tracks applied IDs in a `migrations` ledger table — re-running `npm run db:migrate` is a no-op once everything is current.
+
+To add a new migration:
+
+1. Pick the next ordinal (e.g. `0002_add_priority.sql`).
+2. Write the SQL.
+3. Test locally: `DATABASE_URL=... npm run db:migrate`.
+4. Commit both the migration file and any related app changes in the same PR.
+
+Migrations run in a single transaction; a failure rolls back without recording the ID, so the next run retries.
 
 ## Refreshing the OpenAPI vendor copy
 
@@ -107,6 +132,9 @@ CI (`openapi:check`) fails any PR where `src/http/generated/` is out of sync wit
 - **`docker compose up` fails with "context not found"** — the Git build context format requires Docker BuildKit. Newer Docker Desktop and Docker Engine ≥ 23 ship BuildKit by default; on older Engines run `DOCKER_BUILDKIT=1 docker compose ...`.
 - **chromium-server containers stuck in `starting` state** — open `http://localhost:6080/` in a browser; if the noVNC page does not load the build hasn't finished or the start scripts have crashed. `docker compose logs chromium-server-1` shows the supervisord output.
 - **`fetch failed` from waggle** — BrowserHive isn't reachable. Check `docker compose ps` (the browserhive service should be `Up (healthy)`), then `curl http://localhost:8080/v1/status` to confirm.
+- **`DATABASE_URL is not set` from `db:migrate` / `db:seed`** — the env var must be exported before invoking the runner. Inside the dev container it's set by Compose; on the host you must set it yourself.
+- **`relation "urls" does not exist` from `npm run dev`** — migrations haven't been applied yet. Run `npm run db:migrate` first.
+- **No URLs to process / "No entries to process"** — `urls` is empty (or all rows have `enabled = FALSE`). Run `npm run db:seed` for the fixture, or insert your own rows.
 - **eslint complains "file was not found by the project service"** — your new file is not covered by `tsconfig.json#include`. Either move it under `src/`, `test/`, or add it to the `include` list.
 - **prettier reformats `src/http/generated/` files** — `.prettierignore` should be excluding them; check it hasn't been deleted.
 - **My edits to `.env` got wiped on the next `./setup.sh`** — Expected: `setup.sh` always regenerates `.env` from host detection. Put persistent overrides in your shell environment (e.g. `export TZ=...` in your shell rc) before running `./setup.sh`.
@@ -115,4 +143,4 @@ CI (`openapi:check`) fails any PR where `src/http/generated/` is out of sync wit
 
 - All relative imports use `.js` extensions (NodeNext + ESM). TypeScript-style `import type { … }` is required (`verbatimModuleSyntax: true`).
 - Generated code (`src/http/generated/`) is **committed**. Do not gitignore it — the drift gate depends on it.
-- Architectural decisions go under `docs/adr/`. Use `0000-template.md` as the starting point.
+- DB migrations are append-only: never edit a committed file under `db/migrations/`. Add a new ordinal instead.

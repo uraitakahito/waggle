@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture, type CaptureRequest } from "../http/generated/index.js";
-import type { DataEntry } from "../data/yaml-loader.js";
+import type { DataEntry } from "../data/url-source.js";
 import type { CaptureFormats } from "../types/capture.js";
 
 export interface SubmitResult {

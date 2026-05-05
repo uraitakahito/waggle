@@ -1,10 +1,11 @@
 # compose.dev.yaml — local development stack.
 #
-# Brings up four services on the `chromium-network` bridge:
+# Brings up five services on the `chromium-network` bridge:
 #
 #   chromium-server-1   CDP 9222 / noVNC 6080 (host)
 #   chromium-server-2   CDP 9223 (host) -> 9222 (container) / noVNC 6081 (host)
 #   browserhive         HTTP API 8080 (host)
+#   postgres            5432 (host) — backs waggle's URL source
 #   waggle              long-running dev shell (Dockerfile.dev sourced from
 #                       uraitakahito/hello-javascript via ./setup.sh)
 #
@@ -17,16 +18,43 @@
 #   ./setup.sh   # generates .env, downloads Dockerfile.dev + docker-entrypoint.sh
 #
 # Typical workflow:
-#   docker compose -f compose.dev.yaml up --build -d                       # all services up
-#   docker compose -f compose.dev.yaml exec waggle bash -lc 'npm ci'       # first time only
+#   docker compose -f compose.dev.yaml up --build -d                          # all services up
+#   docker compose -f compose.dev.yaml exec waggle zsh -ic '\
+#     cd /app && npm ci && npm run db:migrate && npm run db:seed'             # first time only
 #   docker compose -f compose.dev.yaml exec waggle \
-#     npm run dev -- --data data/sample.yaml --jpeg --limit 3              # ad-hoc capture
+#     npm run dev -- --jpeg --limit 3                                         # ad-hoc capture
 
 networks:
   chromium-network:
     name: chromium-network
 
+volumes:
+  postgres-data:
+    name: waggle-postgres-data
+
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: waggle-postgres
+    init: true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-waggle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waggle}
+      POSTGRES_DB: ${POSTGRES_DB:-waggle}
+      TZ: ${TZ:-Asia/Tokyo}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waggle} -d ${POSTGRES_DB:-waggle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   chromium-server-1:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
@@ -103,10 +131,14 @@ services:
     networks:
       - chromium-network
     depends_on:
-      - browserhive
+      browserhive:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BROWSERHIVE_SERVER: http://browserhive:8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
     volumes:
       - .:/app
     tty: true
