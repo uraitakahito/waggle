@@ -43,7 +43,7 @@ node dist/cli.js \
 
 ```sh
 npm ci
-npm run check          # typecheck + lint + format:check + tests
+npm run check
 npm run dev -- --data data/sample.yaml --jpeg --limit 1 --server http://...
 ```
 
