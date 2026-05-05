@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { getCaptureFormats, logClientConfig, type ClientOptions } from "../config/cli-options.js";
-import { parseDataFile, type DataEntry } from "../data/yaml-loader.js";
+import { loadUrls, type DataEntry } from "../data/url-source.js";
+import { createPool } from "../db/pool.js";
 import { logger } from "../logger.js";
 import type { CaptureFormats } from "../types/capture.js";
 import { configureClient } from "./openapi-client.js";
@@ -68,8 +68,8 @@ const logSummary = (results: SubmitResult[], totalDuration: number): void => {
 };
 
 /**
- * Top-level orchestration: read the data file, configure the client,
- * submit every entry, and log the summary.
+ * Top-level orchestration: load URLs from Postgres, configure the
+ * client, submit every entry, and log the summary.
  */
 export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
@@ -77,20 +77,17 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
   logClientConfig(options);
   configureClient(options.server);
 
-  const fileContent = await readFile(options.data, "utf-8");
-  const parseResult = parseDataFile(fileContent);
-  if (!parseResult.ok) {
-    logger.fatal({ file: options.data, error: parseResult.error }, "Failed to parse data file");
-    process.exit(1);
-  }
-  let entries = parseResult.value;
-  const totalInFile = entries.length;
-
-  if (options.limit !== undefined && options.limit > 0) {
-    entries = entries.slice(0, options.limit);
+  const pool = createPool(options.databaseUrl);
+  let entries: DataEntry[];
+  try {
+    entries = await loadUrls(pool, {
+      ...(options.limit !== undefined && { limit: options.limit }),
+    });
+  } finally {
+    await pool.end();
   }
 
-  logger.info({ count: entries.length, total: totalInFile }, "Loaded entries from data file");
+  logger.info({ count: entries.length }, "Loaded entries from database");
 
   if (entries.length === 0) {
     logger.info("No entries to process");

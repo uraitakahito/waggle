@@ -3,10 +3,11 @@
  *
  * Stage 0 surface: the building blocks used by `cli.ts` are re-exported
  * so downstream callers can compose them programmatically (e.g. submit
- * from a non-YAML source, drive a different CLI). The shape will expand
- * in later stages as polling / storage / pipeline features land.
+ * from a different driver, drive a different CLI). The shape will
+ * expand in later stages as polling / storage / pipeline features land.
  */
-export { parseDataFile, type DataEntry } from "./data/yaml-loader.js";
+export { loadUrls, type DataEntry, type UrlSourceQuery } from "./data/url-source.js";
+export { createPool, redactDatabaseUrl } from "./db/pool.js";
 export {
   parseClientOptions,
   getCaptureFormats,

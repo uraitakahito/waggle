@@ -27,6 +27,8 @@ Bootstraps waggle's dev environment by:
        CHROMIUM_SERVER_REF          = main
        BROWSERHIVE_HOST_PORT        = 8080
        LOG_LEVEL, BROWSERHIVE_LOG_LEVEL = info
+       POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB = waggle / waggle / waggle
+       POSTGRES_HOST_PORT           = 5432
 
 The script always regenerates .env and re-downloads the dev assets.
 Persistent overrides should live in your shell environment, not in .env.
@@ -91,6 +93,10 @@ CHROMIUM_SERVER_REF=main
 BROWSERHIVE_HOST_PORT=8080
 LOG_LEVEL=info
 BROWSERHIVE_LOG_LEVEL=info
+POSTGRES_USER=waggle
+POSTGRES_PASSWORD=waggle
+POSTGRES_DB=waggle
+POSTGRES_HOST_PORT=5432
 EOF
 echo "Created .env (regenerated from host info)"
 
@@ -99,6 +105,7 @@ echo "Setup complete!"
 echo ""
 echo "Next steps:"
 echo "  docker compose -f compose.dev.yaml up --build -d"
-echo "  docker compose -f compose.dev.yaml exec waggle bash -lc 'npm ci'"
+echo "  docker compose -f compose.dev.yaml exec waggle zsh -ic '"
+echo "    cd /app && npm ci && npm run db:migrate && npm run db:seed'"
 echo "  docker compose -f compose.dev.yaml exec waggle \\"
-echo "    npm run dev -- --data data/sample.yaml --jpeg --html --limit 3"
+echo "    npm run dev -- --jpeg --html --limit 3"

@@ -6,6 +6,9 @@
 #   - waggle uses the multi-stage `runtime` target (runs compiled dist/).
 #   - both browserhive and the chromium servers carry `restart: unless-stopped`.
 #   - browserhive has an HTTP healthcheck; waggle waits for it.
+#   - postgres carries no host port mapping (internal-only).
+#   - migrations + sample seeding run automatically before waggle in the
+#     `--profile run` smoke flow (waggle-migrator + waggle-seeder).
 #
 # **Pin every `*_REF` env in real deployments** (a tag or commit SHA),
 # `main` is for convenience only.
@@ -14,7 +17,32 @@ networks:
   chromium-network:
     name: chromium-network
 
+volumes:
+  postgres-data:
+    name: waggle-postgres-data-prod
+
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: waggle-postgres-prod
+    init: true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-waggle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waggle}
+      POSTGRES_DB: ${POSTGRES_DB:-waggle}
+      TZ: ${TZ:-Asia/Tokyo}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waggle} -d ${POSTGRES_DB:-waggle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
   chromium-server-1:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
@@ -83,6 +111,48 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # One-shot service that applies pending DB migrations and exits. Runs
+  # before `waggle` in the `run` profile so the schema is ready by the
+  # time the CLI queries it.
+  waggle-migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: waggle:latest
+    container_name: waggle-migrator-prod
+    init: true
+    networks:
+      - chromium-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
+    entrypoint: ["node", "dist/db/migrate.js"]
+    profiles: ["run"]
+
+  # One-shot service that loads `db/seeds/sample.sql` (the smoke-test
+  # fixture) into the urls table. Runs after the migrator, before
+  # waggle. Real deployments should not rely on this — they are
+  # expected to populate `urls` through their own pipeline — but the
+  # `--profile run` smoke test depends on it for end-to-end
+  # demonstration.
+  waggle-seeder:
+    image: waggle:latest
+    container_name: waggle-seeder-prod
+    init: true
+    networks:
+      - chromium-network
+    depends_on:
+      waggle-migrator:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
+    entrypoint: ["node", "dist/db/seed.js"]
+    profiles: ["run"]
+
   waggle:
     build:
       context: .
@@ -95,19 +165,15 @@ services:
     depends_on:
       browserhive:
         condition: service_healthy
+      waggle-seeder:
+        condition: service_completed_successfully
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BROWSERHIVE_SERVER: http://browserhive:8080
-    # The runtime image does not ship sample data. Smoke tests bind-mount
-    # the host's `data/` so the CLI can read `data/sample.yaml`. Real
-    # deployments bind-mount their own data directory the same way.
-    volumes:
-      - ./data:/app/data:ro
+      DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
     # Default smoke args for `docker compose -f compose.prod.yaml --profile run up`.
     # Override per-invocation with `docker compose run --rm waggle <args>`.
     command:
-      - "--data"
-      - "data/sample.yaml"
       - "--jpeg"
       - "--limit"
       - "3"
