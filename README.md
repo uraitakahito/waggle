@@ -33,9 +33,7 @@ If you already have a BrowserHive instance running somewhere, you can run waggle
 nvm use                                   # Node 24 (see .nvmrc)
 npm ci
 npm run build
-node dist/cli.js \
-  --data data/sample.yaml --jpeg --limit 3 \
-  --server http://localhost:8080
+node dist/cli.js --data data/sample.yaml --jpeg --limit 3 --server http://localhost:8080
 ```
 
 `--server` falls back to the `BROWSERHIVE_SERVER` env var when omitted.
