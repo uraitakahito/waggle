@@ -9,7 +9,7 @@ Higher-level capture client and orchestrator built on top of [BrowserHive](https
 Bring up BrowserHive plus the two Chromium servers it depends on, then fire one capture run from the bundled sample data:
 
 ```sh
-./setup.sh                 # generate .env from host info (always regenerated)
+./setup.sh
 docker compose -f compose.dev.yaml up --build -d \
   chromium-server-1 chromium-server-2 browserhive
 docker compose -f compose.dev.yaml run --rm waggle \
