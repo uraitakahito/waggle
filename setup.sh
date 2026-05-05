@@ -2,21 +2,6 @@
 #
 # setup.sh — bootstrap waggle's local development environment.
 #
-# Two side-effects, both of which are always re-run idempotently:
-#
-#  1. Download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned
-#     `uraitakahito/hello-javascript` template tag. These two files are
-#     gitignored — the developer image is sourced from a shared template,
-#     not vendored. Bump `HELLO_JAVASCRIPT_VERSION` to take a new version.
-#
-#  2. Regenerate `.env` from host detection (UID/GID/TZ + waggle defaults).
-#     Persistent overrides should live in your shell environment (e.g.
-#     `export TZ=...` in ~/.zshrc) before running this script — anything
-#     edited inside .env will be lost on the next run.
-#
-# Secrets MUST NOT be persisted in .env. waggle currently has no secrets
-# to manage; if that changes, prefer compose-time injection (env_file +
-# host env vars) over checked-in defaults.
 
 set -e
 
