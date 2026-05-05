@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1.7
+#
+# Production image for the waggle CLI.
+#
+# Build:
+#   docker build -f Dockerfile.prod -t waggle:prod .
+#
+# Run (one-shot capture against an existing BrowserHive):
+#   docker run --rm -v "$(pwd)/data:/app/data" \
+#     -e BROWSERHIVE_SERVER=http://browserhive:8080 \
+#     waggle:prod --data data/sample.yaml --jpeg --limit 3
+#
+# Or use compose.prod.yaml (which adds the BrowserHive + chromium-server
+# stack and wires `BROWSERHIVE_SERVER` for you).
+
+ARG NODE_VERSION=22
+
+# ---------- Builder stage ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json tsconfig.build.json ./
+COPY openapi/ ./openapi/
+COPY src/ ./src/
+
+RUN npm run build \
+ && npm prune --omit=dev
+
+# ---------- Runtime stage ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/openapi ./openapi
+COPY package.json ./
+
+USER node
+
+ENTRYPOINT ["node", "dist/cli.js"]

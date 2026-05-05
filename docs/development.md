@@ -5,7 +5,10 @@
 - Node.js 22 (the version in `.nvmrc`). `nvm use` if you have nvm installed.
 - npm 10+ (ships with Node 22).
 - Docker 25+ with BuildKit. Required for the Compose stacks but not for host-only development.
+- `curl` on PATH — `setup.sh` uses it to download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned `uraitakahito/hello-javascript` template tag.
 - A BrowserHive instance reachable at `BROWSERHIVE_SERVER` for end-to-end runs. The Compose stacks bring one up; otherwise you can point at a remote.
+
+`WAGGLE_NODE_VERSION` (default `22`) controls which Node version the dev image installs via nvm at build time. Override in your shell environment before `./setup.sh` to pin a specific 22.x patch.
 
 ## First-time setup
 
@@ -14,9 +17,11 @@ git clone https://github.com/<you>/waggle.git
 cd waggle
 nvm use
 npm ci
-./setup.sh                 # generate .env from host info (safe to re-run)
+./setup.sh                 # generate .env, download Dockerfile.dev + docker-entrypoint.sh
 npm run check              # typecheck + lint + format:check + tests
 ```
+
+`./setup.sh` is mandatory before any `docker compose -f compose.dev.yaml ...` invocation — `Dockerfile.dev` and `docker-entrypoint.sh` are gitignored and only exist after the script runs.
 
 ## Daily commands
 
@@ -35,27 +40,42 @@ npm run check              # typecheck + lint + format:check + tests
 
 ## Working against the Compose stack
 
-Bring up everything except the one-shot waggle client:
+The dev waggle service is a long-running shell container (built from the downloaded `Dockerfile.dev`, idle on `tail -F /dev/null`). Bring everything up:
 
 ```sh
-docker compose -f compose.dev.yaml up --build -d \
-  chromium-server-1 chromium-server-2 browserhive
+docker compose -f compose.dev.yaml up --build -d
 ```
 
 Watch the rendering Chromium tabs at `http://localhost:6080/` and `http://localhost:6081/`.
 
-Fire an ad-hoc capture run from the bundled sample data:
+Drop into the container's interactive `zsh` — `.zshrc` sources nvm so `node` / `npm` resolve to the version installed at build time (`WAGGLE_NODE_VERSION`, default `22`):
 
 ```sh
-docker compose -f compose.dev.yaml run --rm waggle \
-  --data data/sample.yaml --jpeg --html --limit 5
+docker compose -f compose.dev.yaml exec waggle zsh
 ```
 
-Or smoke-test the full chain in a single command (waggle runs once and exits, infra stays up):
+The dev image does not bundle waggle's `node_modules`; install once on the first session, then fire ad-hoc capture runs:
 
 ```sh
-docker compose -f compose.dev.yaml --profile run up --build
+# inside the container shell:
+npm ci                                                                # first time only
+npx tsx src/cli.ts --data data/sample.yaml --jpeg --html --limit 5
 ```
+
+For one-liner invocations from outside the container, `zsh -ic` is needed so the rc files load nvm:
+
+```sh
+docker compose -f compose.dev.yaml exec -T waggle \
+  zsh -ic 'cd /app && npx tsx src/cli.ts --data data/sample.yaml --jpeg --limit 1'
+```
+
+To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, fire one capture, exit):
+
+```sh
+docker compose -f compose.prod.yaml --profile run up --build --abort-on-container-exit
+```
+
+`--abort-on-container-exit` stops the BrowserHive + chromium services as soon as `waggle-prod` exits — without it, `up` keeps following the long-running services after waggle is done.
 
 ## Working against an external BrowserHive
 
@@ -84,6 +104,8 @@ CI (`openapi:check`) fails any PR where `src/http/generated/` is out of sync wit
 
 ## Troubleshooting
 
+- **`docker compose -f compose.dev.yaml up` fails with `Dockerfile.dev: not found`** — the dev image is downloaded by `./setup.sh`, not committed. Run `./setup.sh` before any `compose.dev.yaml` invocation.
+- **Host `npm run check` fails with `MODULE_NOT_FOUND` for `@rollup/rollup-darwin-arm64` (or similar)** — the dev container bind-mounts `.:/app`, so a `npm ci` run _inside_ the container overwrites your host's `node_modules` with Linux-arm64 binaries. Run `npm ci` on the host to restore the native bindings, then choose one side (host or container) for npm operations rather than alternating.
 - **`docker compose up` fails with "context not found"** — the Git build context format requires Docker BuildKit. Newer Docker Desktop and Docker Engine ≥ 23 ship BuildKit by default; on older Engines run `DOCKER_BUILDKIT=1 docker compose ...`.
 - **chromium-server containers stuck in `starting` state** — open `http://localhost:6080/` in a browser; if the noVNC page does not load the build hasn't finished or the start scripts have crashed. `docker compose logs chromium-server-1` shows the supervisord output.
 - **`fetch failed` from waggle** — BrowserHive isn't reachable. Check `docker compose ps` (the browserhive service should be `Up (healthy)`), then `curl http://localhost:8080/v1/status` to confirm.

@@ -6,23 +6,28 @@ Higher-level capture client and orchestrator built on top of [BrowserHive](https
 
 ## Quickstart (Docker Compose)
 
-Bring up BrowserHive plus the two Chromium servers it depends on, then fire one capture run from the bundled sample data:
+`./setup.sh` is mandatory the first time — it generates `.env` and downloads `Dockerfile.dev` + `docker-entrypoint.sh` from the pinned [`uraitakahito/hello-javascript`](https://github.com/uraitakahito/hello-javascript) template tag (both are gitignored).
+
+Bring up BrowserHive, the two Chromium servers, and the waggle dev shell, then drop into the dev container and fire a capture run from the bundled sample data. Node is provisioned via nvm inside the dev image — use the interactive `zsh` so `.zshrc` sources it:
 
 ```sh
 ./setup.sh
-docker compose -f compose.dev.yaml up --build -d \
-  chromium-server-1 chromium-server-2 browserhive
-docker compose -f compose.dev.yaml run --rm waggle \
-  --data data/sample.yaml --jpeg --html --limit 3
+docker compose -f compose.dev.yaml up --build -d
+docker compose -f compose.dev.yaml exec waggle zsh
+# inside the container:
+npm ci                                                                # first time only
+npx tsx src/cli.ts --data data/sample.yaml --jpeg --html --limit 3
 ```
 
 You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Open `http://localhost:6080/` and `http://localhost:6081/` (noVNC) to watch each Chromium tab render.
 
-To smoke-test the whole stack in one shot:
+To smoke-test the production image end-to-end (builds `Dockerfile.prod`, runs one capture, exits):
 
 ```sh
-docker compose -f compose.dev.yaml --profile run up --build
+docker compose -f compose.prod.yaml --profile run up --build --abort-on-container-exit
 ```
+
+`--abort-on-container-exit` stops the BrowserHive + chromium services as soon as `waggle-prod` exits, so the whole stack tears down on its own.
 
 ## Quickstart (host Node, BrowserHive remote)
 
