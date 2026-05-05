@@ -74,22 +74,3 @@ All Compose services share the `chromium-network` bridge:
 | waggle            | `waggle`            | (no listener)  | (one-shot client; opt in via `--profile run`) |
 
 `compose.prod.yaml` strips the noVNC port mappings (chromium servers are internal-only) and uses headless chromium-server-docker images.
-
-## Code-level layout
-
-```
-src/
-├── cli.ts                  # entry point (shebang)
-├── index.ts                # library exports
-├── logger.ts               # pino root logger
-├── config/cli-options.ts   # commander program; CaptureFormats normaliser
-├── data/yaml-loader.ts     # parse YAML into DataEntry[]
-├── client/
-│   ├── openapi-client.ts   # `client.setConfig({ baseUrl })`
-│   ├── submit.ts           # one POST /v1/captures, returns SubmitResult
-│   └── run.ts              # parallel orchestration + summary
-├── http/generated/         # @hey-api/openapi-ts output (committed; drift-checked)
-└── types/
-    ├── capture.ts          # CaptureFormats
-    └── result.ts           # Result<T, E> success/failure union
-```
