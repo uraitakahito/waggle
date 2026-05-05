@@ -1,0 +1,67 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Node.js - Debug compiled JavaScript
+      // Compiles TypeScript via the `npm: build` preLaunchTask, then runs
+      // the generated JS under dist/. Step debugging in TS source is enabled
+      // via source maps.
+      "name": "Debug waggle CLI",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/dist/cli.js",
+      "args": ["--data", "data/sample.yaml", "--jpeg", "--limit", "1"],
+      "stopOnEntry": true,
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "npm: build",
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "console": "integratedTerminal"
+    },
+    {
+      // Node.js - Debug compiled JavaScript
+      // After compiling with tsc, run JS files under dist/
+      // Step debugging in TypeScript files is possible via source maps
+      "name": "Debug selected TS file (Node.js)",
+      "type": "node",
+      "request": "launch",
+      // program - an absolute path to the Node.js program to debug.
+      "program": "${file}",
+      // break immediately when the program launches
+      "stopOnEntry": true,
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "npm: build",
+      "sourceMaps": true,
+      //
+      // Mapping the output location
+      //
+      // If generated (transpiled) JavaScript files do not live next to their source,
+      // you can help the VS Code debugger locate them by setting the `outFiles`
+      // attribute in the launch configuration.
+      // Whenever you set a breakpoint in the original source, VS Code tries to find
+      // the generated source by searching the files specified by glob patterns in `outFiles`.
+      // https://code.visualstudio.com/docs/typescript/typescript-debugging
+      // If VS Code can't find the generated source, you may see a message like:
+      //   Uncaught TypeError TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".ts"
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Test selected Vitest",
+      "type": "node",
+      "request": "launch",
+      // program - an absolute path to the Node.js program to debug.
+      "program": "${workspaceRoot}/node_modules/vitest/vitest.mjs",
+      "autoAttachChildProcesses": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "args": ["run", "${relativeFile}"],
+      "smartStep": true,
+      "console": "integratedTerminal"
+    }
+  ]
+}
