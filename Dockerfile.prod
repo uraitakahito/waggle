@@ -13,7 +13,7 @@
 # Or use compose.prod.yaml (which adds the BrowserHive + chromium-server
 # stack and wires `BROWSERHIVE_SERVER` for you).
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24.15.0
 
 # ---------- Builder stage ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS builder

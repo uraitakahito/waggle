@@ -6,10 +6,6 @@ Higher-level capture client and orchestrator built on top of [BrowserHive](https
 
 ## Quickstart (Docker Compose)
 
-`./setup.sh` is mandatory the first time — it generates `.env` and downloads `Dockerfile.dev` + `docker-entrypoint.sh` from the pinned [`uraitakahito/hello-javascript`](https://github.com/uraitakahito/hello-javascript) template tag (both are gitignored).
-
-Bring up BrowserHive, the two Chromium servers, and the waggle dev shell, then drop into the dev container and fire a capture run from the bundled sample data. Node is provisioned via nvm inside the dev image — use the interactive `zsh` so `.zshrc` sources it:
-
 ```sh
 ./setup.sh
 docker compose -f compose.dev.yaml up --build -d
@@ -34,7 +30,7 @@ docker compose -f compose.prod.yaml --profile run up --build --abort-on-containe
 If you already have a BrowserHive instance running somewhere, you can run waggle directly:
 
 ```sh
-nvm use                                   # Node 22 (see .nvmrc)
+nvm use                                   # Node 24 (see .nvmrc)
 npm ci
 npm run build
 node dist/cli.js \

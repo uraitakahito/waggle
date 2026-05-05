@@ -98,7 +98,6 @@ services:
         user_id: ${USER_ID:-1000}
         group_id: ${GROUP_ID:-1000}
         TZ: ${TZ:-Asia/Tokyo}
-        node_version: ${WAGGLE_NODE_VERSION:-22}
     container_name: waggle-app
     init: true
     networks:

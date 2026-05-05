@@ -87,8 +87,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
-      args:
-        NODE_VERSION: ${WAGGLE_NODE_VERSION:-22}
     image: waggle:latest
     container_name: waggle-prod
     init: true

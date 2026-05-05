@@ -7,7 +7,7 @@
         │
         ▼
    ┌──────────────────────────────────────────────┐
-   │ waggle (Node 22 / TypeScript / commander)    │
+   │ waggle (Node 24 / TypeScript / commander)    │
    │  ┌────────────────┐  ┌───────────────────┐   │
    │  │ yaml-loader    │─▶│ cli-options       │   │
    │  └────────────────┘  └─────────┬─────────┘   │

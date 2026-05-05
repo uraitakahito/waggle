@@ -2,21 +2,6 @@
 #
 # setup.sh — bootstrap waggle's local development environment.
 #
-# Two side-effects, both of which are always re-run idempotently:
-#
-#  1. Download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned
-#     `uraitakahito/hello-javascript` template tag. These two files are
-#     gitignored — the developer image is sourced from a shared template,
-#     not vendored. Bump `HELLO_JAVASCRIPT_VERSION` to take a new version.
-#
-#  2. Regenerate `.env` from host detection (UID/GID/TZ + waggle defaults).
-#     Persistent overrides should live in your shell environment (e.g.
-#     `export TZ=...` in ~/.zshrc) before running this script — anything
-#     edited inside .env will be lost on the next run.
-#
-# Secrets MUST NOT be persisted in .env. waggle currently has no secrets
-# to manage; if that changes, prefer compose-time injection (env_file +
-# host env vars) over checked-in defaults.
 
 set -e
 
@@ -38,7 +23,6 @@ Bootstraps waggle's dev environment by:
 
        USER_ID, GROUP_ID            detected via `id -u` / `id -g`
        TZ                           from $TZ if set, otherwise Asia/Tokyo
-       WAGGLE_NODE_VERSION          = 22 (passed to Dockerfile.dev's nvm)
        BROWSERHIVE_REF              = main
        CHROMIUM_SERVER_REF          = main
        BROWSERHIVE_HOST_PORT        = 8080
@@ -102,7 +86,6 @@ cat > .env <<EOF
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 TZ=${TZ:-Asia/Tokyo}
-WAGGLE_NODE_VERSION=22
 BROWSERHIVE_REF=main
 CHROMIUM_SERVER_REF=main
 BROWSERHIVE_HOST_PORT=8080
