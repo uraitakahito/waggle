@@ -141,3 +141,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Downloaded by setup.sh from uraitakahito/hello-javascript at the pinned
+# HELLO_JAVASCRIPT_VERSION tag; regenerated on every ./setup.sh run.
+Dockerfile.dev
+docker-entrypoint.sh

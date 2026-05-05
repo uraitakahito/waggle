@@ -86,7 +86,9 @@ services:
   waggle:
     build:
       context: .
-      target: runtime
+      dockerfile: Dockerfile.prod
+      args:
+        NODE_VERSION: ${WAGGLE_NODE_VERSION:-22}
     image: waggle:latest
     container_name: waggle-prod
     init: true
@@ -98,4 +100,17 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BROWSERHIVE_SERVER: http://browserhive:8080
+    # The runtime image does not ship sample data. Smoke tests bind-mount
+    # the host's `data/` so the CLI can read `data/sample.yaml`. Real
+    # deployments bind-mount their own data directory the same way.
+    volumes:
+      - ./data:/app/data:ro
+    # Default smoke args for `docker compose -f compose.prod.yaml --profile run up`.
+    # Override per-invocation with `docker compose run --rm waggle <args>`.
+    command:
+      - "--data"
+      - "data/sample.yaml"
+      - "--jpeg"
+      - "--limit"
+      - "3"
     profiles: ["run"]

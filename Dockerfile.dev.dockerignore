@@ -1,0 +1,6 @@
+# The dev image (downloaded from uraitakahito/hello-javascript) bind-mounts
+# the host source tree at /app at runtime, so the build context only needs
+# the entrypoint script that the Dockerfile COPYs into the image.
+*
+
+!docker-entrypoint.sh

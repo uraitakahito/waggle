@@ -5,18 +5,22 @@
 #   chromium-server-1   CDP 9222 / noVNC 6080 (host)
 #   chromium-server-2   CDP 9223 (host) -> 9222 (container) / noVNC 6081 (host)
 #   browserhive         HTTP API 8080 (host)
-#   waggle              one-shot client (only started with `--profile run`)
+#   waggle              long-running dev shell (Dockerfile.dev sourced from
+#                       uraitakahito/hello-javascript via ./setup.sh)
 #
-# Build contexts default to BuildKit Git contexts so the upstream
-# repositories are fetched on demand (no local clone required). Override
-# any `*_REPO` env to point at a local checkout for dev against
-# unmerged changes.
+# Build contexts for chromium-server-docker / browserhive default to
+# BuildKit Git contexts so the upstream repositories are fetched on
+# demand (no local clone required). Override any `*_REPO` env to point
+# at a local checkout for dev against unmerged changes.
+#
+# Prerequisites:
+#   ./setup.sh   # generates .env, downloads Dockerfile.dev + docker-entrypoint.sh
 #
 # Typical workflow:
-#   docker compose -f compose.dev.yaml up --build           # infra only
-#   docker compose -f compose.dev.yaml --profile run up     # +waggle smoke
-#   docker compose -f compose.dev.yaml run --rm waggle \
-#     --data data/sample.yaml --jpeg --limit 3              # ad-hoc capture
+#   docker compose -f compose.dev.yaml up --build -d                       # all services up
+#   docker compose -f compose.dev.yaml exec waggle bash -lc 'npm ci'       # first time only
+#   docker compose -f compose.dev.yaml exec waggle \
+#     npx tsx src/cli.ts --data data/sample.yaml --jpeg --limit 3          # ad-hoc capture
 
 networks:
   chromium-network:
@@ -89,7 +93,12 @@ services:
   waggle:
     build:
       context: .
-      target: dev
+      dockerfile: Dockerfile.dev
+      args:
+        user_id: ${USER_ID:-1000}
+        group_id: ${GROUP_ID:-1000}
+        TZ: ${TZ:-Asia/Tokyo}
+        node_version: ${WAGGLE_NODE_VERSION:-22}
     container_name: waggle-app
     init: true
     networks:
@@ -101,11 +110,5 @@ services:
       BROWSERHIVE_SERVER: http://browserhive:8080
     volumes:
       - .:/app
-      - /app/node_modules
-    command:
-      - "--data"
-      - "data/sample.yaml"
-      - "--jpeg"
-      - "--limit"
-      - "3"
-    profiles: ["run"]
+    tty: true
+    stdin_open: true
