@@ -12,7 +12,7 @@ docker compose -f compose.dev.yaml up --build -d
 docker compose -f compose.dev.yaml exec waggle zsh
 # inside the container:
 npm ci                                                                # first time only
-npx tsx src/cli.ts --data data/sample.yaml --jpeg --html --limit 3
+npm run dev -- --data data/sample.yaml --jpeg --html --limit 3
 ```
 
 You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Open `http://localhost:6080/` and `http://localhost:6081/` (noVNC) to watch each Chromium tab render.

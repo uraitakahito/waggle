@@ -20,7 +20,7 @@
 #   docker compose -f compose.dev.yaml up --build -d                       # all services up
 #   docker compose -f compose.dev.yaml exec waggle bash -lc 'npm ci'       # first time only
 #   docker compose -f compose.dev.yaml exec waggle \
-#     npx tsx src/cli.ts --data data/sample.yaml --jpeg --limit 3          # ad-hoc capture
+#     npm run dev -- --data data/sample.yaml --jpeg --limit 3              # ad-hoc capture
 
 networks:
   chromium-network:
