@@ -67,9 +67,3 @@ compose.dev.yaml      4-service dev stack (chromium ×2, browserhive, waggle)
 compose.prod.yaml     production-flavour stack (headless chromium, runtime image)
 Dockerfile            multi-stage: builder, dev, runtime
 ```
-
-## License
-
-Released into the public domain — see [`LICENSE`](LICENSE).
-
-waggle is built on top of upstream [BrowserHive](https://github.com/uraitakahito/browserhive) and [chromium-server-docker](https://github.com/uraitakahito/chromium-server-docker), both also Unlicense.
