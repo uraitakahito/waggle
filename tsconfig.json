@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // DOM is needed because `@hey-api/openapi-ts` generates a fetch-based
+    // client that references Web-platform types (`Request`, `Response`,
+    // `BodyInit`, ...). The runtime is Node — no DOM globals are actually
+    // used — but the type definitions live in `lib.dom.d.ts`.
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    // exactOptionalPropertyTypes intentionally OFF: hey-api's generated
+    // client (src/http/generated/) uses `T | undefined` for fields the
+    // type definitions declare as `T?`, which trips this check. Re-enable
+    // here once hey-api ships a fix, or after we fence generated code
+    // off via a separate tsconfig project reference.
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": false,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
