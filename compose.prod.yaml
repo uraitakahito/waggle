@@ -129,7 +129,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
-    entrypoint: ["node", "dist/db/migrate.js"]
+    entrypoint: ["node", "dist/db/migrate.js", "up"]
     profiles: ["run"]
 
   # One-shot service that loads `db/seeds/sample.sql` (the smoke-test
@@ -150,7 +150,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER:-waggle}:${POSTGRES_PASSWORD:-waggle}@postgres:5432/${POSTGRES_DB:-waggle}
-    entrypoint: ["node", "dist/db/seed.js"]
+    entrypoint: ["node", "dist/db/seed.js", "up"]
     profiles: ["run"]
 
   waggle:

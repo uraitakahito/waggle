@@ -40,7 +40,7 @@ waggle's interaction model is **fire-and-forget**: every enabled row in the `url
 
 ## URL source schema
 
-`db/migrations/0001_create_urls.sql`:
+`src/db/migrations/001-create-urls.ts` (Kysely Migrator):
 
 | Column     | Type          | Notes                                                            |
 | ---------- | ------------- | ---------------------------------------------------------------- |

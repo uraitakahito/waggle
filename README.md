@@ -13,7 +13,7 @@ docker compose -f compose.dev.yaml exec waggle zsh
 # inside the container:
 npm ci                                                                # first time only
 npm run db:migrate                                                    # first time only
-npm run db:seed                                                       # load db/seeds/sample.sql
+npm run db:seed                                                       # load src/db/seeds/001-sample-urls.ts
 npm run dev -- --jpeg --html --limit 3
 ```
 
