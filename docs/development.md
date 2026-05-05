@@ -23,20 +23,20 @@ npm run check              # typecheck + lint + format:check + tests
 
 ## Daily commands
 
-| Command                           | What it does                                                          |
-| --------------------------------- | --------------------------------------------------------------------- |
-| `npm run dev -- <args>`           | Build then run the CLI (`tsc` followed by `node dist/cli.js`).        |
-| `npm run build`                   | Emit JS/d.ts to `dist/` using `tsconfig.build.json`.                  |
-| `npm run typecheck`               | `tsc --noEmit`. Includes test files and `*.config.ts`.                |
-| `npm run lint` / `lint:fix`       | ESLint flat config (typescript-eslint recommendedTypeChecked).        |
-| `npm run format` / `format:check` | Prettier; `.prettierignore` skips `dist/` and `src/http/generated/`.  |
-| `npm test` / `test:watch`         | Vitest unit tests under `test/`.                                      |
-| `npm run check`                   | Combined typecheck + lint + format:check + test (run before pushing). |
-| `npm run db:migrate`              | Build then apply pending `db/migrations/*.sql` to `DATABASE_URL`.     |
-| `npm run db:seed`                 | Build then apply `db/seeds/sample.sql` (idempotent fixture).          |
-| `npm run openapi:generate`        | Regenerate `src/http/generated/` from `openapi/browserhive.yaml`.     |
-| `npm run openapi:check`           | Generate then verify `git diff --exit-code` (CI drift gate).          |
-| `npm run openapi:sync`            | Pull the latest `openapi.yaml` from upstream BrowserHive's `main`.    |
+| Command                                  | What it does                                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| `npm run dev -- <args>`                  | Build then run the CLI (`tsc` followed by `node dist/cli.js`).               |
+| `npm run build`                          | Emit JS/d.ts to `dist/` using `tsconfig.build.json`.                         |
+| `npm run typecheck`                      | `tsc --noEmit`. Includes test files and `*.config.ts`.                       |
+| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).               |
+| `npm run format` / `format:check`        | Prettier; `.prettierignore` skips `dist/` and `src/http/generated/`.         |
+| `npm test` / `test:watch`                | Vitest unit tests under `test/`.                                             |
+| `npm run check`                          | Combined typecheck + lint + format:check + test (run before pushing).        |
+| `npm run db:migrate` / `db:migrate:down` | Build then run Kysely migrations (`up` / `down`) against `DATABASE_URL`.     |
+| `npm run db:seed` / `db:seed:down`       | Build then run Kysely seeds (`up` / `down`) — fixture under `src/db/seeds/`. |
+| `npm run openapi:generate`               | Regenerate `src/http/generated/` from `openapi/browserhive.yaml`.            |
+| `npm run openapi:check`                  | Generate then verify `git diff --exit-code` (CI drift gate).                 |
+| `npm run openapi:sync`                   | Pull the latest `openapi.yaml` from upstream BrowserHive's `main`.           |
 
 ## Working against the Compose stack
 
@@ -100,16 +100,16 @@ For Postgres TLS, encode the relevant parameters in `DATABASE_URL` (e.g. `?sslmo
 
 ## Migrations
 
-Migration files live under `db/migrations/<NNNN>_<description>.sql`. The runner (`src/db/migrate.ts`) tracks applied IDs in a `migrations` ledger table — re-running `npm run db:migrate` is a no-op once everything is current.
+Migration files live under `src/db/migrations/<NNN>-<description>.ts` and export `up(db: Kysely<unknown>)` / `down(db: Kysely<unknown>)`. The runner (`src/db/migrate.ts`) is a thin wrapper around Kysely's `Migrator` + `FileMigrationProvider`; it tracks applied IDs in the `kysely_migration` ledger (with `kysely_migration_lock` guarding concurrent runs), so re-running `npm run db:migrate` is a no-op once everything is current. `npm run db:migrate:down` reverts the last applied migration.
 
 To add a new migration:
 
-1. Pick the next ordinal (e.g. `0002_add_priority.sql`).
-2. Write the SQL.
-3. Test locally: `DATABASE_URL=... npm run db:migrate`.
+1. Pick the next ordinal (e.g. `002-add-priority.ts`).
+2. Implement `up` and `down` using the schema builder (`db.schema.alterTable(...)`, `db.schema.createIndex(...)`) or `sql\`...\`.execute(db)`for things the builder does not cover (extensions, generated columns,`CHECK` expressions referencing other columns).
+3. Round-trip locally: `DATABASE_URL=... npm run db:migrate && npm run db:migrate:down && npm run db:migrate`.
 4. Commit both the migration file and any related app changes in the same PR.
 
-Migrations run in a single transaction; a failure rolls back without recording the ID, so the next run retries.
+Seeds follow the same shape under `src/db/seeds/`, but use a separate `kysely_seed` ledger so they can be tracked independently.
 
 ## Refreshing the OpenAPI vendor copy
 
@@ -143,4 +143,4 @@ CI (`openapi:check`) fails any PR where `src/http/generated/` is out of sync wit
 
 - All relative imports use `.js` extensions (NodeNext + ESM). TypeScript-style `import type { … }` is required (`verbatimModuleSyntax: true`).
 - Generated code (`src/http/generated/`) is **committed**. Do not gitignore it — the drift gate depends on it.
-- DB migrations are append-only: never edit a committed file under `db/migrations/`. Add a new ordinal instead.
+- DB migrations are append-only: never edit a committed file under `src/db/migrations/`. Add a new ordinal instead.

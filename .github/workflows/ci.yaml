@@ -59,7 +59,12 @@ jobs:
         run: npm run build
 
       - name: Apply migrations
-        run: node dist/db/migrate.js
+        run: node dist/db/migrate.js up
+
+      - name: Migration round-trip (down then up)
+        run: |
+          node dist/db/migrate.js down
+          node dist/db/migrate.js up
 
       - name: OpenAPI drift check
         run: npm run openapi:check

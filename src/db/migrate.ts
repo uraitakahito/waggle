@@ -1,95 +1,60 @@
 /**
- * Migration runner.
+ * Migration CLI entry point.
  *
- * Applies SQL files under `db/migrations/` in alphabetical order,
- * tracking applied IDs in a `migrations` ledger table. Idempotent:
- * already-applied migrations are skipped.
+ * Runs Kysely migrations from `src/db/migrations/` (compiled to
+ * `dist/db/migrations/`). Direction is a positional argument
+ * (`up` | `down`); `DATABASE_URL` is required via env.
  *
- * Each migration runs in a transaction wrapped around a single
- * `client.query()` call — Postgres allows multi-statement strings via
- * the simple-query protocol when no parameters are bound, which is the
- * shape our migrations need.
+ * Ledger lives in `kysely_migration` / `kysely_migration_lock`. The
+ * older self-rolled `migrations` table from the SQL-runner era is
+ * unused — clean environments have it absent, and existing dev
+ * volumes are expected to be wiped before adopting this runner
+ * (per the breaking-change scope).
  *
- * Invoked as `node dist/db/migrate.js` (no args). Reads
- * `DATABASE_URL` from the environment.
+ * Invoked as `node dist/db/migrate.js <up|down>`.
  */
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import { logger } from "../logger.js";
-import { createPool, redactDatabaseUrl } from "./pool.js";
+import { Argument, Command, Option } from "commander";
+import { parsePath } from "./cli-parsers.js";
+import { createKyselyClient } from "./kysely.js";
+import { redactDatabaseUrl } from "./pool.js";
+import { createChildLogger } from "../logger.js";
+import { runMigratorCli } from "./migrator-runner.js";
 
-// dist/db/migrate.js -> project root
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const migrationsDir = path.join(projectRoot, "db", "migrations");
+const program = new Command();
+program
+  .name("migrate")
+  .description("Run database migrations")
+  .addArgument(new Argument("<direction>", "Migration direction").choices(["up", "down"]))
+  .addOption(
+    new Option("--migration-folder <path>", "Path to migration files directory")
+      .env("MIGRATION_FOLDER")
+      .default(new URL("./migrations/", import.meta.url))
+      .argParser(parsePath),
+  );
 
-const ensureLedger = async (pool: import("pg").Pool): Promise<void> => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS migrations (
-      id          TEXT        PRIMARY KEY,
-      applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-};
+program.parse();
 
-const listAppliedIds = async (pool: import("pg").Pool): Promise<Set<string>> => {
-  const result = await pool.query<{ id: string }>("SELECT id FROM migrations");
-  return new Set(result.rows.map((row) => row.id));
-};
+const direction = program.args[0] as "up" | "down";
+const opts = program.opts<{ migrationFolder: URL }>();
 
-const listMigrationFiles = async (): Promise<string[]> => {
-  const entries = await readdir(migrationsDir);
-  return entries.filter((name) => name.endsWith(".sql")).sort();
-};
-
-const applyMigration = async (pool: import("pg").Pool, fileName: string): Promise<void> => {
-  const filePath = path.join(migrationsDir, fileName);
-  const sql = await readFile(filePath, "utf-8");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(sql);
-    await client.query("INSERT INTO migrations (id) VALUES ($1)", [fileName]);
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
-};
-
-const main = async (): Promise<void> => {
-  const databaseUrl = process.env["DATABASE_URL"];
-  if (!databaseUrl) {
-    logger.fatal("DATABASE_URL is not set");
-    process.exit(1);
-  }
-
-  logger.info({ database: redactDatabaseUrl(databaseUrl) }, "Running migrations");
-  const pool = createPool(databaseUrl);
-  try {
-    await ensureLedger(pool);
-    const applied = await listAppliedIds(pool);
-    const files = await listMigrationFiles();
-    const pending = files.filter((name) => !applied.has(name));
-
-    if (pending.length === 0) {
-      logger.info({ total: files.length }, "No pending migrations");
-      return;
-    }
-
-    for (const fileName of pending) {
-      logger.info({ migration: fileName }, "Applying migration");
-      await applyMigration(pool, fileName);
-    }
-    logger.info({ applied: pending.length, total: files.length }, "Migrations applied");
-  } finally {
-    await pool.end();
-  }
-};
-
-main().catch((err: unknown) => {
-  logger.fatal({ err }, "Migration failed");
+const databaseUrl = process.env["DATABASE_URL"];
+const cliLogger = createChildLogger({ command: "migrate", direction });
+if (!databaseUrl) {
+  cliLogger.fatal("DATABASE_URL is not set");
   process.exit(1);
-});
+}
+
+cliLogger.info({ database: redactDatabaseUrl(databaseUrl) }, "Running migrations");
+
+const kyselyClient = createKyselyClient(databaseUrl);
+await runMigratorCli(
+  "Migration",
+  direction,
+  {
+    migrationFolder: opts.migrationFolder,
+    migrationTableName: "kysely_migration",
+    migrationLockTableName: "kysely_migration_lock",
+  },
+  kyselyClient,
+  cliLogger,
+);
