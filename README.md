@@ -48,22 +48,3 @@ npm run dev -- --data data/sample.yaml --jpeg --limit 1 --server http://...
 ```
 
 See [`docs/development.md`](docs/development.md) for the full guide and [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together. Architectural decisions are recorded under [`docs/adr/`](docs/adr/).
-
-## Project layout
-
-```
-src/cli.ts            CLI entry (shebang)
-src/index.ts          library exports
-src/client/           submit / orchestration / OpenAPI client wrapper
-src/config/           commander option parser
-src/data/             YAML data-file loader
-src/http/generated/   @hey-api/openapi-ts output (committed; CI guards drift)
-src/types/            shared types (Result, CaptureFormats)
-openapi/              vendored copy of upstream src/http/openapi.yaml
-data/                 sample data files for smoke runs
-test/                 vitest unit tests
-docs/                 vision / roadmap / architecture / development / ADRs
-compose.dev.yaml      4-service dev stack (chromium ×2, browserhive, waggle)
-compose.prod.yaml     production-flavour stack (headless chromium, runtime image)
-Dockerfile            multi-stage: builder, dev, runtime
-```
