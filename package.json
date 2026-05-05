@@ -1,0 +1,53 @@
+{
+  "name": "waggle",
+  "version": "0.0.1",
+  "description": "Higher-level capture client and orchestrator built on top of BrowserHive (https://github.com/uraitakahito/browserhive).",
+  "license": "Unlicense",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "waggle": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "openapi"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "openapi:generate": "openapi-ts",
+    "openapi:check": "npm run openapi:generate && git diff --exit-code -- src/http/generated",
+    "openapi:sync": "curl -fsSL https://raw.githubusercontent.com/uraitakahito/browserhive/main/src/http/openapi.yaml -o openapi/browserhive.yaml",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.13.1",
+    "commander": "^12.1.0",
+    "pino": "^9.5.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@hey-api/openapi-ts": "^0.97.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.0"
+  }
+}

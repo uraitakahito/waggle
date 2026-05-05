@@ -1,0 +1,101 @@
+# compose.prod.yaml — production-flavour stack.
+#
+# Differences from compose.dev.yaml:
+#   - chromium-server-{1,2} use the headless production Dockerfile and
+#     do not expose noVNC ports.
+#   - waggle uses the multi-stage `runtime` target (no tsx, runs dist/).
+#   - both browserhive and the chromium servers carry `restart: unless-stopped`.
+#   - browserhive has an HTTP healthcheck; waggle waits for it.
+#
+# **Pin every `*_REF` env in real deployments** (a tag or commit SHA),
+# `main` is for convenience only.
+
+networks:
+  chromium-network:
+    name: chromium-network
+
+services:
+  chromium-server-1:
+    build:
+      context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
+      dockerfile: docker/production/Dockerfile
+      args:
+        user_id: ${USER_ID:-1000}
+        group_id: ${GROUP_ID:-1000}
+    container_name: waggle-chromium-server-1-prod
+    init: true
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  chromium-server-2:
+    build:
+      context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
+      dockerfile: docker/production/Dockerfile
+      args:
+        user_id: ${USER_ID:-1000}
+        group_id: ${GROUP_ID:-1000}
+    container_name: waggle-chromium-server-2-prod
+    init: true
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  browserhive:
+    build:
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-main}}
+      dockerfile: Dockerfile.prod
+    container_name: waggle-browserhive-prod
+    init: true
+    ports:
+      - "${BROWSERHIVE_HOST_PORT:-8080}:8080"
+    environment:
+      LOG_LEVEL: ${BROWSERHIVE_LOG_LEVEL:-info}
+      BROWSERHIVE_BROWSER_URLS: http://chromium-server-1:9222,http://chromium-server-2:9222
+      BROWSERHIVE_OUTPUT_DIR: /app/output
+      TZ: ${TZ:-Asia/Tokyo}
+    networks:
+      - chromium-network
+    depends_on:
+      chromium-server-1:
+        condition: service_healthy
+      chromium-server-2:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'node -e "fetch(''http://localhost:8080/v1/status'').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  waggle:
+    build:
+      context: .
+      target: runtime
+    image: waggle:latest
+    container_name: waggle-prod
+    init: true
+    networks:
+      - chromium-network
+    depends_on:
+      browserhive:
+        condition: service_healthy
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BROWSERHIVE_SERVER: http://browserhive:8080
+    profiles: ["run"]

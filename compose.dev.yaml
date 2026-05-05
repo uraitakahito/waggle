@@ -1,0 +1,111 @@
+# compose.dev.yaml — local development stack.
+#
+# Brings up four services on the `chromium-network` bridge:
+#
+#   chromium-server-1   CDP 9222 / noVNC 6080 (host)
+#   chromium-server-2   CDP 9223 (host) -> 9222 (container) / noVNC 6081 (host)
+#   browserhive         HTTP API 8080 (host)
+#   waggle              one-shot client (only started with `--profile run`)
+#
+# Build contexts default to BuildKit Git contexts so the upstream
+# repositories are fetched on demand (no local clone required). Override
+# any `*_REPO` env to point at a local checkout for dev against
+# unmerged changes.
+#
+# Typical workflow:
+#   docker compose -f compose.dev.yaml up --build           # infra only
+#   docker compose -f compose.dev.yaml --profile run up     # +waggle smoke
+#   docker compose -f compose.dev.yaml run --rm waggle \
+#     --data data/sample.yaml --jpeg --limit 3              # ad-hoc capture
+
+networks:
+  chromium-network:
+    name: chromium-network
+
+services:
+  chromium-server-1:
+    build:
+      context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
+      dockerfile: docker/development/Dockerfile
+      args:
+        user_id: ${USER_ID:-1000}
+        group_id: ${GROUP_ID:-1000}
+    container_name: waggle-chromium-server-1
+    init: true
+    ports:
+      - "9222:9222"
+      - "6080:6080"
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  chromium-server-2:
+    build:
+      context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
+      dockerfile: docker/development/Dockerfile
+      args:
+        user_id: ${USER_ID:-1000}
+        group_id: ${GROUP_ID:-1000}
+    container_name: waggle-chromium-server-2
+    init: true
+    ports:
+      - "9223:9222"
+      - "6081:6080"
+    networks:
+      - chromium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  browserhive:
+    build:
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-main}}
+      dockerfile: Dockerfile.prod
+    container_name: waggle-browserhive
+    init: true
+    ports:
+      - "${BROWSERHIVE_HOST_PORT:-8080}:8080"
+    environment:
+      LOG_LEVEL: ${BROWSERHIVE_LOG_LEVEL:-info}
+      BROWSERHIVE_BROWSER_URLS: http://chromium-server-1:9222,http://chromium-server-2:9222
+      BROWSERHIVE_OUTPUT_DIR: /app/output
+      TZ: ${TZ:-Asia/Tokyo}
+    networks:
+      - chromium-network
+    depends_on:
+      chromium-server-1:
+        condition: service_healthy
+      chromium-server-2:
+        condition: service_healthy
+
+  waggle:
+    build:
+      context: .
+      target: dev
+    container_name: waggle-app
+    init: true
+    networks:
+      - chromium-network
+    depends_on:
+      - browserhive
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BROWSERHIVE_SERVER: http://browserhive:8080
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command:
+      - "--data"
+      - "data/sample.yaml"
+      - "--jpeg"
+      - "--limit"
+      - "3"
+    profiles: ["run"]
