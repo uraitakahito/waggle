@@ -1,31 +1,81 @@
 {
   "compilerOptions": {
+    /*
+     * Type Checking
+     * https://www.typescriptlang.org/tsconfig/#Type_Checking_6248
+     */
+    // Enable all strict type-checking options
+    "strict": true,
+    // Add undefined to indexed-access results (`arr[i]` -> `T | undefined`)
+    "noUncheckedIndexedAccess": true,
+    // Ensure overriding members in derived classes are marked with an override modifier
+    "noImplicitOverride": true,
+    // Report errors for fallthrough cases in switch statements
+    "noFallthroughCasesInSwitch": true,
+    // Require the bracket notation for accessing properties with index signatures
+    "noPropertyAccessFromIndexSignature": true,
+    // exactOptionalPropertyTypes intentionally OFF (BrowserHive has it ON):
+    // hey-api's generated client (src/http/generated/) uses `T | undefined`
+    // for fields the type definitions declare as `T?`, which trips this
+    // check. Re-enable here once hey-api ships a fix, or after we fence
+    // generated code off via a separate tsconfig project reference.
+
+    /*
+     * Modules
+     * https://www.typescriptlang.org/tsconfig/#Modules_6244
+     */
+    // Specify what module code is generated. NodeNext (rather than
+    // BrowserHive's `ESNext` paired with `moduleResolution: Bundler`)
+    // because waggle is a Node CLI run directly via `node dist/cli.js`,
+    // not via a bundler.
+    "module": "NodeNext",
+    // Match the resolver to `module: NodeNext`
+    "moduleResolution": "NodeNext",
+    // Allow `import` of `.json` files
+    "resolveJsonModule": true,
+
+    /*
+     * Emit
+     * https://www.typescriptlang.org/tsconfig/#Emit_6246
+     */
+    // Type-check only by default; the actual emit pass uses
+    // `tsconfig.build.json`, which sets `noEmit: false`.
+    "noEmit": true,
+
+    /*
+     * Interop Constraints
+     * https://www.typescriptlang.org/tsconfig/#Interop_Constraints_6252
+     */
+    // Each `import`/`export` statement maps 1:1 to an emitted statement
+    // (type-only imports must use `import type`). Required for safe ESM
+    // emit under `module: NodeNext`.
+    "verbatimModuleSyntax": true,
+    // Off intentionally (BrowserHive has it on). With `verbatimModuleSyntax`
+    // there is no synthetic default-import rewrite, and Node's NodeNext
+    // CJS-interop handles default imports of CJS modules at runtime.
+    "esModuleInterop": false,
+    // Ensure each file can be safely transpiled in isolation (forward-compat
+    // with single-file transpilers such as esbuild / SWC)
+    "isolatedModules": true,
+    // Ensure that casing is correct in imports
+    "forceConsistentCasingInFileNames": true,
+    // Skip type checking of declaration files from node_modules
+    "skipLibCheck": true,
+
+    /*
+     * Language and Environment
+     * https://www.typescriptlang.org/tsconfig/#Language_and_Environment_6254
+     */
+    // Set the JavaScript language version for emitted JavaScript
     "target": "ES2022",
     // DOM is needed because `@hey-api/openapi-ts` generates a fetch-based
     // client that references Web-platform types (`Request`, `Response`,
     // `BodyInit`, ...). The runtime is Node — no DOM globals are actually
     // used — but the type definitions live in `lib.dom.d.ts`.
-    "lib": ["ES2023", "DOM"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "noPropertyAccessFromIndexSignature": true,
-    // exactOptionalPropertyTypes intentionally OFF: hey-api's generated
-    // client (src/http/generated/) uses `T | undefined` for fields the
-    // type definitions declare as `T?`, which trips this check. Re-enable
-    // here once hey-api ships a fix, or after we fence generated code
-    // off via a separate tsconfig project reference.
-    "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "verbatimModuleSyntax": true,
-    "esModuleInterop": false,
-    "resolveJsonModule": true,
-    "noEmit": true
+    "lib": ["ES2023", "DOM"]
   },
+  // Root config covers source, tests, and *.config.ts so editors and the
+  // typecheck script see everything; the build config narrows to src/**.
   "include": ["src/**/*", "test/**/*", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
