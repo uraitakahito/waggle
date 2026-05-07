@@ -1,13 +1,22 @@
 # compose.dev.yaml — local development stack.
 #
-# Brings up five services on the `chromium-network` bridge:
+# Brings up seven services on the `chromium-network` bridge:
 #
 #   chromium-server-1   CDP 9222 / noVNC 6080 (host)
 #   chromium-server-2   CDP 9223 (host) -> 9222 (container) / noVNC 6081 (host)
-#   browserhive         HTTP API 8080 (host)
+#   seaweedfs           S3-compatible artifact store (network-internal)
+#   seaweedfs-init      one-shot bucket bootstrap, exits when ready
+#   browserhive         HTTP API 8080 (host) — uploads captures to seaweedfs
 #   postgres            5432 (host) — backs waggle's URL source
 #   waggle              long-running dev shell (Dockerfile.dev sourced from
 #                       uraitakahito/hello-javascript via ./setup.sh)
+#
+# BrowserHive 1.3.0 writes captured artifacts to an S3-compatible bucket
+# instead of a local directory, so the stack now bundles SeaweedFS as a
+# self-hosted backend. The bucket is created by `seaweedfs-init` before
+# `browserhive` starts. Override `BROWSERHIVE_S3_ENDPOINT` (in `.env` or
+# the shell environment) to point at AWS S3 / Cloudflare R2 / MinIO; the
+# bundled `seaweedfs` service stays running but is harmless when unused.
 #
 # Build contexts for chromium-server-docker / browserhive default to
 # BuildKit Git contexts so the upstream repositories are fetched on
@@ -16,13 +25,14 @@
 #
 # Prerequisites:
 #   ./setup.sh   # generates .env, downloads Dockerfile.dev + docker-entrypoint.sh
+#                # + etc/seaweedfs/* from the pinned BrowserHive tag
 #
 # Typical workflow:
 #   docker compose -f compose.dev.yaml up --build -d                          # all services up
 #   docker compose -f compose.dev.yaml exec waggle zsh -ic '\
 #     cd /app && npm ci && npm run db:migrate && npm run db:seed'             # first time only
 #   docker compose -f compose.dev.yaml exec waggle \
-#     npm run dev -- --jpeg --limit 3                                         # ad-hoc capture
+#     npm run dev -- --webp --limit 3                                         # ad-hoc capture
 
 networks:
   chromium-network:
@@ -31,6 +41,8 @@ networks:
 volumes:
   postgres-data:
     name: waggle-postgres-data
+  seaweedfs-data:
+    name: waggle-seaweedfs-data
 
 services:
   postgres:
@@ -97,9 +109,62 @@ services:
       retries: 3
       start_period: 10s
 
+  # SeaweedFS — S3-compatible artifact store bundled alongside BrowserHive.
+  # The compose stack runs it network-internal only (no host ports). To
+  # use an external S3 (AWS / R2 / MinIO-compatible managed services),
+  # override BROWSERHIVE_S3_ENDPOINT on the browserhive service; this
+  # service stays idle but does not interfere.
+  #
+  # `etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}` is
+  # downloaded by `./setup.sh` from the pinned BROWSERHIVE_VERSION tag.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.23
+    container_name: waggle-seaweedfs
+    init: true
+    entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
+    environment:
+      BROWSERHIVE_S3_ACCESS_KEY_ID: ${BROWSERHIVE_S3_ACCESS_KEY_ID:-browserhive}
+      BROWSERHIVE_S3_SECRET_ACCESS_KEY: ${BROWSERHIVE_S3_SECRET_ACCESS_KEY:-browserhive}
+    expose:
+      - "8333"
+      - "8888"
+      - "9333"
+    volumes:
+      - ./etc/seaweedfs:/etc/seaweedfs:ro
+      - seaweedfs-data:/data
+    networks:
+      - chromium-network
+    healthcheck:
+      # SeaweedFS binds to IPv4 only; `localhost` resolves to `::1`
+      # first in the container and fails. Probe 127.0.0.1 explicitly.
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+  # One-shot init: create the configured bucket and exit. Bucket name is
+  # interpolated by docker compose at parse time so the container does
+  # not read env at runtime.
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:4.23
+    container_name: waggle-seaweedfs-init
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    volumes:
+      - ./etc/seaweedfs:/etc/seaweedfs:ro
+    networks:
+      - chromium-network
+    entrypoint:
+      - "/etc/seaweedfs/init-bucket.sh"
+      - "${BROWSERHIVE_S3_BUCKET:-browserhive}"
+      - "seaweedfs:9333"
+
   browserhive:
     build:
-      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-main}}
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.3.0}}
       dockerfile: Dockerfile.prod
     container_name: waggle-browserhive
     init: true
@@ -108,7 +173,11 @@ services:
     environment:
       LOG_LEVEL: ${BROWSERHIVE_LOG_LEVEL:-info}
       BROWSERHIVE_BROWSER_URLS: http://chromium-server-1:9222,http://chromium-server-2:9222
-      BROWSERHIVE_OUTPUT_DIR: /app/output
+      BROWSERHIVE_S3_ENDPOINT: http://seaweedfs:8333
+      BROWSERHIVE_S3_REGION: ${BROWSERHIVE_S3_REGION:-us-east-1}
+      BROWSERHIVE_S3_BUCKET: ${BROWSERHIVE_S3_BUCKET:-browserhive}
+      BROWSERHIVE_S3_ACCESS_KEY_ID: ${BROWSERHIVE_S3_ACCESS_KEY_ID:-browserhive}
+      BROWSERHIVE_S3_SECRET_ACCESS_KEY: ${BROWSERHIVE_S3_SECRET_ACCESS_KEY:-browserhive}
       TZ: ${TZ:-Asia/Tokyo}
     networks:
       - chromium-network
@@ -117,6 +186,8 @@ services:
         condition: service_healthy
       chromium-server-2:
         condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
 
   waggle:
     build:

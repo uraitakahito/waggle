@@ -10,8 +10,11 @@
 #   - migrations + sample seeding run automatically before waggle in the
 #     `--profile run` smoke flow (waggle-migrator + waggle-seeder).
 #
-# **Pin every `*_REF` env in real deployments** (a tag or commit SHA),
-# `main` is for convenience only.
+# `BROWSERHIVE_REF` defaults to the pinned tag (`1.3.0`); bump it via
+# the `BROWSERHIVE_VERSION` constant in `setup.sh` (which also drives
+# `package.json#openapi:sync` and the `etc/seaweedfs/*` download). For
+# `CHROMIUM_SERVER_REF` (still `main`-by-default), pin to a tag or
+# commit SHA per deployment for full reproducibility.
 
 networks:
   chromium-network:
@@ -20,6 +23,8 @@ networks:
 volumes:
   postgres-data:
     name: waggle-postgres-data-prod
+  seaweedfs-data:
+    name: waggle-seaweedfs-data-prod
 
 services:
   postgres:
@@ -81,9 +86,63 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # SeaweedFS — S3-compatible artifact store bundled alongside BrowserHive.
+  # The compose stack runs it network-internal only (no host ports). For
+  # external S3 (AWS / R2 / MinIO-compatible managed services), override
+  # BROWSERHIVE_S3_ENDPOINT on the browserhive service; this service
+  # stays idle but does not interfere.
+  #
+  # `etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}` is
+  # downloaded by `./setup.sh` from the pinned BROWSERHIVE_VERSION tag.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.23
+    container_name: waggle-seaweedfs-prod
+    init: true
+    entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
+    environment:
+      BROWSERHIVE_S3_ACCESS_KEY_ID: ${BROWSERHIVE_S3_ACCESS_KEY_ID:-browserhive}
+      BROWSERHIVE_S3_SECRET_ACCESS_KEY: ${BROWSERHIVE_S3_SECRET_ACCESS_KEY:-browserhive}
+    expose:
+      - "8333"
+      - "8888"
+      - "9333"
+    volumes:
+      - ./etc/seaweedfs:/etc/seaweedfs:ro
+      - seaweedfs-data:/data
+    networks:
+      - chromium-network
+    healthcheck:
+      # SeaweedFS binds to IPv4 only; `localhost` resolves to `::1`
+      # first in the container and fails. Probe 127.0.0.1 explicitly.
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  # One-shot init: create the configured bucket and exit. Bucket name is
+  # interpolated by docker compose at parse time so the container does
+  # not read env at runtime.
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:4.23
+    container_name: waggle-seaweedfs-init-prod
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    volumes:
+      - ./etc/seaweedfs:/etc/seaweedfs:ro
+    networks:
+      - chromium-network
+    entrypoint:
+      - "/etc/seaweedfs/init-bucket.sh"
+      - "${BROWSERHIVE_S3_BUCKET:-browserhive}"
+      - "seaweedfs:9333"
+
   browserhive:
     build:
-      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-main}}
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.3.0}}
       dockerfile: Dockerfile.prod
     container_name: waggle-browserhive-prod
     init: true
@@ -92,7 +151,11 @@ services:
     environment:
       LOG_LEVEL: ${BROWSERHIVE_LOG_LEVEL:-info}
       BROWSERHIVE_BROWSER_URLS: http://chromium-server-1:9222,http://chromium-server-2:9222
-      BROWSERHIVE_OUTPUT_DIR: /app/output
+      BROWSERHIVE_S3_ENDPOINT: http://seaweedfs:8333
+      BROWSERHIVE_S3_REGION: ${BROWSERHIVE_S3_REGION:-us-east-1}
+      BROWSERHIVE_S3_BUCKET: ${BROWSERHIVE_S3_BUCKET:-browserhive}
+      BROWSERHIVE_S3_ACCESS_KEY_ID: ${BROWSERHIVE_S3_ACCESS_KEY_ID:-browserhive}
+      BROWSERHIVE_S3_SECRET_ACCESS_KEY: ${BROWSERHIVE_S3_SECRET_ACCESS_KEY:-browserhive}
       TZ: ${TZ:-Asia/Tokyo}
     networks:
       - chromium-network
@@ -101,6 +164,8 @@ services:
         condition: service_healthy
       chromium-server-2:
         condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -174,7 +239,7 @@ services:
     # Default smoke args for `docker compose -f compose.prod.yaml --profile run up`.
     # Override per-invocation with `docker compose run --rm waggle <args>`.
     command:
-      - "--jpeg"
+      - "--webp"
       - "--limit"
       - "3"
     profiles: ["run"]

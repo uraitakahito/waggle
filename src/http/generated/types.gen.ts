@@ -9,27 +9,49 @@ export type ClientOptions = {
  */
 export type CaptureFormats = {
     png: boolean;
-    jpeg: boolean;
+    /**
+     * Capture a WebP screenshot via Chromium's
+     * `Page.captureScreenshot { format: "webp" }`. Set
+     * `--screenshot-quality` (or `BROWSERHIVE_SCREENSHOT_QUALITY`)
+     * to control the lossy quality (1–100); when omitted,
+     * Chromium's default is used. Uploaded as
+     * `{taskId}_..._labels.webp`.
+     *
+     */
+    webp: boolean;
     html: boolean;
     /**
-     * Extract `<a href>` links from the rendered page and write the
-     * list as `{taskId}_..._labels.links.json` in the output
-     * directory (same naming pattern as the other capture formats).
+     * Extract `<a href>` links from the rendered page and upload the
+     * list as `{taskId}_..._labels.links.json` to the configured
+     * S3 bucket (same naming pattern as the other capture formats).
      * Useful as the discovery side of an external crawl driver.
      *
      */
     links: boolean;
     /**
-     * Render the page to PDF and write it as
-     * `{taskId}_..._labels.pdf` in the output directory (same naming
-     * pattern as the other capture formats). Uses Chromium's print
-     * pipeline with the `print` CSS media type and `printBackground:
-     * true`; the page format is fixed to A4. Distinct from the PNG /
-     * JPEG screenshot path — PDF is intended for archival /
-     * print-oriented use cases.
+     * Render the page to PDF and upload it as
+     * `{taskId}_..._labels.pdf` to the configured S3 bucket (same
+     * naming pattern as the other capture formats). Uses Chromium's
+     * print pipeline with the `print` CSS media type and
+     * `printBackground: true`; the page format is fixed to A4.
+     * Distinct from the PNG / WebP screenshot path — PDF is intended
+     * for archival / print-oriented use cases.
      *
      */
     pdf: boolean;
+    /**
+     * Capture the rendered page as MHTML (MIME multipart archive)
+     * via Chromium's CDP `Page.captureSnapshot` and upload it as
+     * `{taskId}_..._labels.mhtml` to the configured S3 bucket (same
+     * naming pattern as the other capture formats). All resources —
+     * CSS, images, fonts, inline scripts — are embedded in a single
+     * file, so the captured page renders identically when opened
+     * offline (no broken relative URLs, unlike the raw `html`
+     * format). Chrome / Edge open `.mhtml` files directly; Firefox /
+     * Safari require an extension.
+     *
+     */
+    mhtml: boolean;
 };
 
 export type CaptureRequest = {
@@ -117,6 +139,72 @@ export type CaptureRequest = {
      *
      */
     dismissBanners?: boolean | DismissSpec;
+    /**
+     * Per-request browser viewport in CSS pixels. When provided,
+     * `page.setViewport` is called with these dimensions before
+     * navigating to the target URL — useful for sites whose layout
+     * varies by viewport size (responsive top pages, mobile-only
+     * content) or for capturing at a specific resolution.
+     *
+     * When omitted, the server-side default applies (configured via
+     * `--viewport-width` / `--viewport-height` /
+     * `BROWSERHIVE_VIEWPORT_*`; the built-in default is
+     * `1280 × 800`).
+     *
+     * Bounds (`1–7680 × 1–4320`) cover up to 8K rendering and exist
+     * only as a sanity guard against runaway memory use in
+     * Chromium — typical values are `1280 × 800` (desktop default),
+     * `1920 × 1080` (Full HD), or `375 × 667` (iPhone SE).
+     *
+     */
+    viewport?: {
+        width: number;
+        height: number;
+    };
+    /**
+     * When `true`, the PNG / WebP screenshot extends below the
+     * viewport to capture the full document height (Chromium scrolls
+     * and stitches the result). When `false` or omitted, only the
+     * viewport-sized region is captured.
+     *
+     * When omitted, the server-side default applies (configured via
+     * `--screenshot-full-page` / `BROWSERHIVE_SCREENSHOT_FULL_PAGE`;
+     * the built-in default is `false`).
+     *
+     * Has no effect on the `html` / `links` / `pdf` formats — PDF
+     * rendering uses Chromium's print pipeline (A4) and is unaffected
+     * by this flag.
+     *
+     */
+    fullPage?: boolean;
+    /**
+     * Per-request control of the inter-task wipe applied to the
+     * worker's persistent Chromium tab AFTER this capture completes.
+     * BrowserHive holds one tab per worker for its entire lifetime,
+     * so without a wipe, cookies / DOM listeners / origin-scoped
+     * storage from this capture would bleed into whatever task this
+     * worker processes next.
+     *
+     * Two shapes are accepted:
+     *
+     * - `boolean` — `true` forces a full wipe (both axes), `false`
+     * skips the wipe entirely (stateful carry-over). Both ignore
+     * server-side defaults.
+     * - `ResetStateSpec` — per-axis override; omitted fields fall
+     * back to the server-side default
+     * (`--no-reset-cookies` / `--no-reset-page-context` /
+     * `BROWSERHIVE_RESET_COOKIES` / `BROWSERHIVE_RESET_PAGE_CONTEXT`).
+     *
+     * When omitted, the server-side default applies (built-in
+     * default: both axes wipe, matching the long-standing behaviour
+     * of clearing state between captures).
+     *
+     * See `ResetStateSpec` for the per-axis semantics and the
+     * "two axes, not three" rationale (origin-scoped storage is
+     * inseparable from `pageContext`).
+     *
+     */
+    resetState?: boolean | ResetStateSpec;
 };
 
 /**
@@ -149,6 +237,43 @@ export type DismissHeuristicSpec = {
      *
      */
     minZIndex?: number;
+};
+
+/**
+ * Per-axis control of the inter-task wipe. Each field omitted falls
+ * back to the server-side default (`CaptureConfig.resetPageState`,
+ * configurable via `--no-reset-cookies` / `--no-reset-page-context`
+ * and the matching `BROWSERHIVE_RESET_*` env vars; the built-in
+ * default is both axes true).
+ *
+ * Two axes (not three): `localStorage` / `sessionStorage` /
+ * `IndexedDB` are origin-scoped, so navigating to `about:blank`
+ * already disposes them. Exposing a separate "storage" knob would
+ * either duplicate `pageContext` or describe a state the API cannot
+ * actually deliver, so the two are coupled under one knob.
+ *
+ */
+export type ResetStateSpec = {
+    /**
+     * When `true`, browser-scoped cookies are cleared via CDP
+     * `Network.clearBrowserCookies` after each capture. When
+     * `false`, cookies set during this capture survive into the
+     * next task on this worker — useful for keeping an SSO session
+     * alive across multiple captures. Independent of `pageContext`
+     * (cookies live on the browser, not the page).
+     *
+     */
+    cookies?: boolean;
+    /**
+     * When `true`, the worker navigates to `about:blank` after each
+     * capture, which tears down the JS execution context (closures,
+     * timers, listeners) and disposes origin-scoped storage
+     * (`localStorage` / `sessionStorage` / `IndexedDB`) as a
+     * side-effect. When `false`, all of those carry over until the
+     * next `page.goto` supersedes the previous document.
+     *
+     */
+    pageContext?: boolean;
 };
 
 /**
