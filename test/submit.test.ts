@@ -4,10 +4,11 @@ import type { CaptureFormats } from "../src/types/capture.js";
 
 const allFormats: CaptureFormats = {
   png: true,
-  jpeg: false,
+  webp: false,
   html: false,
   links: false,
   pdf: false,
+  mhtml: false,
 };
 
 const acceptanceResponse = (taskId: string): Response =>

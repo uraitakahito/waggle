@@ -26,8 +26,9 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  *
  * ## Filename format
  *
- * Captured files are written under the configured output directory.
- * The filename is derived from the task identifiers as follows:
+ * Captured artifacts are uploaded to the configured S3-compatible
+ * bucket as `s3://<bucket>/[<keyPrefix>/]<filename>`. The filename
+ * is derived from the task identifiers as follows:
  *
  * | Case | Format | Example |
  * |------|--------|---------|

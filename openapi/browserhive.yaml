@@ -3,15 +3,22 @@ info:
   title: BrowserHive Capture API
   version: 1.0.0
   description: |
-    Web page capture API. Submits URLs to capture as PNG/JPEG screenshots
-    and/or HTML. Uses fire-and-forget pattern: requests are accepted
-    immediately and processed asynchronously by the capture coordinator.
+    Web page capture API. Submits URLs to capture as PNG/WebP screenshots,
+    HTML, PDF, or MHTML (single-file archive). Uses fire-and-forget
+    pattern: requests are accepted immediately and processed asynchronously
+    by the capture coordinator.
   license:
     name: The Unlicense
     identifier: Unlicense
+# servers[0].url is the source of truth for the SDK's default baseUrl.
+# @hey-api/openapi-ts bakes it into src/http/generated/client.gen.ts at
+# generation time, so example clients (e.g. examples/data-client.ts)
+# inherit it without a hardcoded fallback.
 servers:
   - url: http://localhost:8080
     description: Local development server
+# The Capture API is unauthenticated; declare it explicitly so the
+# `security-defined` lint rule passes without per-operation duplication.
 security: []
 paths:
   /v1/captures:
@@ -24,8 +31,9 @@ paths:
 
         ## Filename format
 
-        Captured files are written under the configured output directory.
-        The filename is derived from the task identifiers as follows:
+        Captured artifacts are uploaded to the configured S3-compatible
+        bucket as `s3://<bucket>/[<keyPrefix>/]<filename>`. The filename
+        is derived from the task identifiers as follows:
 
         | Case | Format | Example |
         |------|--------|---------|
@@ -54,10 +62,11 @@ paths:
                   labels: [guardian]
                   captureFormats:
                     png: true
-                    jpeg: false
+                    webp: false
                     html: false
                     links: false
                     pdf: false
+                    mhtml: false
                   dismissBanners: true
               acceptLanguageJa:
                 summary: Capture the Japanese variant of a multilingual site
@@ -71,15 +80,16 @@ paths:
                   labels: [google, ja]
                   captureFormats:
                     png: true
-                    jpeg: false
+                    webp: false
                     html: true
                     links: false
                     pdf: false
+                    mhtml: false
                   acceptLanguage: ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7
               linksOnly:
                 summary: Extract links without taking a screenshot
                 description: |
-                  Skips PNG/JPEG/HTML capture and writes only the link list
+                  Skips PNG/WebP/HTML capture and writes only the link list
                   as `{taskId}_..._labels.links.json`. Useful for crawl-driver
                   use cases where only URL discovery is needed.
                 value:
@@ -87,10 +97,11 @@ paths:
                   labels: [example]
                   captureFormats:
                     png: false
-                    jpeg: false
+                    webp: false
                     html: false
                     links: true
                     pdf: false
+                    mhtml: false
               pdfOnly:
                 summary: Render the page to PDF only
                 description: |
@@ -104,10 +115,35 @@ paths:
                   labels: [example]
                   captureFormats:
                     png: false
-                    jpeg: false
+                    webp: false
                     html: false
                     links: false
                     pdf: true
+                    mhtml: false
+              mhtmlOnly:
+                summary: Capture as MHTML single-file archive
+                description: |
+                  Skips raster screenshot / HTML / link extraction / PDF
+                  and writes only an MHTML archive as
+                  `{taskId}_..._labels.mhtml`. Uses Chromium's
+                  `Page.captureSnapshot` CDP method to embed every CSS /
+                  image / font / inline script into one MIME multipart
+                  file. Open the resulting `.mhtml` directly in Chrome
+                  or Edge for an offline-faithful render of the captured
+                  page (Firefox / Safari require an extension). Prefer
+                  this over the raw `html` format when the captured
+                  artifact must render correctly outside the original
+                  origin.
+                value:
+                  url: https://www.example.com/
+                  labels: [example]
+                  captureFormats:
+                    png: false
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: true
               dismissBannersInline:
                 summary: Page-specific dismissal selectors (inline)
                 description: |
@@ -121,10 +157,11 @@ paths:
                   labels: [example, paywall]
                   captureFormats:
                     png: true
-                    jpeg: false
+                    webp: false
                     html: false
                     links: false
                     pdf: false
+                    mhtml: false
                   dismissBanners:
                     useDefaults: true
                     extraSelectors:
@@ -134,6 +171,44 @@ paths:
                     heuristic:
                       enabled: true
                       minZIndex: 100
+              customViewport:
+                summary: Capture at a specific viewport
+                description: |
+                  Overrides the server-side default viewport for this
+                  request only — renders at Full HD (`1920 × 1080`)
+                  before taking the screenshot. Useful for forcing the
+                  desktop variant of a responsive site.
+                value:
+                  url: https://www.example.com/
+                  labels: [example, fhd]
+                  captureFormats:
+                    png: true
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: false
+                  viewport:
+                    width: 1920
+                    height: 1080
+              fullPageScreenshot:
+                summary: Capture the full document height
+                description: |
+                  Overrides the server-side default to capture the
+                  entire scrollable height of the page (Chromium scrolls
+                  and stitches). The viewport stays at the configured
+                  default; only the screenshot extent grows.
+                value:
+                  url: https://www.example.com/
+                  labels: [example, full]
+                  captureFormats:
+                    png: true
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: false
+                  fullPage: true
               dismissBannersStrict:
                 summary: Strict mode (fail capture if dismissal fails)
                 description: |
@@ -150,15 +225,83 @@ paths:
                   labels: [example, strict]
                   captureFormats:
                     png: true
-                    jpeg: false
+                    webp: false
                     html: false
                     links: false
                     pdf: false
+                    mhtml: false
                   dismissBanners:
                     useDefaults: true
                     extraSelectors:
                       - "#known-paywall"
                     failOnError: true
+              keepCookiesAcrossCaptures:
+                summary: Preserve cookies between captures (SSO-walled site)
+                description: |
+                  Skips only the inter-task cookie wipe so the next capture
+                  on this worker's persistent tab inherits the cookies set
+                  by this one. The `about:blank` navigation still runs, so
+                  origin-scoped storage and the JS execution context are
+                  still discarded — only browser-scoped cookies survive.
+                  Useful for crawling pages behind an SSO login that was
+                  captured in a previous request.
+                value:
+                  url: https://internal.example.com/dashboard
+                  labels: [sso, dashboard]
+                  captureFormats:
+                    png: true
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: false
+                  resetState:
+                    cookies: false
+              noResetAtAll:
+                summary: Stateful crawl — keep everything between captures
+                description: |
+                  Disables both axes of the inter-task wipe. Cookies, DOM
+                  context, in-flight timers, and origin-scoped storage all
+                  carry over to the next task on this worker. The
+                  `boolean` short form `false` is equivalent to the object
+                  form `{ cookies: false, pageContext: false }`. Use this
+                  for multi-page journeys against a single origin where
+                  state continuity is the point of the capture.
+                value:
+                  url: https://example.com/step-2
+                  labels: [journey, step2]
+                  captureFormats:
+                    png: true
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: false
+                  resetState: false
+              cookiesOnlyReset:
+                summary: Wipe cookies only, keep DOM context
+                description: |
+                  Clears browser-scoped cookies between captures but skips
+                  the `about:blank` navigation, so DOM listeners / timers
+                  and origin-scoped storage carry over. Less commonly
+                  useful than the inverse (preserving cookies); included
+                  here mainly for symmetry. Note that with `pageContext:
+                  false`, the next task's `page.goto` is what eventually
+                  tears down the previous document — until then, the
+                  inter-task gap has the previous task's residue.
+                value:
+                  url: https://example.com/page
+                  labels: [example]
+                  captureFormats:
+                    png: true
+                    webp: false
+                    html: false
+                    links: false
+                    pdf: false
+                    mhtml: false
+                  resetState:
+                    cookies: true
+                    pageContext: false
       responses:
         "202":
           description: Request accepted for processing
@@ -223,32 +366,51 @@ components:
     CaptureFormats:
       type: object
       description: Capture format flags. At least one must be true.
-      required: [png, jpeg, html, links, pdf]
+      required: [png, webp, html, links, pdf, mhtml]
       additionalProperties: false
       properties:
         png:
           type: boolean
-        jpeg:
+        webp:
           type: boolean
+          description: |
+            Capture a WebP screenshot via Chromium's
+            `Page.captureScreenshot { format: "webp" }`. Set
+            `--screenshot-quality` (or `BROWSERHIVE_SCREENSHOT_QUALITY`)
+            to control the lossy quality (1–100); when omitted,
+            Chromium's default is used. Uploaded as
+            `{taskId}_..._labels.webp`.
         html:
           type: boolean
         links:
           type: boolean
           description: |
-            Extract `<a href>` links from the rendered page and write the
-            list as `{taskId}_..._labels.links.json` in the output
-            directory (same naming pattern as the other capture formats).
+            Extract `<a href>` links from the rendered page and upload the
+            list as `{taskId}_..._labels.links.json` to the configured
+            S3 bucket (same naming pattern as the other capture formats).
             Useful as the discovery side of an external crawl driver.
         pdf:
           type: boolean
           description: |
-            Render the page to PDF and write it as
-            `{taskId}_..._labels.pdf` in the output directory (same naming
-            pattern as the other capture formats). Uses Chromium's print
-            pipeline with the `print` CSS media type and `printBackground:
-            true`; the page format is fixed to A4. Distinct from the PNG /
-            JPEG screenshot path — PDF is intended for archival /
-            print-oriented use cases.
+            Render the page to PDF and upload it as
+            `{taskId}_..._labels.pdf` to the configured S3 bucket (same
+            naming pattern as the other capture formats). Uses Chromium's
+            print pipeline with the `print` CSS media type and
+            `printBackground: true`; the page format is fixed to A4.
+            Distinct from the PNG / WebP screenshot path — PDF is intended
+            for archival / print-oriented use cases.
+        mhtml:
+          type: boolean
+          description: |
+            Capture the rendered page as MHTML (MIME multipart archive)
+            via Chromium's CDP `Page.captureSnapshot` and upload it as
+            `{taskId}_..._labels.mhtml` to the configured S3 bucket (same
+            naming pattern as the other capture formats). All resources —
+            CSS, images, fonts, inline scripts — are embedded in a single
+            file, so the captured page renders identically when opened
+            offline (no broken relative URLs, unlike the raw `html`
+            format). Chrome / Edge open `.mhtml` files directly; Firefox /
+            Safari require an extension.
     CaptureRequest:
       type: object
       required: [url, captureFormats]
@@ -274,6 +436,9 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+          # Printable ASCII only — disallows CR / LF / NUL and other control
+          # characters so a malicious value cannot inject additional HTTP
+          # headers when forwarded via Network.setExtraHTTPHeaders.
           pattern: "^[\\x20-\\x7e]+$"
           description: |
             Value to send as the upstream `Accept-Language` header for this
@@ -344,6 +509,79 @@ components:
             present on the result; inspect `errorDetails` instead. The
             failure is treated like any other capture failure for retry
             accounting (consumes one slot of `--max-retry-count`).
+        viewport:
+          type: object
+          required: [width, height]
+          additionalProperties: false
+          properties:
+            width:
+              type: integer
+              minimum: 1
+              maximum: 7680
+            height:
+              type: integer
+              minimum: 1
+              maximum: 4320
+          description: |
+            Per-request browser viewport in CSS pixels. When provided,
+            `page.setViewport` is called with these dimensions before
+            navigating to the target URL — useful for sites whose layout
+            varies by viewport size (responsive top pages, mobile-only
+            content) or for capturing at a specific resolution.
+
+            When omitted, the server-side default applies (configured via
+            `--viewport-width` / `--viewport-height` /
+            `BROWSERHIVE_VIEWPORT_*`; the built-in default is
+            `1280 × 800`).
+
+            Bounds (`1–7680 × 1–4320`) cover up to 8K rendering and exist
+            only as a sanity guard against runaway memory use in
+            Chromium — typical values are `1280 × 800` (desktop default),
+            `1920 × 1080` (Full HD), or `375 × 667` (iPhone SE).
+        fullPage:
+          type: boolean
+          description: |
+            When `true`, the PNG / WebP screenshot extends below the
+            viewport to capture the full document height (Chromium scrolls
+            and stitches the result). When `false` or omitted, only the
+            viewport-sized region is captured.
+
+            When omitted, the server-side default applies (configured via
+            `--screenshot-full-page` / `BROWSERHIVE_SCREENSHOT_FULL_PAGE`;
+            the built-in default is `false`).
+
+            Has no effect on the `html` / `links` / `pdf` formats — PDF
+            rendering uses Chromium's print pipeline (A4) and is unaffected
+            by this flag.
+        resetState:
+          oneOf:
+            - type: boolean
+            - $ref: "#/components/schemas/ResetStateSpec"
+          description: |
+            Per-request control of the inter-task wipe applied to the
+            worker's persistent Chromium tab AFTER this capture completes.
+            BrowserHive holds one tab per worker for its entire lifetime,
+            so without a wipe, cookies / DOM listeners / origin-scoped
+            storage from this capture would bleed into whatever task this
+            worker processes next.
+
+            Two shapes are accepted:
+
+            - `boolean` — `true` forces a full wipe (both axes), `false`
+              skips the wipe entirely (stateful carry-over). Both ignore
+              server-side defaults.
+            - `ResetStateSpec` — per-axis override; omitted fields fall
+              back to the server-side default
+              (`--no-reset-cookies` / `--no-reset-page-context` /
+              `BROWSERHIVE_RESET_COOKIES` / `BROWSERHIVE_RESET_PAGE_CONTEXT`).
+
+            When omitted, the server-side default applies (built-in
+            default: both axes wipe, matching the long-standing behaviour
+            of clearing state between captures).
+
+            See `ResetStateSpec` for the per-axis semantics and the
+            "two axes, not three" rationale (origin-scoped storage is
+            inseparable from `pageContext`).
     DismissHeuristicSpec:
       type: object
       additionalProperties: false
@@ -375,6 +613,40 @@ components:
           description: |
             Minimum computed `z-index` an element must have to qualify
             as an overlay candidate. Lower values are more aggressive.
+    ResetStateSpec:
+      type: object
+      additionalProperties: false
+      description: |
+        Per-axis control of the inter-task wipe. Each field omitted falls
+        back to the server-side default (`CaptureConfig.resetPageState`,
+        configurable via `--no-reset-cookies` / `--no-reset-page-context`
+        and the matching `BROWSERHIVE_RESET_*` env vars; the built-in
+        default is both axes true).
+
+        Two axes (not three): `localStorage` / `sessionStorage` /
+        `IndexedDB` are origin-scoped, so navigating to `about:blank`
+        already disposes them. Exposing a separate "storage" knob would
+        either duplicate `pageContext` or describe a state the API cannot
+        actually deliver, so the two are coupled under one knob.
+      properties:
+        cookies:
+          type: boolean
+          description: |
+            When `true`, browser-scoped cookies are cleared via CDP
+            `Network.clearBrowserCookies` after each capture. When
+            `false`, cookies set during this capture survive into the
+            next task on this worker — useful for keeping an SSO session
+            alive across multiple captures. Independent of `pageContext`
+            (cookies live on the browser, not the page).
+        pageContext:
+          type: boolean
+          description: |
+            When `true`, the worker navigates to `about:blank` after each
+            capture, which tears down the JS execution context (closures,
+            timers, listeners) and disposes origin-scoped storage
+            (`localStorage` / `sessionStorage` / `IndexedDB`) as a
+            side-effect. When `false`, all of those carry over until the
+            next `page.goto` supersedes the previous document.
     DismissSpec:
       type: object
       additionalProperties: false
@@ -402,6 +674,9 @@ components:
             type: string
             minLength: 1
             maxLength: 200
+            # Printable ASCII only — disallows CR / LF / NUL and other
+            # control characters. CSS selector character class is far
+            # narrower; this is the safety floor.
             pattern: "^[\\x20-\\x7e]+$"
           description: |
             Additional CSS selectors to remove in pass 1, on top of the

@@ -152,3 +152,8 @@ vite.config.ts.timestamp-*
 # HELLO_JAVASCRIPT_VERSION tag; regenerated on every ./setup.sh run.
 Dockerfile.dev
 docker-entrypoint.sh
+
+# Downloaded by setup.sh from uraitakahito/browserhive at the pinned
+# BROWSERHIVE_VERSION tag; regenerated on every ./setup.sh run. Mounted
+# into the seaweedfs / seaweedfs-init services by the compose stacks.
+etc/seaweedfs/

@@ -11,6 +11,16 @@ set -e
 HELLO_JAVASCRIPT_VERSION="1.2.7"
 HELLO_JAVASCRIPT_BASE_URL="https://raw.githubusercontent.com/uraitakahito/hello-javascript/refs/tags/${HELLO_JAVASCRIPT_VERSION}"
 
+# Pinned BrowserHive version. The OpenAPI spec under `openapi/` and the
+# generated SDK under `src/http/generated/` are tied to this tag, and the
+# `seaweedfs` / `seaweedfs-init` services in compose mount config files
+# downloaded from the same tag (so all three move together on bump).
+# When bumping: update `package.json#openapi:sync` URL, this constant,
+# the `BROWSERHIVE_REF` default in compose.{dev,prod}.yaml, then run
+# `npm run openapi:sync && npm run openapi:generate && ./setup.sh`.
+BROWSERHIVE_VERSION="1.3.0"
+BROWSERHIVE_BASE_URL="https://raw.githubusercontent.com/uraitakahito/browserhive/refs/tags/${BROWSERHIVE_VERSION}"
+
 usage() {
   cat <<'USAGE'
 Usage: ./setup.sh [--help]
@@ -19,16 +29,23 @@ Bootstraps waggle's dev environment by:
 
   1. Downloading Dockerfile.dev + docker-entrypoint.sh from the pinned
      uraitakahito/hello-javascript template tag (both are gitignored).
-  2. Regenerating .env at the repository root based on host info:
+  2. Downloading etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}
+     from the pinned uraitakahito/browserhive tag (gitignored). These
+     are mounted into the seaweedfs / seaweedfs-init services by the
+     compose stacks.
+  3. Regenerating .env at the repository root based on host info:
 
-       USER_ID, GROUP_ID            detected via `id -u` / `id -g`
-       TZ                           from $TZ if set, otherwise Asia/Tokyo
-       BROWSERHIVE_REF              = main
-       CHROMIUM_SERVER_REF          = main
-       BROWSERHIVE_HOST_PORT        = 8080
-       LOG_LEVEL, BROWSERHIVE_LOG_LEVEL = info
-       POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB = waggle / waggle / waggle
-       POSTGRES_HOST_PORT           = 5432
+       USER_ID, GROUP_ID                                detected via `id -u` / `id -g`
+       TZ                                               from $TZ if set, otherwise Asia/Tokyo
+       BROWSERHIVE_REF                                  = 1.3.0
+       CHROMIUM_SERVER_REF                              = main
+       BROWSERHIVE_HOST_PORT                            = 8080
+       LOG_LEVEL, BROWSERHIVE_LOG_LEVEL                 = info
+       BROWSERHIVE_S3_REGION                            = us-east-1
+       BROWSERHIVE_S3_BUCKET                            = browserhive
+       BROWSERHIVE_S3_ACCESS_KEY_ID, _SECRET_ACCESS_KEY = browserhive (dev defaults)
+       POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB    = waggle / waggle / waggle
+       POSTGRES_HOST_PORT                               = 5432
 
 The script always regenerates .env and re-downloads the dev assets.
 Persistent overrides should live in your shell environment, not in .env.
@@ -83,16 +100,33 @@ if ! curl -fL -o docker-entrypoint.sh "${HELLO_JAVASCRIPT_BASE_URL}/docker-entry
 fi
 chmod 755 docker-entrypoint.sh
 
+# --- Download etc/seaweedfs/* (BrowserHive ${BROWSERHIVE_VERSION}) -------
+mkdir -p etc/seaweedfs
+for f in entrypoint.sh init-bucket.sh s3.template.json; do
+  echo "Downloading etc/seaweedfs/${f} (browserhive ${BROWSERHIVE_VERSION})..."
+  if ! curl -fL -o "etc/seaweedfs/${f}" "${BROWSERHIVE_BASE_URL}/etc/seaweedfs/${f}"; then
+    echo "ERROR: Failed to download etc/seaweedfs/${f} from:" >&2
+    echo "  ${BROWSERHIVE_BASE_URL}/etc/seaweedfs/${f}" >&2
+    echo "Check network access and that the version tag exists." >&2
+    exit 1
+  fi
+done
+chmod 755 etc/seaweedfs/entrypoint.sh etc/seaweedfs/init-bucket.sh
+
 # --- Generate .env --------------------------------------------------------
 cat > .env <<EOF
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 TZ=${TZ:-Asia/Tokyo}
-BROWSERHIVE_REF=main
+BROWSERHIVE_REF=${BROWSERHIVE_VERSION}
 CHROMIUM_SERVER_REF=main
 BROWSERHIVE_HOST_PORT=8080
 LOG_LEVEL=info
 BROWSERHIVE_LOG_LEVEL=info
+BROWSERHIVE_S3_REGION=us-east-1
+BROWSERHIVE_S3_BUCKET=browserhive
+BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
+BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
 POSTGRES_USER=waggle
 POSTGRES_PASSWORD=waggle
 POSTGRES_DB=waggle
@@ -108,4 +142,4 @@ echo "  docker compose -f compose.dev.yaml up --build -d"
 echo "  docker compose -f compose.dev.yaml exec waggle zsh -ic '"
 echo "    cd /app && npm ci && npm run db:migrate && npm run db:seed'"
 echo "  docker compose -f compose.dev.yaml exec waggle \\"
-echo "    npm run dev -- --jpeg --html --limit 3"
+echo "    npm run dev -- --webp --html --limit 3"

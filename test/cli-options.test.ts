@@ -25,18 +25,28 @@ describe("parseClientOptions", () => {
     const opts = parseClientOptions(argv("--database-url", FAKE_DB_URL, "--png"));
     expect(opts.databaseUrl).toBe(FAKE_DB_URL);
     expect(opts.png).toBe(true);
-    expect(opts.jpeg).toBeUndefined();
+    expect(opts.webp).toBeUndefined();
   });
 
   it("parses every capture format flag", () => {
     const opts = parseClientOptions(
-      argv("--database-url", FAKE_DB_URL, "--png", "--jpeg", "--html", "--links", "--pdf"),
+      argv(
+        "--database-url",
+        FAKE_DB_URL,
+        "--png",
+        "--webp",
+        "--html",
+        "--links",
+        "--pdf",
+        "--mhtml",
+      ),
     );
     expect(opts.png).toBe(true);
-    expect(opts.jpeg).toBe(true);
+    expect(opts.webp).toBe(true);
     expect(opts.html).toBe(true);
     expect(opts.links).toBe(true);
     expect(opts.pdf).toBe(true);
+    expect(opts.mhtml).toBe(true);
   });
 
   it("parses --server, --limit, --accept-language, --dismiss-banners, --tls-ca-cert", () => {
@@ -91,10 +101,11 @@ describe("getCaptureFormats", () => {
     const formats = getCaptureFormats({ databaseUrl: FAKE_DB_URL });
     expect(formats).toEqual({
       png: false,
-      jpeg: false,
+      webp: false,
       html: false,
       links: false,
       pdf: false,
+      mhtml: false,
     });
   });
 
@@ -106,10 +117,11 @@ describe("getCaptureFormats", () => {
     });
     expect(formats).toEqual({
       png: true,
-      jpeg: false,
+      webp: false,
       html: true,
       links: false,
       pdf: false,
+      mhtml: false,
     });
   });
 });

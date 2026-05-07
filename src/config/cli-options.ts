@@ -4,7 +4,7 @@
  * `--server`, `--tls-ca-cert`, and `--database-url` fall back to their
  * matching env vars (`BROWSERHIVE_SERVER`, `BROWSERHIVE_TLS_CA_CERT`,
  * `DATABASE_URL`) when omitted on the command line. Per-job flags
- * (`--png`, `--jpeg`, `--html`, `--limit`, `--dismiss-banners`,
+ * (`--png`, `--webp`, `--html`, `--mhtml`, `--limit`, `--dismiss-banners`,
  * `--accept-language`) intentionally have no env equivalents — they
  * are caller-side intent, not deployment configuration.
  *
@@ -22,10 +22,11 @@ export interface ClientOptions {
   server?: string;
   databaseUrl: string;
   png?: boolean;
-  jpeg?: boolean;
+  webp?: boolean;
   html?: boolean;
   links?: boolean;
   pdf?: boolean;
+  mhtml?: boolean;
   limit?: number;
   tlsCaCert?: string;
   dismissBanners?: boolean;
@@ -73,10 +74,11 @@ export const createProgram = (): Command => {
       ).env("BROWSERHIVE_SERVER"),
     )
     .option("--png", "Capture PNG screenshot")
-    .option("--jpeg", "Capture JPEG screenshot")
+    .option("--webp", "Capture WebP screenshot")
     .option("--html", "Capture HTML")
     .option("--links", "Extract <a href> links to a .links.json file")
     .option("--pdf", "Render the page to PDF (Chromium print pipeline, A4)")
+    .option("--mhtml", "Capture page as MHTML single-file archive")
     .addOption(
       new Option("--limit <n>", "Maximum number of entries to read from the data file").argParser(
         parsePositiveInt,
@@ -110,10 +112,11 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     databaseUrl: string;
     server?: string;
     png?: boolean;
-    jpeg?: boolean;
+    webp?: boolean;
     html?: boolean;
     links?: boolean;
     pdf?: boolean;
+    mhtml?: boolean;
     limit?: number;
     tlsCaCert?: string;
     dismissBanners?: boolean;
@@ -124,10 +127,11 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     databaseUrl: opts.databaseUrl,
     ...(opts.server !== undefined && { server: opts.server }),
     ...(opts.png !== undefined && { png: opts.png }),
-    ...(opts.jpeg !== undefined && { jpeg: opts.jpeg }),
+    ...(opts.webp !== undefined && { webp: opts.webp }),
     ...(opts.html !== undefined && { html: opts.html }),
     ...(opts.links !== undefined && { links: opts.links }),
     ...(opts.pdf !== undefined && { pdf: opts.pdf }),
+    ...(opts.mhtml !== undefined && { mhtml: opts.mhtml }),
     ...(opts.limit !== undefined && { limit: opts.limit }),
     ...(opts.tlsCaCert !== undefined && { tlsCaCert: opts.tlsCaCert }),
     ...(opts.dismissBanners !== undefined && { dismissBanners: opts.dismissBanners }),
@@ -138,10 +142,11 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
 export const getCaptureFormats = (options: ClientOptions): CaptureFormats => {
   return {
     png: options.png ?? false,
-    jpeg: options.jpeg ?? false,
+    webp: options.webp ?? false,
     html: options.html ?? false,
     links: options.links ?? false,
     pdf: options.pdf ?? false,
+    mhtml: options.mhtml ?? false,
   };
 };
 
