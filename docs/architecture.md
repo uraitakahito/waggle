@@ -2,11 +2,11 @@
 
 ## Upstream version pinning
 
-waggle is pinned to **BrowserHive `1.5.1`**. Three places carry this version and must move together when bumping:
+waggle is pinned to **BrowserHive `1.5.2`**. Three places carry this version and must move together when bumping:
 
-1. `package.json#openapi:sync` (URL contains `refs/tags/1.5.1/...`) — drives `openapi/browserhive.yaml` and the generated SDK under `src/http/generated/`.
+1. `package.json#openapi:sync` (URL contains `refs/tags/1.5.2/...`) — drives `openapi/browserhive.yaml` and the generated SDK under `src/http/generated/`.
 2. `setup.sh#BROWSERHIVE_VERSION` — drives the `etc/seaweedfs/*` download and the `BROWSERHIVE_REF` line written to `.env`.
-3. `compose.{dev,prod}.yaml` — `BROWSERHIVE_REF:-1.5.1` default in the `browserhive` service `build.context`.
+3. `compose.{dev,prod}.yaml` — `BROWSERHIVE_REF:-1.5.2` default in the `browserhive` service `build.context`.
 
 See [`docs/development.md`](development.md#upgrading-browserhive) for the upgrade procedure.
 
@@ -35,7 +35,7 @@ See [`docs/development.md`](development.md#upgrading-browserhive) for the upgrad
                         │ HTTP POST /v1/captures
                         ▼
         ┌──────────────────────────────────────┐
-        │ BrowserHive 1.5.1 (port 8080)        │
+        │ BrowserHive 1.5.2 (port 8080)        │
         │   coordinator + worker pool          │
         └─────┬─────────────────┬─────────┬────┘
               │ CDP 9222        │ CDP     │ S3 PutObject
