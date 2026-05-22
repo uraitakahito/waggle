@@ -11,7 +11,7 @@
 #   waggle              long-running dev shell (Dockerfile.dev sourced from
 #                       uraitakahito/hello-javascript via ./setup.sh)
 #
-# BrowserHive 1.5.1 writes captured artifacts to an S3-compatible bucket
+# BrowserHive 1.5.2 writes captured artifacts to an S3-compatible bucket
 # instead of a local directory, so the stack now bundles SeaweedFS as a
 # self-hosted backend. The bucket is created by `seaweedfs-init` before
 # `browserhive` starts. Override `BROWSERHIVE_S3_ENDPOINT` (in `.env` or
@@ -164,7 +164,7 @@ services:
 
   browserhive:
     build:
-      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.5.1}}
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.5.2}}
       dockerfile: Dockerfile.prod
     container_name: waggle-browserhive
     init: true
