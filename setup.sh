@@ -18,7 +18,7 @@ HELLO_JAVASCRIPT_BASE_URL="https://raw.githubusercontent.com/uraitakahito/hello-
 # When bumping: update `package.json#openapi:sync` URL, this constant,
 # the `BROWSERHIVE_REF` default in compose.{dev,prod}.yaml, then run
 # `npm run openapi:sync && npm run openapi:generate && ./setup.sh`.
-BROWSERHIVE_VERSION="1.3.0"
+BROWSERHIVE_VERSION="1.5.1"
 BROWSERHIVE_BASE_URL="https://raw.githubusercontent.com/uraitakahito/browserhive/refs/tags/${BROWSERHIVE_VERSION}"
 
 usage() {
@@ -37,7 +37,7 @@ Bootstraps waggle's dev environment by:
 
        USER_ID, GROUP_ID                                detected via `id -u` / `id -g`
        TZ                                               from $TZ if set, otherwise Asia/Tokyo
-       BROWSERHIVE_REF                                  = 1.3.0
+       BROWSERHIVE_REF                                  = 1.5.1
        CHROMIUM_SERVER_REF                              = main
        BROWSERHIVE_HOST_PORT                            = 8080
        LOG_LEVEL, BROWSERHIVE_LOG_LEVEL                 = info

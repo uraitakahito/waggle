@@ -6,7 +6,7 @@
 - npm 11+ (ships with Node 24).
 - Docker 25+ with BuildKit. Required for the Compose stacks but not for host-only development.
 - `curl` on PATH — `setup.sh` uses it to download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned `uraitakahito/hello-javascript` template tag.
-- A BrowserHive instance (≥ `1.3.0`) reachable at `BROWSERHIVE_SERVER` and a Postgres reachable at `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up (plus a self-hosted SeaweedFS for capture artefact storage); otherwise you can point at remotes. waggle is pinned to a specific BrowserHive tag — see [Upgrading BrowserHive](#upgrading-browserhive).
+- A BrowserHive instance (≥ `1.5.1`) reachable at `BROWSERHIVE_SERVER` and a Postgres reachable at `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up (plus a self-hosted SeaweedFS for capture artefact storage); otherwise you can point at remotes. waggle is pinned to a specific BrowserHive tag — see [Upgrading BrowserHive](#upgrading-browserhive).
 
 ## First-time setup
 
@@ -113,7 +113,7 @@ Seeds follow the same shape under `src/db/seeds/`, but use a separate `kysely_se
 
 ## Refreshing the OpenAPI vendor copy
 
-waggle is locked to a specific BrowserHive tag (currently `1.3.0`). `npm run openapi:sync` curls `openapi.yaml` from that tag, **not** from `main`. To refresh from the same tag (no version change):
+waggle is locked to a specific BrowserHive tag (currently `1.5.1`). `npm run openapi:sync` curls `openapi.yaml` from that tag, **not** from `main`. To refresh from the same tag (no version change):
 
 ```sh
 npm run openapi:sync       # overwrites openapi/browserhive.yaml from the pinned tag

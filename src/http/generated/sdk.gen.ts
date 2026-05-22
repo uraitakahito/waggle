@@ -24,6 +24,15 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  * Accept a capture request for a single URL. Returns 202 immediately
  * on acceptance; the actual capture is processed asynchronously.
  *
+ * The `wacz` capture format records every HTTP exchange Chromium
+ * performs during the capture (including resources loaded later by
+ * scroll-triggered lazy loaders) into a [WACZ archive](https://specs.webrecorder.net/wacz/1.0.0/)
+ * replayable in [ReplayWeb.page](https://replayweb.page/). Server-state
+ * dependent traffic — auth flows with expiring tokens, live
+ * WebSocket / SSE streams, WebRTC — is **not** in scope: the WARC
+ * records the original exchange but replay cannot reproduce values
+ * that change every load.
+ *
  * ## Filename format
  *
  * Captured artifacts are uploaded to the configured S3-compatible

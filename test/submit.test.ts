@@ -7,8 +7,8 @@ const allFormats: CaptureFormats = {
   webp: false,
   html: false,
   links: false,
-  pdf: false,
   mhtml: false,
+  wacz: false,
 };
 
 const acceptanceResponse = (taskId: string): Response =>
