@@ -10,7 +10,7 @@
 #   - migrations + sample seeding run automatically before waggle in the
 #     `--profile run` smoke flow (waggle-migrator + waggle-seeder).
 #
-# `BROWSERHIVE_REF` defaults to the pinned tag (`1.3.0`); bump it via
+# `BROWSERHIVE_REF` defaults to the pinned tag (`1.5.1`); bump it via
 # the `BROWSERHIVE_VERSION` constant in `setup.sh` (which also drives
 # `package.json#openapi:sync` and the `etc/seaweedfs/*` download). For
 # `CHROMIUM_SERVER_REF` (still `main`-by-default), pin to a tag or
@@ -142,7 +142,7 @@ services:
 
   browserhive:
     build:
-      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.3.0}}
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.5.1}}
       dockerfile: Dockerfile.prod
     container_name: waggle-browserhive-prod
     init: true
@@ -156,6 +156,13 @@ services:
       BROWSERHIVE_S3_BUCKET: ${BROWSERHIVE_S3_BUCKET:-browserhive}
       BROWSERHIVE_S3_ACCESS_KEY_ID: ${BROWSERHIVE_S3_ACCESS_KEY_ID:-browserhive}
       BROWSERHIVE_S3_SECRET_ACCESS_KEY: ${BROWSERHIVE_S3_SECRET_ACCESS_KEY:-browserhive}
+      # Bundled SeaweedFS does not have wildcard DNS for the bucket
+      # subdomain, so virtual-hosted-style addressing fails ("getaddrinfo
+      # ENOTFOUND browserhive.seaweedfs"). Opt in to path-style here so
+      # the bundled stack works out of the box. The default for the
+      # BrowserHive image itself is virtual-hosted-style (AWS S3); leave
+      # this unset / false when pointing at AWS.
+      BROWSERHIVE_S3_FORCE_PATH_STYLE: "true"
       TZ: ${TZ:-Asia/Tokyo}
     networks:
       - chromium-network

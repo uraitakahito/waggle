@@ -29,17 +29,6 @@ export type CaptureFormats = {
      */
     links: boolean;
     /**
-     * Render the page to PDF and upload it as
-     * `{taskId}_..._labels.pdf` to the configured S3 bucket (same
-     * naming pattern as the other capture formats). Uses Chromium's
-     * print pipeline with the `print` CSS media type and
-     * `printBackground: true`; the page format is fixed to A4.
-     * Distinct from the PNG / WebP screenshot path — PDF is intended
-     * for archival / print-oriented use cases.
-     *
-     */
-    pdf: boolean;
-    /**
      * Capture the rendered page as MHTML (MIME multipart archive)
      * via Chromium's CDP `Page.captureSnapshot` and upload it as
      * `{taskId}_..._labels.mhtml` to the configured S3 bucket (same
@@ -52,6 +41,27 @@ export type CaptureFormats = {
      *
      */
     mhtml: boolean;
+    /**
+     * Record every HTTP exchange Chromium performs during the capture
+     * into a [WACZ](https://specs.webrecorder.net/wacz/1.0.0/) archive
+     * and upload it as `{taskId}_..._labels.wacz` (a zip file) to the
+     * configured S3 bucket. Replay with
+     * [ReplayWeb.page](https://replayweb.page/) — drag-and-drop the
+     * file or load via the `<replay-web-page>` web component.
+     *
+     * Captures resources fetched throughout the entire session,
+     * including those triggered by future scroll-driven lazy loaders.
+     * Cookie / `Set-Cookie` / `Authorization` headers are recorded in
+     * full so static replay matches the original exchange.
+     *
+     * **Out of scope:** server-state-dependent dynamic traffic. The
+     * WARC records the exchange faithfully but replay cannot
+     * reproduce values that change every load — expiring auth tokens
+     * (JWT / OAuth), per-request CSRF tokens, live WebSocket / SSE
+     * streams, WebRTC.
+     *
+     */
+    wacz: boolean;
 };
 
 export type CaptureRequest = {
@@ -171,9 +181,7 @@ export type CaptureRequest = {
      * `--screenshot-full-page` / `BROWSERHIVE_SCREENSHOT_FULL_PAGE`;
      * the built-in default is `false`).
      *
-     * Has no effect on the `html` / `links` / `pdf` formats — PDF
-     * rendering uses Chromium's print pipeline (A4) and is unaffected
-     * by this flag.
+     * Has no effect on the `html` / `links` formats.
      *
      */
     fullPage?: boolean;

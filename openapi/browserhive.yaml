@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Web page capture API. Submits URLs to capture as PNG/WebP screenshots,
-    HTML, PDF, or MHTML (single-file archive). Uses fire-and-forget
+    HTML, or MHTML (single-file archive). Uses fire-and-forget
     pattern: requests are accepted immediately and processed asynchronously
     by the capture coordinator.
   license:
@@ -28,6 +28,15 @@ paths:
       description: |
         Accept a capture request for a single URL. Returns 202 immediately
         on acceptance; the actual capture is processed asynchronously.
+
+        The `wacz` capture format records every HTTP exchange Chromium
+        performs during the capture (including resources loaded later by
+        scroll-triggered lazy loaders) into a [WACZ archive](https://specs.webrecorder.net/wacz/1.0.0/)
+        replayable in [ReplayWeb.page](https://replayweb.page/). Server-state
+        dependent traffic — auth flows with expiring tokens, live
+        WebSocket / SSE streams, WebRTC — is **not** in scope: the WARC
+        records the original exchange but replay cannot reproduce values
+        that change every load.
 
         ## Filename format
 
@@ -65,8 +74,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   dismissBanners: true
               acceptLanguageJa:
                 summary: Capture the Japanese variant of a multilingual site
@@ -83,8 +92,8 @@ paths:
                     webp: false
                     html: true
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   acceptLanguage: ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7
               linksOnly:
                 summary: Extract links without taking a screenshot
@@ -100,16 +109,23 @@ paths:
                     webp: false
                     html: false
                     links: true
-                    pdf: false
                     mhtml: false
-              pdfOnly:
-                summary: Render the page to PDF only
+                    wacz: false
+              waczOnly:
+                summary: Record the session as a WACZ replayable archive
                 description: |
-                  Skips raster screenshot / HTML / link extraction and
-                  writes only the PDF rendering as
-                  `{taskId}_..._labels.pdf`. Uses Chromium's print
-                  pipeline (`print` media type, A4, `printBackground:
-                  true`).
+                  Skips every other format and records all HTTP exchanges
+                  Chromium performs during the capture (including resources
+                  loaded by scroll-triggered lazy loaders) as a single
+                  `.wacz` archive. Open the resulting file in
+                  [ReplayWeb.page](https://replayweb.page/) for an
+                  interactive replay, or embed via the
+                  `<replay-web-page>` web component.
+
+                  Out of scope: server-state-dependent dynamic traffic
+                  (expiring auth tokens, live WebSocket / SSE streams,
+                  WebRTC). The WARC records the original exchange but
+                  replay can't reproduce values that change every load.
                 value:
                   url: https://www.example.com/
                   labels: [example]
@@ -118,12 +134,12 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: true
                     mhtml: false
+                    wacz: true
               mhtmlOnly:
                 summary: Capture as MHTML single-file archive
                 description: |
-                  Skips raster screenshot / HTML / link extraction / PDF
+                  Skips raster screenshot / HTML / link extraction
                   and writes only an MHTML archive as
                   `{taskId}_..._labels.mhtml`. Uses Chromium's
                   `Page.captureSnapshot` CDP method to embed every CSS /
@@ -142,8 +158,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: true
+                    wacz: false
               dismissBannersInline:
                 summary: Page-specific dismissal selectors (inline)
                 description: |
@@ -160,8 +176,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   dismissBanners:
                     useDefaults: true
                     extraSelectors:
@@ -186,8 +202,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   viewport:
                     width: 1920
                     height: 1080
@@ -206,8 +222,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   fullPage: true
               dismissBannersStrict:
                 summary: Strict mode (fail capture if dismissal fails)
@@ -228,8 +244,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   dismissBanners:
                     useDefaults: true
                     extraSelectors:
@@ -253,8 +269,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   resetState:
                     cookies: false
               noResetAtAll:
@@ -275,8 +291,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   resetState: false
               cookiesOnlyReset:
                 summary: Wipe cookies only, keep DOM context
@@ -297,8 +313,8 @@ paths:
                     webp: false
                     html: false
                     links: false
-                    pdf: false
                     mhtml: false
+                    wacz: false
                   resetState:
                     cookies: true
                     pageContext: false
@@ -366,7 +382,7 @@ components:
     CaptureFormats:
       type: object
       description: Capture format flags. At least one must be true.
-      required: [png, webp, html, links, pdf, mhtml]
+      required: [png, webp, html, links, mhtml, wacz]
       additionalProperties: false
       properties:
         png:
@@ -389,16 +405,6 @@ components:
             list as `{taskId}_..._labels.links.json` to the configured
             S3 bucket (same naming pattern as the other capture formats).
             Useful as the discovery side of an external crawl driver.
-        pdf:
-          type: boolean
-          description: |
-            Render the page to PDF and upload it as
-            `{taskId}_..._labels.pdf` to the configured S3 bucket (same
-            naming pattern as the other capture formats). Uses Chromium's
-            print pipeline with the `print` CSS media type and
-            `printBackground: true`; the page format is fixed to A4.
-            Distinct from the PNG / WebP screenshot path — PDF is intended
-            for archival / print-oriented use cases.
         mhtml:
           type: boolean
           description: |
@@ -411,6 +417,26 @@ components:
             offline (no broken relative URLs, unlike the raw `html`
             format). Chrome / Edge open `.mhtml` files directly; Firefox /
             Safari require an extension.
+        wacz:
+          type: boolean
+          description: |
+            Record every HTTP exchange Chromium performs during the capture
+            into a [WACZ](https://specs.webrecorder.net/wacz/1.0.0/) archive
+            and upload it as `{taskId}_..._labels.wacz` (a zip file) to the
+            configured S3 bucket. Replay with
+            [ReplayWeb.page](https://replayweb.page/) — drag-and-drop the
+            file or load via the `<replay-web-page>` web component.
+
+            Captures resources fetched throughout the entire session,
+            including those triggered by future scroll-driven lazy loaders.
+            Cookie / `Set-Cookie` / `Authorization` headers are recorded in
+            full so static replay matches the original exchange.
+
+            **Out of scope:** server-state-dependent dynamic traffic. The
+            WARC records the exchange faithfully but replay cannot
+            reproduce values that change every load — expiring auth tokens
+            (JWT / OAuth), per-request CSRF tokens, live WebSocket / SSE
+            streams, WebRTC.
     CaptureRequest:
       type: object
       required: [url, captureFormats]
@@ -550,9 +576,7 @@ components:
             `--screenshot-full-page` / `BROWSERHIVE_SCREENSHOT_FULL_PAGE`;
             the built-in default is `false`).
 
-            Has no effect on the `html` / `links` / `pdf` formats — PDF
-            rendering uses Chromium's print pipeline (A4) and is unaffected
-            by this flag.
+            Has no effect on the `html` / `links` formats.
         resetState:
           oneOf:
             - type: boolean

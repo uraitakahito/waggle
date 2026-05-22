@@ -37,16 +37,16 @@ describe("parseClientOptions", () => {
         "--webp",
         "--html",
         "--links",
-        "--pdf",
         "--mhtml",
+        "--wacz",
       ),
     );
     expect(opts.png).toBe(true);
     expect(opts.webp).toBe(true);
     expect(opts.html).toBe(true);
     expect(opts.links).toBe(true);
-    expect(opts.pdf).toBe(true);
     expect(opts.mhtml).toBe(true);
+    expect(opts.wacz).toBe(true);
   });
 
   it("parses --server, --limit, --accept-language, --dismiss-banners, --tls-ca-cert", () => {
@@ -104,8 +104,8 @@ describe("getCaptureFormats", () => {
       webp: false,
       html: false,
       links: false,
-      pdf: false,
       mhtml: false,
+      wacz: false,
     });
   });
 
@@ -120,8 +120,8 @@ describe("getCaptureFormats", () => {
       webp: false,
       html: true,
       links: false,
-      pdf: false,
       mhtml: false,
+      wacz: false,
     });
   });
 });
