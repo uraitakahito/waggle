@@ -76,10 +76,22 @@ docker compose -f compose.dev.yaml exec -T waggle \
 To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, apply migrations, seed sample data, fire one capture, exit):
 
 ```sh
-docker compose -f compose.prod.yaml --profile run up --build --exit-code-from waggle
+./scripts/prod-smoke.sh
 ```
 
-`waggle-migrator` and `waggle-seeder` are dependencies of `waggle` in the run profile, so the schema is created and the fixture is loaded before the CLI queries `urls`. `seaweedfs-init` (a one-shot bucket bootstrap, profile-less) runs before `browserhive` so the configured S3 bucket exists by the time the first capture is uploaded. `--exit-code-from waggle` tears everything down once `waggle` exits and forwards `waggle`'s exit code as the compose exit code. (Plain `--abort-on-container-exit` is incompatible here — it aborts on the first one-shot's successful exit before downstream services have a chance to run.)
+What the script does:
+
+1. Bring core long-running services up detached (`docker compose up -d --build`): `postgres`, `seaweedfs` (with one-shot `seaweedfs-init`), `chromium-server-1/2`, `browserhive`.
+2. Poll `http://localhost:8080/v1/status` until `browserhive`'s healthcheck passes (`BROWSERHIVE_HEALTHCHECK_TIMEOUT_S=120` default; override via env).
+3. Run `waggle-migrator`, `waggle-seeder`, and `waggle` in sequence via `docker compose run --rm`. Each call waits for its target to exit before moving on.
+4. Tear the stack down via an `EXIT` trap (`down -v --remove-orphans`), so a failure anywhere in the chain still leaves no orphans behind. Set `TEAR_DOWN_ON_EXIT=0` to keep the stack alive for post-mortem inspection.
+5. Forward `waggle`'s exit code as the script's exit code.
+
+#### Why not `--profile run --exit-code-from waggle`?
+
+`--exit-code-from waggle` implies `--abort-on-container-exit`. In Docker Compose v5.1.2, this fires on the **first** container exit — including `waggle-migrator`'s legitimate exit 0 after applying migrations. That triggers a stack-wide teardown, sending SIGTERM to `postgres` ~300 ms later. `waggle-seeder` (which depends on `waggle-migrator`'s completion) then starts during teardown and fails immediately with `getaddrinfo ENOTFOUND postgres`, because Docker has retired `postgres` from its embedded DNS. `waggle` itself never gets to run.
+
+The `service_completed_successfully` dependency exemption that the architecture doc used to count on does not hold in current Docker Compose. `docker compose run --rm` — which has no `--abort-on-container-exit` semantics — is the supported one-shot workflow.
 
 ## Working against external Postgres / BrowserHive
 
