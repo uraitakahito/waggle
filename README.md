@@ -22,10 +22,12 @@ npm run dev -- --webp --html --limit 3
 To smoke-test the production image end-to-end (builds `Dockerfile.prod`, applies migrations, seeds the sample fixture, runs one capture, exits):
 
 ```sh
-docker compose -f compose.prod.yaml --profile run up --build --exit-code-from waggle
+./scripts/prod-smoke.sh
 ```
 
-`--exit-code-from waggle` keeps the rest of the stack up while the one-shot init services (`seaweedfs-init`, `waggle-migrator`, `waggle-seeder`) complete, then tears everything down once `waggle` itself exits and forwards `waggle`'s exit code as the compose exit code. (Plain `--abort-on-container-exit` is incompatible with one-shot dependencies — it aborts on the first one's successful exit before downstream services have a chance to run.)
+The script brings core services up detached, polls `/v1/status` until BrowserHive is healthy, then runs `waggle-migrator`, `waggle-seeder`, and `waggle` in sequence via `docker compose run --rm`, finally tearing the stack down via an `EXIT` trap. The script forwards `waggle`'s exit code as its own exit code.
+
+The split (instead of a single `--profile run --exit-code-from waggle` invocation) is required because Docker Compose v5.1.2's `--abort-on-container-exit` (implied by `--exit-code-from`) fires on the **first** container exit, including the legitimate `waggle-migrator` exit 0. That triggers a stack-wide teardown, SIGTERM-ing Postgres before `waggle-seeder` can resolve it. See [`docs/development.md`](docs/development.md#why-not---profile-run---exit-code-from-waggle) for the full rationale.
 
 ## Quickstart (host Node, BrowserHive + Postgres remote)
 
