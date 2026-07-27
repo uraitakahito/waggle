@@ -2,11 +2,11 @@
 
 ## Upstream version pinning
 
-waggle is pinned to **BrowserHive `1.5.2`**. Three places carry this version and must move together when bumping:
+waggle is pinned to **BrowserHive `1.6.0`**. Three places carry this version and must move together when bumping:
 
-1. `package.json#openapi:sync` (URL contains `refs/tags/1.5.2/...`) — drives `openapi/browserhive.yaml` and the generated SDK under `src/http/generated/`.
+1. `package.json#openapi:sync` (URL contains `refs/tags/1.6.0/...`) — drives `openapi/browserhive.yaml` and the generated SDK under `src/http/generated/`.
 2. `setup.sh#BROWSERHIVE_VERSION` — drives the `etc/seaweedfs/*` download and the `BROWSERHIVE_REF` line written to `.env`.
-3. `compose.{dev,prod}.yaml` — `BROWSERHIVE_REF:-1.5.2` default in the `browserhive` service `build.context`.
+3. `compose.{dev,prod}.yaml` — `BROWSERHIVE_REF:-1.6.0` default in the `browserhive` service `build.context`.
 
 See [`docs/development.md`](development.md#upgrading-browserhive) for the upgrade procedure.
 
@@ -35,14 +35,14 @@ See [`docs/development.md`](development.md#upgrading-browserhive) for the upgrad
                         │ HTTP POST /v1/captures
                         ▼
         ┌──────────────────────────────────────┐
-        │ BrowserHive 1.5.2 (port 8080)        │
+        │ BrowserHive 1.6.0 (port 8080)        │
         │   coordinator + worker pool          │
         └─────┬─────────────────┬─────────┬────┘
               │ CDP 9222        │ CDP     │ S3 PutObject
               ▼                 ▼         ▼
    ┌──────────────────┐ ┌──────────────────┐ ┌────────────────────┐
    │ chromium-server-1│ │ chromium-server-2│ │ seaweedfs          │
-   │   noVNC :6080    │ │   noVNC :6081    │ │  S3 endpoint :8333 │
+   │   CDP :9222      │ │   CDP :9223      │ │  S3 endpoint :8333 │
    │                  │ │                  │ │  bucket browserhive│
    └──────────────────┘ └──────────────────┘ └────────────────────┘
 ```
@@ -76,9 +76,9 @@ All Compose services share the `chromium-network` bridge:
 | Service           | Container hostname  | Container port    | Host port (`compose.dev.yaml`)                                                                                                                                                                                                                                        |
 | ----------------- | ------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | chromium-server-1 | `chromium-server-1` | 9222 (CDP)        | 9222                                                                                                                                                                                                                                                                  |
-| chromium-server-1 | `chromium-server-1` | 6080 (noVNC)      | 6080                                                                                                                                                                                                                                                                  |
+| chromium-server-1 | `chromium-server-1` | 9222 (CDP)        | 9222                                                                                                                                                                                                                                                                  |
 | chromium-server-2 | `chromium-server-2` | 9222 (CDP)        | 9223                                                                                                                                                                                                                                                                  |
-| chromium-server-2 | `chromium-server-2` | 6080 (noVNC)      | 6081                                                                                                                                                                                                                                                                  |
+| chromium-server-2 | `chromium-server-2` | 9222 (CDP)        | 9223                                                                                                                                                                                                                                                                  |
 | seaweedfs         | `seaweedfs`         | 8333 (S3 API)     | (none — internal only on both dev and prod)                                                                                                                                                                                                                           |
 | seaweedfs         | `seaweedfs`         | 8888 (Filer HTTP) | (none — internal only)                                                                                                                                                                                                                                                |
 | seaweedfs         | `seaweedfs`         | 9333 (master)     | (none — internal only; init service uses gRPC here)                                                                                                                                                                                                                   |
@@ -86,4 +86,4 @@ All Compose services share the `chromium-network` bridge:
 | postgres          | `postgres`          | 5432              | `${POSTGRES_HOST_PORT:-5432}` (dev only — prod stack does not publish the port)                                                                                                                                                                                       |
 | waggle            | `waggle`            | (no listener)     | dev: long-running shell on `compose.dev.yaml`; prod: one-shot via `./scripts/prod-smoke.sh` (uses `docker compose run --rm` to avoid `--abort-on-container-exit` cascades; see [`docs/development.md`](development.md#why-not---profile-run---exit-code-from-waggle)) |
 
-`compose.prod.yaml` strips the noVNC + Postgres host ports (chromium servers and the database are internal-only) and uses headless chromium-server-docker images. The prod stack also adds `waggle-migrator` and `waggle-seeder` one-shot services that `scripts/prod-smoke.sh` runs sequentially before `waggle`, so `urls` is populated by the time the CLI queries it. `seaweedfs-init` (a one-shot bucket bootstrap) runs before `browserhive` in both stacks so the configured bucket exists by the time the first capture is uploaded.
+`compose.prod.yaml` strips the CDP + Postgres host ports (chromium servers and the database are internal-only) and uses headless chromium-server-docker images. The prod stack also adds `waggle-migrator` and `waggle-seeder` one-shot services that `scripts/prod-smoke.sh` runs sequentially before `waggle`, so `urls` is populated by the time the CLI queries it. Bucket creation is not a separate service: BrowserHive's `etc/seaweedfs/entrypoint.sh` spawns `init-bucket.sh` alongside `weed server` and its retry loop does the waiting. `browserhive` is given `WAIT_FOR_S3`, and its entrypoint polls that URL until the S3 listener answers before starting the server — the boot HeadBucket is fatal, so this is what replaces the old `service_completed_successfully` ordering.

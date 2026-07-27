@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture, type CaptureRequest } from "../http/generated/index.js";
 import type { DataEntry } from "../data/url-source.js";
-import type { CaptureFormats } from "../types/capture.js";
+import type { CaptureSettings } from "../types/capture.js";
 
 export interface SubmitResult {
   taskId: string;
@@ -46,18 +46,17 @@ const extractErrorMessage = (raw: unknown): string | undefined => {
  */
 export const submitRequest = async (
   entry: DataEntry,
-  captureFormats: CaptureFormats,
-  dismissBanners: boolean,
-  acceptLanguage: string | undefined,
+  settings: CaptureSettings,
 ): Promise<SubmitResult> => {
   const correlationId = generateCorrelationId();
   const body: CaptureRequest = {
     url: entry.url,
     labels: entry.labels,
     correlationId,
-    captureFormats,
-    dismissBanners,
-    ...(acceptLanguage !== undefined && { acceptLanguage }),
+    // Spreading `settings` keeps unset knobs out of the body entirely: the
+    // fields are optional in CaptureSettings, so an omitted flag never reaches
+    // the wire and BrowserHive applies its own default.
+    ...settings,
   };
 
   try {

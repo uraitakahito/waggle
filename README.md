@@ -17,7 +17,7 @@ npm run db:seed                                                       # load src
 npm run dev -- --webp --html --limit 3
 ```
 
-`DATABASE_URL` is wired into the container by `compose.dev.yaml`. You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Open `http://localhost:6080/` and `http://localhost:6081/` (noVNC) to watch each Chromium tab render. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`) on the `chromium-network` bridge — point at an external S3 by overriding `BROWSERHIVE_S3_ENDPOINT` in your shell environment before `./setup.sh`.
+`DATABASE_URL` is wired into the container by `compose.dev.yaml`. You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. The chromium workers are headless; to watch a page render, attach to a worker's CDP endpoint (`http://localhost:9222` / `:9223`) from `chrome://inspect`. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`) on the `chromium-network` bridge — point at an external S3 by overriding `BROWSERHIVE_S3_ENDPOINT` in your shell environment before `./setup.sh`.
 
 To smoke-test the production image end-to-end (builds `Dockerfile.prod`, applies migrations, seeds the sample fixture, runs one capture, exits):
 

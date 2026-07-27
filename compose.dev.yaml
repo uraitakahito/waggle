@@ -2,18 +2,18 @@
 #
 # Brings up seven services on the `chromium-network` bridge:
 #
-#   chromium-server-1   CDP 9222 / noVNC 6080 (host)
-#   chromium-server-2   CDP 9223 (host) -> 9222 (container) / noVNC 6081 (host)
+#   chromium-server-1   CDP 9222 (host)
+#   chromium-server-2   CDP 9223 (host) -> 9222 (container)
+#                       Headless: inspect them via chrome://inspect, not noVNC.
 #   seaweedfs           S3-compatible artifact store (network-internal)
-#   seaweedfs-init      one-shot bucket bootstrap, exits when ready
 #   browserhive         HTTP API 8080 (host) — uploads captures to seaweedfs
 #   postgres            5432 (host) — backs waggle's URL source
 #   waggle              long-running dev shell (Dockerfile.dev sourced from
 #                       uraitakahito/hello-javascript via ./setup.sh)
 #
-# BrowserHive 1.5.2 writes captured artifacts to an S3-compatible bucket
+# BrowserHive 1.6.0 writes captured artifacts to an S3-compatible bucket
 # instead of a local directory, so the stack now bundles SeaweedFS as a
-# self-hosted backend. The bucket is created by `seaweedfs-init` before
+# self-hosted backend. The bucket is created by the seaweedfs entrypoint
 # `browserhive` starts. Override `BROWSERHIVE_S3_ENDPOINT` (in `.env` or
 # the shell environment) to point at AWS S3 / Cloudflare R2 / MinIO; the
 # bundled `seaweedfs` service stays running but is harmless when unused.
@@ -70,15 +70,12 @@ services:
   chromium-server-1:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
-      dockerfile: docker/development/Dockerfile
-      args:
-        user_id: ${USER_ID:-1000}
-        group_id: ${GROUP_ID:-1000}
+      dockerfile: docker/Dockerfile
+      target: production
     container_name: waggle-chromium-server-1
     init: true
     ports:
       - "9222:9222"
-      - "6080:6080"
     networks:
       - chromium-network
     healthcheck:
@@ -91,15 +88,12 @@ services:
   chromium-server-2:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
-      dockerfile: docker/development/Dockerfile
-      args:
-        user_id: ${USER_ID:-1000}
-        group_id: ${GROUP_ID:-1000}
+      dockerfile: docker/Dockerfile
+      target: production
     container_name: waggle-chromium-server-2
     init: true
     ports:
       - "9223:9222"
-      - "6081:6080"
     networks:
       - chromium-network
     healthcheck:
@@ -144,27 +138,9 @@ services:
       retries: 6
       start_period: 5s
 
-  # One-shot init: create the configured bucket and exit. Bucket name is
-  # interpolated by docker compose at parse time so the container does
-  # not read env at runtime.
-  seaweedfs-init:
-    image: chrislusf/seaweedfs:4.23
-    container_name: waggle-seaweedfs-init
-    depends_on:
-      seaweedfs:
-        condition: service_healthy
-    volumes:
-      - ./etc/seaweedfs:/etc/seaweedfs:ro
-    networks:
-      - chromium-network
-    entrypoint:
-      - "/etc/seaweedfs/init-bucket.sh"
-      - "${BROWSERHIVE_S3_BUCKET:-browserhive}"
-      - "seaweedfs:9333"
-
   browserhive:
     build:
-      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.5.2}}
+      context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.6.0}}
       dockerfile: Dockerfile.prod
     container_name: waggle-browserhive
     init: true
@@ -185,6 +161,12 @@ services:
       # BrowserHive image itself is virtual-hosted-style (AWS S3); leave
       # this unset / false when pointing at AWS.
       BROWSERHIVE_S3_FORCE_PATH_STYLE: "true"
+      # The image's entrypoint polls this URL before starting the server.
+      # depends_on only orders *starts*, and BrowserHive's boot HeadBucket is
+      # fatal — so without this the server can lose the race against SeaweedFS
+      # and exit. This is what replaced the one-shot init container: the bucket
+      # is now created by a background job inside the seaweedfs entrypoint.
+      WAIT_FOR_S3: http://seaweedfs:8333
       TZ: ${TZ:-Asia/Tokyo}
     networks:
       - chromium-network
@@ -193,8 +175,8 @@ services:
         condition: service_healthy
       chromium-server-2:
         condition: service_healthy
-      seaweedfs-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
 
   waggle:
     build:

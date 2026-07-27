@@ -6,7 +6,7 @@
 - npm 11+ (ships with Node 24).
 - Docker 25+ with BuildKit. Required for the Compose stacks but not for host-only development.
 - `curl` on PATH — `setup.sh` uses it to download `Dockerfile.dev` and `docker-entrypoint.sh` from the pinned `uraitakahito/hello-javascript` template tag.
-- A BrowserHive instance (≥ `1.5.2`) reachable at `BROWSERHIVE_SERVER` and a Postgres reachable at `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up (plus a self-hosted SeaweedFS for capture artefact storage); otherwise you can point at remotes. waggle is pinned to a specific BrowserHive tag — see [Upgrading BrowserHive](#upgrading-browserhive).
+- A BrowserHive instance (≥ `1.6.0`) reachable at `BROWSERHIVE_SERVER` and a Postgres reachable at `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up (plus a self-hosted SeaweedFS for capture artefact storage); otherwise you can point at remotes. waggle is pinned to a specific BrowserHive tag — see [Upgrading BrowserHive](#upgrading-browserhive).
 
 ## First-time setup
 
@@ -19,7 +19,7 @@ npm ci
 npm run check              # typecheck + lint + format:check + tests
 ```
 
-`./setup.sh` is mandatory before any `docker compose -f compose.dev.yaml ...` invocation — `Dockerfile.dev`, `docker-entrypoint.sh`, and `etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}` are gitignored and only exist after the script runs (the seaweedfs config files are downloaded from the pinned BrowserHive tag and mounted into the `seaweedfs` / `seaweedfs-init` services).
+`./setup.sh` is mandatory before any `docker compose -f compose.dev.yaml ...` invocation — `Dockerfile.dev`, `docker-entrypoint.sh`, and `etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}` are gitignored and only exist after the script runs (the seaweedfs config files are downloaded from the pinned BrowserHive tag and mounted into the `seaweedfs` service).
 
 ## Daily commands
 
@@ -46,7 +46,7 @@ The dev waggle service is a long-running shell container (built from the downloa
 docker compose -f compose.dev.yaml up --build -d
 ```
 
-Watch the rendering Chromium tabs at `http://localhost:6080/` and `http://localhost:6081/`.
+The chromium workers are headless. To watch one render, open `chrome://inspect` in a local Chrome, add `localhost:9222` and `localhost:9223` under _Configure…_, and inspect the target — the screencast in DevTools is the replacement for the retired noVNC image.
 
 Drop into the container's interactive `zsh` — `.zshrc` sources nvm so `node` / `npm` resolve to the version baked into the dev image by the `hello-javascript` template (Node 24.14.1):
 
@@ -66,6 +66,23 @@ npm run dev -- --webp --html --limit 5
 
 `DATABASE_URL` is wired by `compose.dev.yaml` to the in-stack `postgres` service.
 
+### Capture knobs
+
+Beyond the format switches, a run can shape _how_ BrowserHive captures. Each flag is omitted from the request when unset, so anything you leave off keeps the server's own default:
+
+| Flag                                      | Effect                                                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `--device-scale-factor <n>`               | Device pixel ratio the capture browser reports. `2` is what makes a WACZ replay faithfully on a Retina display.                      |
+| `--archive-mode <single-pass\|multipass>` | `multipass` sweeps the page once per DPR into a single WACZ, so both image variants are archived. Overrides `--device-scale-factor`. |
+| `--operation-delay-ms <ms>`               | Pause before each browser operation. Enough delay (250 ms+) makes a capture watchable in a `chrome://inspect` screencast.            |
+| `--behaviors <ids>`                       | Built-in behaviors to run, e.g. `autoscroll,autofetch`. `--behaviors ""` runs none — which is not the same as omitting the flag.     |
+| `--no-site-behaviors`                     | Skip the site-specific behaviors BrowserHive bundles. They are considered on every capture otherwise, gated by their own host match. |
+
+```sh
+# a Retina-faithful, fully-archived capture that is slow enough to watch
+npm run dev -- --wacz --limit 1 --archive-mode multipass --operation-delay-ms 250
+```
+
 For one-liner invocations from outside the container, `zsh -ic` is needed so the rc files load nvm:
 
 ```sh
@@ -81,7 +98,7 @@ To smoke-test the **production** image end-to-end (build `Dockerfile.prod`, appl
 
 What the script does:
 
-1. Bring core long-running services up detached (`docker compose up -d --build`): `postgres`, `seaweedfs` (with one-shot `seaweedfs-init`), `chromium-server-1/2`, `browserhive`.
+1. Bring core long-running services up detached (`docker compose up -d --build`): `postgres`, `seaweedfs`, `chromium-server-1/2`, `browserhive`.
 2. Poll `http://localhost:8080/v1/status` until `browserhive`'s healthcheck passes (`BROWSERHIVE_HEALTHCHECK_TIMEOUT_S=120` default; override via env).
 3. Run `waggle-migrator`, `waggle-seeder`, and `waggle` in sequence via `docker compose run --rm`. Each call waits for its target to exit before moving on.
 4. Tear the stack down via an `EXIT` trap (`down -v --remove-orphans`), so a failure anywhere in the chain still leaves no orphans behind. Set `TEAR_DOWN_ON_EXIT=0` to keep the stack alive for post-mortem inspection.
@@ -125,7 +142,7 @@ Seeds follow the same shape under `src/db/seeds/`, but use a separate `kysely_se
 
 ## Refreshing the OpenAPI vendor copy
 
-waggle is locked to a specific BrowserHive tag (currently `1.5.2`). `npm run openapi:sync` curls `openapi.yaml` from that tag, **not** from `main`. To refresh from the same tag (no version change):
+waggle is locked to a specific BrowserHive tag (currently `1.6.0`). `npm run openapi:sync` curls `openapi.yaml` from that tag, **not** from `main`. To refresh from the same tag (no version change):
 
 ```sh
 npm run openapi:sync       # overwrites openapi/browserhive.yaml from the pinned tag
@@ -174,7 +191,7 @@ The bundled SeaweedFS bucket is name-stable across upgrades (`browserhive` by de
 - **`browserhive` exits at startup with `BROWSERHIVE_S3_*` errors** — the four S3 env vars (`BROWSERHIVE_S3_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY`) must reach the container. They are set by `compose.{dev,prod}.yaml` from `.env` / shell env. If you bypass compose, supply them on the `docker run -e ...` line.
 - **Host `npm run check` fails with `MODULE_NOT_FOUND` for `@rollup/rollup-darwin-arm64` (or similar)** — the dev container bind-mounts `.:/app`, so a `npm ci` run _inside_ the container overwrites your host's `node_modules` with Linux-arm64 binaries. Run `npm ci` on the host to restore the native bindings, then choose one side (host or container) for npm operations rather than alternating.
 - **`docker compose up` fails with "context not found"** — the Git build context format requires Docker BuildKit. Newer Docker Desktop and Docker Engine ≥ 23 ship BuildKit by default; on older Engines run `DOCKER_BUILDKIT=1 docker compose ...`.
-- **chromium-server containers stuck in `starting` state** — open `http://localhost:6080/` in a browser; if the noVNC page does not load the build hasn't finished or the start scripts have crashed. `docker compose logs chromium-server-1` shows the supervisord output.
+- **chromium-server containers stuck in `starting` state** — `curl http://localhost:9222/json/version`; if CDP does not answer, the build hasn't finished or the start scripts have crashed. `docker compose logs chromium-server-1` shows the supervisord output.
 - **`fetch failed` from waggle** — BrowserHive isn't reachable. Check `docker compose ps` (the browserhive service should be `Up (healthy)`), then `curl http://localhost:8080/v1/status` to confirm.
 - **`DATABASE_URL is not set` from `db:migrate` / `db:seed`** — the env var must be exported before invoking the runner. Inside the dev container it's set by Compose; on the host you must set it yourself.
 - **`relation "urls" does not exist` from `npm run dev`** — migrations haven't been applied yet. Run `npm run db:migrate` first.

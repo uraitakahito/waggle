@@ -3,10 +3,13 @@
  *
  * `--server`, `--tls-ca-cert`, and `--database-url` fall back to their
  * matching env vars (`BROWSERHIVE_SERVER`, `BROWSERHIVE_TLS_CA_CERT`,
- * `DATABASE_URL`) when omitted on the command line. Per-job flags
- * (`--png`, `--webp`, `--html`, `--mhtml`, `--limit`, `--dismiss-banners`,
- * `--accept-language`) intentionally have no env equivalents — they
- * are caller-side intent, not deployment configuration.
+ * `DATABASE_URL`) when omitted on the command line. Per-job flags — the format
+ * switches, `--limit`, `--dismiss-banners`, `--accept-language`, and the
+ * capture knobs (`--device-scale-factor`, `--archive-mode`,
+ * `--operation-delay-ms`, `--behaviors`, `--no-site-behaviors`) —
+ * intentionally have no env equivalents: they are caller-side intent, not
+ * deployment configuration. BrowserHive has its own env vars for the same
+ * knobs, and those are what set the server-wide defaults.
  *
  * `--server` has no commander-level default. When omitted, the generated
  * SDK falls back to its built-in baseUrl (extracted from `servers[0].url`
@@ -16,7 +19,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { logger } from "../logger.js";
 import { redactDatabaseUrl } from "../db/pool.js";
-import type { CaptureFormats } from "../types/capture.js";
+import type { CaptureFormats, CaptureSettings } from "../types/capture.js";
 
 export interface ClientOptions {
   server?: string;
@@ -31,6 +34,11 @@ export interface ClientOptions {
   tlsCaCert?: string;
   dismissBanners?: boolean;
   acceptLanguage?: string;
+  deviceScaleFactor?: number;
+  archiveMode?: "single-pass" | "multipass";
+  operationDelayMs?: number;
+  behaviors?: string[];
+  siteBehaviors?: boolean;
 }
 
 const parsePositiveInt = (value: string): number => {
@@ -40,6 +48,22 @@ const parsePositiveInt = (value: string): number => {
   }
   return num;
 };
+
+const parseNonNegativeInt = (value: string): number => {
+  const num = parseInt(value, 10);
+  if (isNaN(num) || num < 0) {
+    throw new InvalidArgumentError("Must be a non-negative integer");
+  }
+  return num;
+};
+
+// An empty `--behaviors ""` is meaningful: it turns every built-in off while
+// leaving the server's site behaviors alone. Only the ids are trimmed.
+const parseIdList = (value: string): string[] =>
+  value
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id !== "");
 
 // Reject empty / whitespace-only values up front; length and printable-ASCII
 // constraints are enforced server-side by Ajv via the OpenAPI schema.
@@ -93,6 +117,34 @@ export const createProgram = (): Command => {
     )
     .addOption(
       new Option(
+        "--device-scale-factor <n>",
+        "Device pixel ratio the capture browser reports (1 or 2). 2 gives Retina-faithful WACZ replay.",
+      ).argParser(parsePositiveInt),
+    )
+    .addOption(
+      new Option(
+        "--archive-mode <mode>",
+        "How many passes the capture makes over the page",
+      ).choices(["single-pass", "multipass"]),
+    )
+    .addOption(
+      new Option(
+        "--operation-delay-ms <ms>",
+        "Delay before each browser operation, in ms. Slows a capture down enough to watch it via noVNC.",
+      ).argParser(parseNonNegativeInt),
+    )
+    .addOption(
+      new Option(
+        "--behaviors <ids>",
+        'Comma-separated built-in behavior ids (e.g. "autoscroll,autofetch"). Pass "" to run none.',
+      ).argParser(parseIdList),
+    )
+    .option(
+      "--no-site-behaviors",
+      "Skip the site-specific behaviors BrowserHive bundles (they are considered on every capture by default)",
+    )
+    .addOption(
+      new Option(
         "--tls-ca-cert <path>",
         "CA certificate file path for TLS (enables TLS when specified)",
       ).env("BROWSERHIVE_TLS_CA_CERT"),
@@ -121,6 +173,11 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     tlsCaCert?: string;
     dismissBanners?: boolean;
     acceptLanguage?: string;
+    deviceScaleFactor?: number;
+    archiveMode?: "single-pass" | "multipass";
+    operationDelayMs?: number;
+    behaviors?: string[];
+    siteBehaviors?: boolean;
   }>();
 
   return {
@@ -136,6 +193,13 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     ...(opts.tlsCaCert !== undefined && { tlsCaCert: opts.tlsCaCert }),
     ...(opts.dismissBanners !== undefined && { dismissBanners: opts.dismissBanners }),
     ...(opts.acceptLanguage !== undefined && { acceptLanguage: opts.acceptLanguage }),
+    ...(opts.deviceScaleFactor !== undefined && { deviceScaleFactor: opts.deviceScaleFactor }),
+    ...(opts.archiveMode !== undefined && { archiveMode: opts.archiveMode }),
+    ...(opts.operationDelayMs !== undefined && { operationDelayMs: opts.operationDelayMs }),
+    ...(opts.behaviors !== undefined && { behaviors: opts.behaviors }),
+    // commander sets this to `false` only when --no-site-behaviors was passed;
+    // the default `true` means "not specified", which must stay off the wire.
+    ...(opts.siteBehaviors === false && { siteBehaviors: false }),
   };
 };
 
@@ -150,7 +214,36 @@ export const getCaptureFormats = (options: ClientOptions): CaptureFormats => {
   };
 };
 
+/**
+ * Collapse the per-run capture knobs into the object `submitRequest` spreads
+ * into the request body.
+ *
+ * `captureFormats` and `dismissBanners` are always present — the server
+ * requires the first and the second has a plain boolean default. Everything
+ * else is only included when the caller actually asked for it, so BrowserHive
+ * keeps applying its own defaults for the rest.
+ */
+export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
+  const behaviors = {
+    ...(options.behaviors !== undefined && { builtins: options.behaviors }),
+    ...(options.siteBehaviors === false && { siteBehaviors: false }),
+  };
+
+  return {
+    captureFormats: getCaptureFormats(options),
+    dismissBanners: options.dismissBanners ?? false,
+    ...(options.acceptLanguage !== undefined && { acceptLanguage: options.acceptLanguage }),
+    ...(options.deviceScaleFactor !== undefined && {
+      deviceScaleFactor: options.deviceScaleFactor,
+    }),
+    ...(options.archiveMode !== undefined && { archiveMode: options.archiveMode }),
+    ...(options.operationDelayMs !== undefined && { operationDelayMs: options.operationDelayMs }),
+    ...(Object.keys(behaviors).length > 0 && { behaviors }),
+  };
+};
+
 export const logClientConfig = (options: ClientOptions): void => {
+  const settings = getCaptureSettings(options);
   logger.info(
     {
       server: options.server ?? "(SDK default)",
@@ -158,9 +251,10 @@ export const logClientConfig = (options: ClientOptions): void => {
         ? { enabled: true, caCertPath: options.tlsCaCert }
         : { enabled: false },
       database: redactDatabaseUrl(options.databaseUrl),
-      captureFormats: getCaptureFormats(options),
-      dismissBanners: options.dismissBanners ?? false,
-      acceptLanguage: options.acceptLanguage ?? null,
+      // Log the settings object that is actually sent, so a surprising capture
+      // can be explained from this one line rather than by guessing which
+      // flags were in play.
+      capture: settings,
       limit: options.limit ?? null,
     },
     "Client configuration",
