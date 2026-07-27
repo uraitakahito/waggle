@@ -229,6 +229,7 @@ export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
     ...(options.siteBehaviors === false && { siteBehaviors: false }),
   };
 
+  // #region capture-settings
   return {
     captureFormats: getCaptureFormats(options),
     dismissBanners: options.dismissBanners ?? false,
@@ -240,6 +241,7 @@ export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
     ...(options.operationDelayMs !== undefined && { operationDelayMs: options.operationDelayMs }),
     ...(Object.keys(behaviors).length > 0 && { behaviors }),
   };
+  // #endregion capture-settings
 };
 
 export const logClientConfig = (options: ClientOptions): void => {

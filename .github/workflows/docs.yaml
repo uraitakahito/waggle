@@ -1,0 +1,71 @@
+name: docs
+
+# Publishes the Astro/Starlight site to GitHub Pages:
+#
+#   /waggle/      → English
+#   /waggle/ja/   → Japanese
+#
+# Security:
+#   - Triggered only by push to main and manual dispatch, never on
+#     pull_request — that would build untrusted fork code with Pages
+#     permissions. The read-only guard for PRs is site.yaml.
+#   - Permissions are split per job: build gets contents:read; deploy gets
+#     pages:write + id-token:write, required by deploy-pages' OIDC handshake.
+#   - No secrets are referenced.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "docs-site/**"
+      - "setup.sh"
+      - "compose.dev.yaml"
+      - "compose.prod.yaml"
+      - "package.json"
+      - ".github/workflows/docs.yaml"
+  workflow_dispatch:
+
+# One in-flight Pages deployment; queue rather than cancel so a running deploy
+# finishes cleanly.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Astro/Starlight site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Install docs-site dependencies
+        run: npm ci --prefix docs-site
+      # site:check rather than site:build: the deployed site should never carry
+      # a half-translated page or a stale snippet, and the check is seconds.
+      - name: Build and verify
+        run: npm run site:check
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

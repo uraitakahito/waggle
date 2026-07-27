@@ -1,0 +1,96 @@
+---
+title: Architecture
+description: How waggle, Postgres, BrowserHive and the artifact store fit together.
+---
+
+## Stage 0 — where the project is today
+
+```mermaid
+flowchart LR
+  PG[("Postgres<br/>urls table")] -->|SELECT url, labels| W
+  subgraph W["waggle (Node 24 / TypeScript)"]
+    direction TB
+    US[url-source<br/>pg query] --> CO[cli-options<br/>flags → CaptureSettings]
+    CO --> RUN[run.ts → submit.ts<br/>parallel]
+    RUN --> SDK[generated SDK<br/>hey-api / fetch]
+  end
+  SDK -->|POST /v1/captures| BH
+  subgraph BH["BrowserHive"]
+    COORD[coordinator + worker pool]
+  end
+  COORD -->|CDP| C1[chromium-server-1]
+  COORD -->|CDP| C2[chromium-server-2]
+  COORD -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
+  W -.->|log only| OUT["Request accepted × N<br/>Request summary"]
+```
+
+waggle's half of that picture is small on purpose. Everything to the right of
+`POST /v1/captures` is BrowserHive's, and is documented
+[there](https://uraitakahito.github.io/browserhive/).
+
+## Fire-and-forget
+
+BrowserHive answers **202** with a `taskId` as soon as the request is queued, and
+runs the capture asynchronously. waggle records which submissions were accepted
+and exits.
+
+There is **no endpoint to poll**: the API has exactly two paths,
+`POST /v1/captures` and `GET /v1/status`. A task's outcome appears in
+BrowserHive's completion log and in the artifact store — not in waggle.
+
+Consequences worth knowing:
+
+- A `Request summary` of `accepted: 3` means three tasks were **queued**, not
+  that three captures succeeded.
+- Failures after acceptance are invisible to waggle. Lifecycle tracking is
+  Stage 1 of the roadmap.
+- `correlationId` (8 hex characters, generated per submission) is the thread
+  between a waggle log line and the artifact filename.
+
+## Module layout
+
+| Module                      | Responsibility                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `src/cli.ts`                | Entry point. Parses, runs, exits non-zero on a fatal error.                            |
+| `src/config/cli-options.ts` | Flag definitions, `ClientOptions`, and the `CaptureSettings` the request body spreads. |
+| `src/data/url-source.ts`    | The one SQL query. Returns `{ url, labels }[]`.                                        |
+| `src/client/run.ts`         | Orchestration: load, configure, submit all, summarise.                                 |
+| `src/client/submit.ts`      | One request. Never throws — failures come back as `accepted: false`.                   |
+| `src/http/generated/`       | Generated from the vendored OpenAPI spec. Never edited by hand.                        |
+| `src/db/`                   | Pool, Kysely wiring, migrations, seeds.                                                |
+
+## Error handling
+
+Both HTTP failures (RFC 7807 problem responses) and transport failures surface
+as `accepted: false` with a message — `submitRequest` never throws at the caller.
+The message prefers `detail` over `title`, so a rejected request reports the
+field that was wrong rather than a bare status code.
+
+## Network layout
+
+All Compose services share the `chromium-network` bridge.
+
+| Service           | In-network name     | Container port     | Host port (dev)   |
+| ----------------- | ------------------- | ------------------ | ----------------- |
+| postgres          | `postgres`          | 5432               | 5432              |
+| seaweedfs         | `seaweedfs`         | 8333 / 8888 / 9333 | — (internal only) |
+| chromium-server-1 | `chromium-server-1` | 9222 (CDP)         | 9222              |
+| chromium-server-2 | `chromium-server-2` | 9222 (CDP)         | 9223              |
+| browserhive       | `browserhive`       | 8080               | 8080              |
+| waggle            | `waggle`            | —                  | —                 |
+
+`compose.prod.yaml` drops the CDP and Postgres host ports — the workers and the
+database are internal only — and adds the one-shot `waggle-migrator` and
+`waggle-seeder` services that `scripts/prod-smoke.sh` runs in sequence.
+
+Bucket creation is **not** a separate service. BrowserHive's SeaweedFS entrypoint
+spawns its `init-bucket.sh` alongside `weed server`, and its retry loop does the
+waiting. `browserhive` is given `WAIT_FOR_S3`; its entrypoint polls that URL
+until the S3 listener answers before starting the server, because the boot
+`HeadBucket` is fatal and `depends_on` orders starts only.
+
+## Upstream pinning
+
+waggle tracks a fixed BrowserHive tag across four files — see
+[Upgrading BrowserHive](/waggle/upgrading-browserhive/), which reads the current
+value out of the repository rather than restating it.
