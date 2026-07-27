@@ -1,8 +1,8 @@
-import { getCaptureFormats, logClientConfig, type ClientOptions } from "../config/cli-options.js";
+import { getCaptureSettings, logClientConfig, type ClientOptions } from "../config/cli-options.js";
 import { loadUrls, type DataEntry } from "../data/url-source.js";
 import { createPool } from "../db/pool.js";
 import { logger } from "../logger.js";
-import type { CaptureFormats } from "../types/capture.js";
+import type { CaptureSettings } from "../types/capture.js";
 import { configureClient } from "./openapi-client.js";
 import { submitRequest, type SubmitResult } from "./submit.js";
 
@@ -12,15 +12,13 @@ import { submitRequest, type SubmitResult } from "./submit.js";
  */
 export const submitAll = async (
   entries: DataEntry[],
-  captureFormats: CaptureFormats,
-  dismissBanners: boolean,
-  acceptLanguage: string | undefined,
+  settings: CaptureSettings,
 ): Promise<SubmitResult[]> => {
   const total = entries.length;
   let completed = 0;
 
   const promises = entries.map(async (entry) => {
-    const result = await submitRequest(entry, captureFormats, dismissBanners, acceptLanguage);
+    const result = await submitRequest(entry, settings);
     completed++;
 
     if (result.accepted) {
@@ -94,13 +92,7 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
     return;
   }
 
-  const captureFormats = getCaptureFormats(options);
-  const results = await submitAll(
-    entries,
-    captureFormats,
-    options.dismissBanners ?? false,
-    options.acceptLanguage,
-  );
+  const results = await submitAll(entries, getCaptureSettings(options));
 
   const totalDuration = Date.now() - startTime;
   logSummary(results, totalDuration);

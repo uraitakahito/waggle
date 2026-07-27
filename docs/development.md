@@ -66,6 +66,23 @@ npm run dev -- --webp --html --limit 5
 
 `DATABASE_URL` is wired by `compose.dev.yaml` to the in-stack `postgres` service.
 
+### Capture knobs
+
+Beyond the format switches, a run can shape _how_ BrowserHive captures. Each flag is omitted from the request when unset, so anything you leave off keeps the server's own default:
+
+| Flag                                      | Effect                                                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `--device-scale-factor <n>`               | Device pixel ratio the capture browser reports. `2` is what makes a WACZ replay faithfully on a Retina display.                      |
+| `--archive-mode <single-pass\|multipass>` | `multipass` sweeps the page once per DPR into a single WACZ, so both image variants are archived. Overrides `--device-scale-factor`. |
+| `--operation-delay-ms <ms>`               | Pause before each browser operation. Enough delay (250 ms+) makes a capture watchable over noVNC.                                    |
+| `--behaviors <ids>`                       | Built-in behaviors to run, e.g. `autoscroll,autofetch`. `--behaviors ""` runs none — which is not the same as omitting the flag.     |
+| `--no-site-behaviors`                     | Skip the site-specific behaviors BrowserHive bundles. They are considered on every capture otherwise, gated by their own host match. |
+
+```sh
+# a Retina-faithful, fully-archived capture that is slow enough to watch
+npm run dev -- --wacz --limit 1 --archive-mode multipass --operation-delay-ms 250
+```
+
 For one-liner invocations from outside the container, `zsh -ic` is needed so the rc files load nvm:
 
 ```sh

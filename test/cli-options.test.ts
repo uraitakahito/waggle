@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { parseClientOptions, getCaptureFormats } from "../src/config/cli-options.js";
+import {
+  parseClientOptions,
+  getCaptureFormats,
+  getCaptureSettings,
+} from "../src/config/cli-options.js";
 
 const argv = (...args: string[]): string[] => ["node", "waggle", ...args];
 
@@ -123,5 +127,63 @@ describe("getCaptureFormats", () => {
       mhtml: false,
       wacz: false,
     });
+  });
+});
+
+describe("getCaptureSettings", () => {
+  it("carries the 1.6.0 knobs through from the command line", () => {
+    const options = parseClientOptions(
+      argv(
+        "--database-url",
+        FAKE_DB_URL,
+        "--wacz",
+        "--device-scale-factor",
+        "2",
+        "--archive-mode",
+        "multipass",
+        "--operation-delay-ms",
+        "250",
+        "--behaviors",
+        "autoscroll, autofetch",
+        "--no-site-behaviors",
+      ),
+    );
+    const settings = getCaptureSettings(options);
+
+    expect(settings.deviceScaleFactor).toBe(2);
+    expect(settings.archiveMode).toBe("multipass");
+    expect(settings.operationDelayMs).toBe(250);
+    expect(settings.behaviors).toEqual({
+      builtins: ["autoscroll", "autofetch"],
+      siteBehaviors: false,
+    });
+  });
+
+  // Absent keys, not undefined values: the request body is built by spreading
+  // this object, and every one of these has a server-side default.
+  it("leaves out every knob the caller did not pass", () => {
+    const settings = getCaptureSettings(
+      parseClientOptions(argv("--database-url", FAKE_DB_URL, "--png")),
+    );
+
+    expect(settings).toEqual({
+      captureFormats: {
+        png: true,
+        webp: false,
+        html: false,
+        links: false,
+        mhtml: false,
+        wacz: false,
+      },
+      dismissBanners: false,
+    });
+  });
+
+  it('treats --behaviors "" as "run no built-ins", which is not the same as omitting it', () => {
+    const settings = getCaptureSettings(
+      parseClientOptions(argv("--database-url", FAKE_DB_URL, "--png", "--behaviors", "")),
+    );
+
+    expect(settings.behaviors).toEqual({ builtins: [] });
   });
 });
