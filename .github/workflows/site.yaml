@@ -13,8 +13,9 @@ name: site
 #     `#region` marker — `astro build` logs that one but still exits 0, so it
 #     cannot be relied on as a gate.
 #
-# Note the paths filter: setup.sh and compose.*.yaml are inputs to the pin
-# check, so a PR touching them has to run this workflow.
+# The pin now comes from the .upstream/browserhive submodule, so the checkout
+# below needs it; docker-compose.yml stays in the paths filter because it is the
+# build definition the docs describe.
 #
 # Security: read-only check. It never deploys and references no secrets, so
 # running on pull_request (including from forks) is safe — unlike docs.yaml.
@@ -27,8 +28,7 @@ on:
       - "docs-site/**"
       - "scripts/check-doc-refs.mjs"
       - "setup.sh"
-      - "compose.dev.yaml"
-      - "compose.prod.yaml"
+      - "docker-compose.yml"
       - "package.json"
       - ".github/workflows/site.yaml"
   pull_request:
@@ -37,8 +37,7 @@ on:
       - "docs-site/**"
       - "scripts/check-doc-refs.mjs"
       - "setup.sh"
-      - "compose.dev.yaml"
-      - "compose.prod.yaml"
+      - "docker-compose.yml"
       - "package.json"
       - ".github/workflows/site.yaml"
   workflow_dispatch:
@@ -57,6 +56,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The BrowserHive pin shown in the docs is read from the
+          # .upstream/browserhive submodule via `git describe`.
+          submodules: recursive
+      # actions/checkout clones submodules shallow and without tag refs, so
+      # `git describe --tags` — how the docs read the BrowserHive pin — finds
+      # nothing ("No names found"). The commit is already checked out; this
+      # just brings the tag names with it.
+      - name: Fetch upstream tags
+        run: git -C .upstream/browserhive fetch --tags --force
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

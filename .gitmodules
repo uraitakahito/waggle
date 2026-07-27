@@ -1,0 +1,3 @@
+[submodule ".upstream/browserhive"]
+	path = .upstream/browserhive
+	url = https://github.com/uraitakahito/browserhive.git

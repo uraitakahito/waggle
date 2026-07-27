@@ -1,64 +1,67 @@
 ---
 title: Upgrading BrowserHive
-description: How to move waggle to a newer BrowserHive tag, and what can go wrong.
+description: How to move waggle to a newer BrowserHive version, and what can go wrong.
 ---
 
 import { browserhivePin } from "../../lib/extract";
 
-waggle is pinned to a **specific BrowserHive tag**, not to `main`. The current
-pin is **{browserhivePin()}**.
+waggle is pinned to a **specific BrowserHive version**, not to `main`. The
+current pin is **{browserhivePin()}**.
 
-That number is read from the repository at build time. Four files carry it, and
-this page fails to build if they disagree — the pin used to be maintained by
-hand, and the count itself was once documented wrong.
+That comes from the `.upstream/browserhive` submodule — read at build time with
+`git describe --tags`, so this page cannot go stale. The submodule is the _only_
+upstream pin: it carries BrowserHive, the `chromium-server-docker` BrowserHive
+was tested against, the SeaweedFS config the stack mounts, and the OpenAPI spec
+the client is generated from.
 
-## The four places
-
-| File                | Form                                | Drives                                                                       |
-| ------------------- | ----------------------------------- | ---------------------------------------------------------------------------- |
-| `package.json`      | `refs/tags/<v>/…` in `openapi:sync` | The vendored `openapi/browserhive.yaml` and the generated SDK                |
-| `setup.sh`          | `BROWSERHIVE_VERSION="<v>"`         | The `etc/seaweedfs/*` download and the `BROWSERHIVE_REF` written into `.env` |
-| `compose.dev.yaml`  | `BROWSERHIVE_REF:-<v>`              | The image built for the dev stack                                            |
-| `compose.prod.yaml` | `BROWSERHIVE_REF:-<v>`              | The image built for the prod stack                                           |
+:::note[It used to be four places]
+The version was once written out in `package.json`, `setup.sh` and two compose
+files, with a check that they agreed. The submodule replaced all four, so there
+is nothing left to keep in sync.
+:::
 
 ## Procedure
 
 ```sh
-# 1. Bump all four together.
-#    Nothing enforces this at edit time — the docs build is what catches a miss.
+# 1. Move the submodule to the new tag.
+git -C .upstream/browserhive fetch --tags
+git -C .upstream/browserhive checkout <new-tag>
+git -C .upstream/browserhive submodule update --init --recursive
+git add .upstream/browserhive
 
-# 2. Re-vendor the spec and regenerate the client.
+# 2. Re-vendor the spec and regenerate the client (a local copy — no network).
 npm run openapi:sync
 npm run openapi:generate
 npm run openapi:check     # must exit 0 once committed
 
-# 3. Re-download the SeaweedFS assets from the new tag.
-./setup.sh
-
-# 4. Rebuild from a clean state. Old volumes hold the previous bucket and
+# 3. Rebuild from a clean state. Old volumes hold the previous bucket and
 #    database, which hides ordering bugs introduced by the upgrade.
-docker compose -f compose.dev.yaml down -v --remove-orphans
-docker compose -f compose.dev.yaml up --build -d
+container-compose down
+container-compose up -d -b
 
-# 5. Prove it end to end.
+# 4. Prove it end to end.
 npm run check
 ./scripts/prod-smoke.sh
 ```
 
-## Choosing a tag
+Chromium follows automatically: it is a submodule of the submodule, so you get
+the version BrowserHive itself was tested against. waggle used to track it
+independently at `main`, and that is exactly how a stack break arrived — upstream
+moved its development Dockerfile into `attic/` and every build stopped working.
 
-:::danger[Check that the tag can build]
-Both stacks build BrowserHive's `Dockerfile.prod` **straight from a git URL**, so
-a tag whose Dockerfile is broken takes the whole stack down with it. This has
-already happened once: between `8a66b72` and `b772480` a COPY source was missing
-from BrowserHive's whitelist dockerignore, and every tag in that range fails with
+## Choosing a version
+
+:::danger[Check that the version can build]
+The stack builds BrowserHive's `Dockerfile.prod` from the submodule, so a commit
+whose Dockerfile is broken takes the whole stack down with it. This has already
+happened once: between `8a66b72` and `b772480` a COPY source was missing from
+BrowserHive's whitelist dockerignore, and everything in that range fails with
 `"/tsconfig.behaviors.json": not found`.
 
-Verify before pinning:
+Verify before committing the submodule bump:
 
 ```sh
-docker build -f Dockerfile.prod \
-  "https://github.com/uraitakahito/browserhive.git#<tag>" -t bh-probe:<tag> .
+container build -f Dockerfile.prod -t bh-probe .upstream/browserhive
 ```
 
 :::
@@ -75,8 +78,7 @@ the OpenAPI diff at all. Two examples from the 1.5.2 → 1.6.0 move:
 - BrowserHive's SeaweedFS entrypoint started creating the bucket itself, which
   made waggle's own one-shot init container redundant (and its `depends_on`
   guarantee obsolete — `WAIT_FOR_S3` replaced it).
-- The upstream Chromium image moved its development Dockerfile to `attic/`, so
-  the path both stacks referenced stopped existing.
+- The upstream Chromium image moved its development Dockerfile to `attic/`.
 
 After bumping, read the upstream release notes for anything that touches
 `etc/seaweedfs/*`, the entrypoint, or the compose contract.

@@ -1,99 +1,79 @@
 #!/usr/bin/env bash
-# scripts/prod-smoke.sh
 #
-# Production stack end-to-end smoke test for the waggle prod stack.
+# End-to-end smoke test of the production image against a real stack.
 #
-# Why this script exists instead of a single
-# `docker compose --profile run up --exit-code-from waggle` invocation:
+# Brings the stack up with container-compose, waits for BrowserHive to answer,
+# then runs migrate → seed → one capture from the freshly built waggle image,
+# and tears everything down through an EXIT trap.
 #
-#   `--exit-code-from` implies `--abort-on-container-exit`, which in
-#   Docker Compose v5.1.2 fires on the FIRST container exit — including
-#   `waggle-migrator`'s legitimate exit 0 after applying migrations.
-#   That triggers a stack-wide teardown, SIGTERM-ing postgres ~300 ms
-#   later. `waggle-seeder` (which depends on migrator's completion)
-#   then starts and fails immediately with `getaddrinfo ENOTFOUND
-#   postgres`, because Docker has already retired postgres from its
-#   embedded DNS. waggle itself never gets to start.
-#
-# The fix below avoids `--abort-on-container-exit` entirely by:
-#   1. Bringing core long-running services up with `up -d` (no abort).
-#   2. Running each one-shot via `docker compose run --rm`, which
-#      executes the service in the foreground and waits for its exit
-#      without touching the rest of the stack.
-#   3. Tearing the stack down explicitly at the end (via the EXIT
-#      trap so failures still clean up).
-#
-# Usage:
-#   ./scripts/prod-smoke.sh
-#   exit code = waggle's exit code (the final one-shot)
-#
-# Overridable env vars:
-#   COMPOSE_FILE                          (default: compose.prod.yaml)
-#   BROWSERHIVE_HEALTHCHECK_TIMEOUT_S     (default: 120)
-#   BROWSERHIVE_HOST_PORT                 (default: 8080)
-#   TEAR_DOWN_ON_EXIT                     (default: 1; set 0 to keep stack on failure)
-
+# The one-shot jobs are `container run` rather than compose services:
+# container-compose has exactly four subcommands (up / down / build / version),
+# so there is no `run` to lean on. Calling the runtime directly is also what
+# retires the old `--profile run --exit-code-from waggle` workaround — the
+# Docker Compose behaviour that made it necessary (aborting the whole stack on
+# the migrator's legitimate exit 0) has no equivalent here.
 set -euo pipefail
 
-COMPOSE_FILE="${COMPOSE_FILE:-compose.prod.yaml}"
-BROWSERHIVE_HEALTHCHECK_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-120}"
-BROWSERHIVE_HOST_PORT="${BROWSERHIVE_HOST_PORT:-8080}"
+cd "$(dirname "$0")/.."
+
+DATABASE_URL="postgres://waggle:waggle@postgres.waggle:5432/waggle"
+BROWSERHIVE_SERVER="http://browserhive.waggle:8080"
+HEALTH_URL="http://localhost:8080/v1/status"
+HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
 TEAR_DOWN_ON_EXIT="${TEAR_DOWN_ON_EXIT:-1}"
 
-# shellcheck disable=SC2329  # invoked indirectly via `trap cleanup EXIT` below
-cleanup() {
-  if [ "${TEAR_DOWN_ON_EXIT}" = "1" ]; then
-    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+teardown() {
+  if [[ "${TEAR_DOWN_ON_EXIT}" == "1" ]]; then
+    log "Tearing the stack down..."
+    container-compose down >/dev/null 2>&1 || true
+  else
+    log "TEAR_DOWN_ON_EXIT=0 — leaving the stack up for inspection."
   fi
 }
-trap cleanup EXIT
+trap teardown EXIT
 
-log() {
-  echo "[$(date +%H:%M:%S)] $*" >&2
-}
+log "Starting the stack..."
+container-compose up -d -b
 
-log "Bringing core services up (postgres / seaweedfs / chromium-server / browserhive)..."
-docker compose -f "${COMPOSE_FILE}" up -d --build
-
-log "Waiting for browserhive to become healthy (timeout ${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S}s)..."
-ELAPSED=0
-INTERVAL=2
-HEALTHY=0
-while [ "${ELAPSED}" -lt "${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S}" ]; do
-  if curl -sf --max-time 3 "http://localhost:${BROWSERHIVE_HOST_PORT}/v1/status" >/dev/null 2>&1; then
-    HEALTHY=1
-    break
+# container-compose has no healthcheck support, so readiness is ours to check.
+log "Waiting for BrowserHive (up to ${HEALTH_TIMEOUT_S}s)..."
+deadline=$((SECONDS + HEALTH_TIMEOUT_S))
+until curl -sf "${HEALTH_URL}" >/dev/null; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: BrowserHive never answered at ${HEALTH_URL}"
+    exit 1
   fi
-  sleep "${INTERVAL}"
-  ELAPSED=$((ELAPSED + INTERVAL))
+  sleep 1
 done
-if [ "${HEALTHY}" != "1" ]; then
-  log "ERROR: browserhive did not become healthy within ${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S}s"
-  docker compose -f "${COMPOSE_FILE}" ps
-  docker compose -f "${COMPOSE_FILE}" logs browserhive | tail -40
-  exit 2
-fi
-log "browserhive healthy after ${ELAPSED}s"
+log "BrowserHive is ready."
 
-# --no-deps on each explicit one-shot run: the dependencies
-# (postgres, browserhive, etc.) are already running from `up -d`
-# above, so re-starting them — which compose otherwise does because
-# `service_completed_successfully` deps re-spawn fresh one-shot
-# containers — only adds latency. The sequential order below is the
-# real correctness contract.
-log "Running waggle-migrator..."
-docker compose -f "${COMPOSE_FILE}" run --rm --no-deps waggle-migrator
+log "Building the waggle image..."
+container build -t waggle:latest .
 
-log "Running waggle-seeder..."
-docker compose -f "${COMPOSE_FILE}" run --rm --no-deps waggle-seeder
+# The image's ENTRYPOINT is `node dist/cli.js`, so the db jobs have to override
+# it; the capture just passes flags straight through.
+run_job() {
+  local label="$1"; shift
+  log "Running ${label}..."
+  container run --rm --entrypoint node \
+    -e "DATABASE_URL=${DATABASE_URL}" \
+    -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
+    -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
+    waggle:latest "$@"
+}
 
-log "Running waggle (the actual capture)..."
-# `docker compose run` exits non-zero if the service exits non-zero, and
-# `set -e` would normally abort the script before we capture the exit
-# code. Disable that temporarily so `WAGGLE_EXIT=$?` actually sees the
-# real value, then re-enable.
+run_job "migrations" dist/db/migrate.js up
+run_job "seed" dist/db/seed.js up
+
+log "Running the capture..."
 set +e
-docker compose -f "${COMPOSE_FILE}" run --rm --no-deps waggle
+container run --rm \
+  -e "DATABASE_URL=${DATABASE_URL}" \
+  -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
+  -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
+  waggle:latest --webp --limit 3
 WAGGLE_EXIT=$?
 set -e
 

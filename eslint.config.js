@@ -14,6 +14,9 @@ export default tseslint.config(
       "docs-site/**",
       // Repo tooling run directly by node, outside the TS project.
       "scripts/**",
+      // Upstream source, vendored as a submodule. It has its own lint setup;
+      // linting it from here just reports on somebody else's code.
+      ".upstream/**",
       "coverage/**",
       "*.config.js",
       "*.config.cjs",
