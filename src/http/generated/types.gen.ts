@@ -44,7 +44,7 @@ export type CaptureFormats = {
     /**
      * Record every HTTP exchange Chromium performs during the capture
      * into a [WACZ](https://specs.webrecorder.net/wacz/1.0.0/) archive
-     * and upload it as `{taskId}_..._labels.wacz` (a zip file) to the
+     * and upload it as `{taskId}_..._labels.wacz` (a ZIP file) to the
      * configured S3 bucket. Replay with
      * [ReplayWeb.page](https://replayweb.page/) — drag-and-drop the
      * file or load via the `<replay-web-page>` web component.
@@ -172,6 +172,71 @@ export type CaptureRequest = {
         height: number;
     };
     /**
+     * Delay (ms) inserted before each browser operation for this capture,
+     * so a headless run can be watched live over the DevTools screencast
+     * (`chrome://inspect`). The browser connection is not re-made, so no
+     * other request is affected.
+     *
+     * Not puppeteer's `slowMo`: that is fixed at connect time and also
+     * paces puppeteer's own internal CDP commands, whereas this paces only
+     * the operations the server issues, per request. The behaviour differs,
+     * so the name does too.
+     *
+     * When omitted, the server-side default applies (configured via
+     * `--operation-delay-ms` / `BROWSERHIVE_OPERATION_DELAY_MS`; the
+     * built-in default is `0`, i.e. no delay). A large value eats into
+     * `--task-timeout` (130s by default) and can fail the task.
+     *
+     */
+    operationDelayMs?: number;
+    /**
+     * How many passes the capture makes over the page.
+     *
+     * - `single-pass` (default) — load the page once, at the configured
+     * device pixel ratio, with the browser cache in play.
+     * - `multipass` — load the same page once per device pixel ratio
+     * (1 and 2) into a **single WACZ**, so replay is correct on both
+     * normal and Retina displays. Each pass is fetched with the
+     * **browser cache disabled**: a pass served from cache would defeat
+     * the point, and a revalidated `304` carries no body, which would
+     * leave holes in the archive.
+     *
+     * `multipass` roughly doubles capture time and archive size, and
+     * `deviceScaleFactor` is ignored (the mode sweeps its own DPR set).
+     * PNG / WebP screenshots come from the last pass, i.e. at DPR 2.
+     *
+     * Worth it for sites that *compute* image URLs from
+     * `devicePixelRatio` (the variant for the DPR you did not capture at
+     * appears nowhere in the DOM). Sites that declare every candidate in
+     * `srcset` are already covered at any single DPR by the `autofetch`
+     * behavior.
+     *
+     * When omitted, the server-side default applies (configured via
+     * `--archive-mode` / `BROWSERHIVE_ARCHIVE_MODE`; the built-in default
+     * is `single-pass`).
+     *
+     */
+    archiveMode?: 'single-pass' | 'multipass';
+    /**
+     * Device pixel ratio (`window.devicePixelRatio`) the capture browser
+     * renders at. `1` is a normal display; `2` is Retina.
+     * Ignored when `archiveMode` is `multipass`.
+     *
+     * Set to `2` to capture a **Retina-faithful WACZ**: the page then
+     * requests the `2x` responsive-image candidates. This is the fix for
+     * JS carousels (e.g. apple.com TV+) whose slides carry no `srcset` and
+     * derive their image URL from the DPR — at DPR 1 the `2x` variant is
+     * never referenced, so it cannot be archived; a Retina replay then
+     * shows black slides. Note that DPR 2 also doubles the pixel
+     * dimensions (and size) of any PNG / WebP screenshot.
+     *
+     * When omitted, the server-side default applies (configured via
+     * `--device-scale-factor` / `BROWSERHIVE_DEVICE_SCALE_FACTOR`; the
+     * built-in default is `1`).
+     *
+     */
+    deviceScaleFactor?: number;
+    /**
      * When `true`, the PNG / WebP screenshot extends below the
      * viewport to capture the full document height (Chromium scrolls
      * and stitches the result). When `false` or omitted, only the
@@ -185,6 +250,98 @@ export type CaptureRequest = {
      *
      */
     fullPage?: boolean;
+    /**
+     * Per-request behavior override. Behaviors are scripts injected into
+     * the page during capture that automate interaction so dynamic
+     * resources are archived — the built-in `autoscroll` (scrolls the
+     * full height so `loading="lazy"` / IntersectionObserver / `data-src`
+     * loaders fire), `autofetch` (actively fetches every `srcset` /
+     * `data-*` candidate so replay is DPR/viewport-complete, e.g. Retina
+     * `_2x` variants), and `autoplay` (muted-plays and fetches
+     * `<video>` / `<audio>` media — opt-in, off by default, can be
+     * large), plus optional client-supplied custom behaviors.
+     *
+     * When omitted, the server default set applies (configured via
+     * `--behaviors` / `BROWSERHIVE_BEHAVIORS`; the built-in default is
+     * `autoscroll,autofetch`). The whole pass is bounded by
+     * `--behavior-timeout` so it cannot hang the worker.
+     *
+     * When at least one behavior runs, the server log line for the
+     * completed task includes a `behaviorReport`:
+     *
+     * ```json
+     * {
+     * "msg": "Task completed",
+     * "url": "https://www.apple.com/",
+     * "behaviorReport": {
+     * "ran": [
+     * { "id": "autoscroll", "steps": 12, "ms": 3400 },
+     * { "id": "autofetch", "steps": 9, "ms": 1800 }
+     * ],
+     * "timedOut": false
+     * }
+     * }
+     * ```
+     *
+     * - `ran` — each behavior that actually ran (enabled ∩ `isMatch`),
+     * in execution order, with its `steps` (yield checkpoints), wall
+     * `ms`, and an `error` string if it threw.
+     * - `timedOut` — `true` if the pass hit `--behavior-timeout` and
+     * remaining behaviors were skipped.
+     *
+     */
+    behaviors?: {
+        /**
+         * Built-in behavior ids to run, in execution order. Replaces the
+         * server default enabled set for this capture. An empty array
+         * disables all built-ins.
+         *
+         */
+        builtins?: Array<string>;
+        /**
+         * Per-behavior option overrides, keyed by behavior id, merged over
+         * the server options — e.g. `{ "autoscroll": { "maxSteps": 60 } }`.
+         *
+         */
+        options?: {
+            [key: string]: unknown;
+        };
+        /**
+         * Whether the site-specific behaviors bundled into the server's
+         * runtime are considered for this capture. They only act on the
+         * hosts their own `isMatch()` accepts, so leaving this alone is
+         * normally right; set `false` to capture with the built-ins (and
+         * any client `custom` behaviors) only — useful when comparing runs
+         * or reproducing an older archive.
+         *
+         * When omitted, the server-side default applies (configured via
+         * `--no-site-behaviors` / `BROWSERHIVE_SITE_BEHAVIORS`; the
+         * built-in default is on). Behaviors that run are listed in the
+         * completed-task log's `behaviorReport`, where bundled ones carry a
+         * `site:` id prefix.
+         *
+         */
+        siteBehaviors?: boolean;
+        /**
+         * Client-supplied custom behaviors. Honoured only when the server
+         * is started with `--allow-custom-behaviors`; otherwise ignored.
+         *
+         */
+        custom?: Array<{
+            /**
+             * Identifier used in the behavior report.
+             */
+            id: string;
+            /**
+             * A JavaScript class *expression* implementing the behavior
+             * interface: `class { static id = "…"; static isMatch() {…}
+             * async *run(ctx) {…} }`. Injected into the page and
+             * registered alongside the built-ins.
+             *
+             */
+            source: string;
+        }>;
+    };
     /**
      * Per-request control of the inter-task wipe applied to the
      * worker's persistent Chromium tab AFTER this capture completes.
@@ -387,6 +544,9 @@ export type ErrorRecord = {
 };
 
 export type BrowserOptions = {
+    /**
+     * The configured browser endpoint, returned in WHATWG-canonical form (e.g. a trailing slash is added: `http://chromium-1:9222/`). The server parses the operator-supplied value into a URL, so the string echoed here is the normalized form, not necessarily the exact input.
+     */
     browserUrl: string;
 };
 
@@ -473,6 +633,29 @@ export type StatusResponse = {
     isDegraded: boolean;
     workers: Array<WorkerInfo>;
     queue: QueueSnapshot;
+    /**
+     * Build fingerprint baked in at build time (src/generated/version.ts).
+     * Use `revision` to confirm the running server matches a given source:
+     * `revision === $(git rev-parse --short HEAD)`.
+     *
+     */
+    build: {
+        /**
+         * BrowserHive package version (package.json).
+         */
+        version: string;
+        /**
+         * Short git commit the image was built from — passed at build time
+         * via `GIT_REV` (Docker) or read from git (host). `"dev"` when
+         * neither was available.
+         *
+         */
+        revision: string;
+        /**
+         * When this build was produced. Changes every build.
+         */
+        buildTime: string;
+    };
 };
 
 export type SubmitCaptureData = {
