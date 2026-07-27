@@ -21,22 +21,25 @@ Anything about _how_ a page is captured — behaviors, WACZ, storage, workers �
 
 ## Quickstart
 
+Runs on [Apple Container](https://github.com/apple/container) (macOS).
+
 ```sh
-./setup.sh
-docker compose -f compose.dev.yaml up --build -d
-docker compose -f compose.dev.yaml exec waggle zsh
-# inside the container:
-npm ci                                                                # first time only
-npm run db:migrate                                                    # first time only
-npm run db:seed                                                       # load src/db/seeds/001-sample-urls.ts
+sudo container system dns create waggle   # once per machine
+./setup.sh                                # submodules + .env
+container-compose up -d -b
+
+# waggle itself runs on the host — the stack is reachable by name
+npm ci                                    # first time only
+npm run db:migrate                        # first time only
+npm run db:seed                           # load src/db/seeds/001-sample-urls.ts
 npm run dev -- --webp --html --limit 3
 ```
 
-You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`) — point at an external S3 by overriding `BROWSERHIVE_S3_ENDPOINT` in your shell environment before `./setup.sh`. The workers are headless; watch one render from `chrome://inspect` against `localhost:9222` / `:9223`.
+You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`). The workers are headless; watch one render from `chrome://inspect` against `localhost:9222` / `:9223`.
 
 The full walkthrough, including how to read the results of an asynchronous capture, is in the [Quickstart](https://uraitakahito.github.io/waggle/quickstart/).
 
-To smoke-test the production image end-to-end (builds `Dockerfile.prod`, applies migrations, seeds the sample fixture, runs one capture, exits):
+To smoke-test the production image end-to-end (builds `Dockerfile`, applies migrations, seeds the sample fixture, runs one capture, exits):
 
 ```sh
 ./scripts/prod-smoke.sh

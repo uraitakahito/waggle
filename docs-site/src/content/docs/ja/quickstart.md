@@ -3,25 +3,37 @@ title: クイックスタート
 description: Compose スタックを立ち上げ、urls を seed し、最初のキャプチャを投げるまで。
 ---
 
-Compose スタックは waggle に必要なものを一式立ち上げます — Postgres、SeaweedFS、
-headless の Chromium ワーカー 2 台、そして[固定タグ](/waggle/ja/upgrading-browserhive/)から
-ビルドされる BrowserHive です。
+スタックは waggle に必要なものを一式立ち上げます — Postgres、SeaweedFS、
+headless の Chromium ワーカー 2 台、そして[固定した submodule](/waggle/ja/upgrading-browserhive/)から
+ビルドされる BrowserHive です。実行基盤は
+[Apple Container](https://github.com/apple/container)で、`container-compose` が駆動します。
 
-## 1. ローカルファイルを生成する
+## 1. DNS ドメインを登録する（マシンごとに 1 回）
+
+```sh
+sudo container system dns create waggle
+```
+
+プロジェクト名がそのまま DNS ドメインになります。コンテナは `<service>.waggle`
+という名前になり、**コンテナ間からもホストからも**解決できます — waggle 自身を
+ホストで動かしてこのスタックに繋げられるのはこのためです。登録が無いと
+container-compose は `/etc/hosts` を書き換える方式に退行し、このスタックの
+非 root コンテナでは無音で失敗します。
+
+## 2. ローカルファイルを生成する
 
 ```sh
 ./setup.sh
 ```
 
-`setup.sh` は `.env` を書き出し、意図的にコミットしていない 3 種類のファイルを
-ダウンロードします: `hello-javascript` テンプレートからの `Dockerfile.dev` と
-`docker-entrypoint.sh`、そして固定タグの BrowserHive からの `etc/seaweedfs/*` です。
-`docker compose` を叩く前に必ず実行してください。
+ツールチェーンを確認し、`.upstream/browserhive` submodule を初期化し（上流の
+ソースはすべてここから来ます）、`.env` を書き出します。`container-compose` を
+叩く前に必ず実行してください。
 
-## 2. スタックを起動する
+## 3. スタックを起動する
 
 ```sh
-docker compose -f compose.dev.yaml up --build -d
+container-compose up -d -b
 ```
 
 初回は BrowserHive と Chromium イメージをソースからビルドするため、数分かかります。
@@ -36,26 +48,18 @@ curl -sS --fail-with-body http://localhost:8080/v1/status | jq '{isRunning, work
 `chrome://inspect` を開き、_Configure…_ に `localhost:9222` と `localhost:9223`
 を登録してください。
 
-## 3. データベースを準備する
+## 4. データベースを準備する
 
-waggle コンテナは常駐シェルで、使うまで何もしません。`node_modules` は
-イメージに焼き込まれていないので、最初に一度だけインストールします。
+**dev コンテナはありません。** waggle はホストで動き、名前でスタックに届きます
+（接続文字列は `.env` に入っています）。
 
 ```sh
-docker compose -f compose.dev.yaml exec waggle zsh
-# コンテナの中で:
 npm ci                        # 初回のみ
 npm run db:migrate            # urls テーブルを作成
 npm run db:seed               # サンプル 5 件を投入
 ```
 
-:::caution
-リポジトリは `/app` にバインドマウントされているため、**コンテナ内の `npm ci` は
-ホストの `node_modules` を Linux バイナリで上書きします**。コンテナの外で作業する
-前に、ホスト側でもう一度 `npm ci` してください。
-:::
-
-## 4. キャプチャを投げる
+## 5. キャプチャを投げる
 
 ```sh
 npm run dev -- --wacz --limit 1
@@ -71,13 +75,13 @@ npm run dev -- --wacz --limit 1
 `accepted` は BrowserHive がキューに入れたという意味で、**キャプチャが完了した
 という意味ではありません**。
 
-## 5. 結果を見る
+## 6. 結果を見る
 
 waggle にそのためのエンドポイントはありません。キャプチャは非同期で、結果は
 BrowserHive のものだからです。完了ログを読みます。
 
 ```sh
-docker compose -f compose.dev.yaml logs browserhive \
+container logs browserhive.waggle \
   | grep '"Task completed"' | tail -1 | jq -c '{waczLocation, completeness}'
 ```
 

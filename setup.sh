@@ -2,144 +2,85 @@
 #
 # setup.sh — bootstrap waggle's local development environment.
 #
+# Everything upstream now arrives through the `.upstream/browserhive`
+# submodule: BrowserHive itself, the chromium-server-docker it was tested
+# against, and the SeaweedFS config the stack mounts. There is nothing to
+# download — `container build` only accepts a context directory, so the source
+# has to be on disk anyway, and one submodule pointer is the single upstream
+# pin.
+#
+# What this does:
+#   1. Checks the Apple Container toolchain is present.
+#   2. Refuses to continue if the `waggle` DNS domain is not registered.
+#   3. Initialises the submodules (the step everyone forgets).
+#   4. Writes .env with the host-side connection strings.
+#
 
 set -e
 
-# Pinned version of the shared developer-image template that ships
-# `Dockerfile.dev` + `docker-entrypoint.sh`. BrowserHive uses the same
-# repo; bump this independently when waggle wants a newer dev image.
-HELLO_JAVASCRIPT_VERSION="1.2.7"
-HELLO_JAVASCRIPT_BASE_URL="https://raw.githubusercontent.com/uraitakahito/hello-javascript/refs/tags/${HELLO_JAVASCRIPT_VERSION}"
-
-# Pinned BrowserHive version. The OpenAPI spec under `openapi/` and the
-# generated SDK under `src/http/generated/` are tied to this tag, and the
-# The `seaweedfs` service in compose mounts these config files
-# downloaded from the same tag (so all three move together on bump).
-# When bumping: update `package.json#openapi:sync` URL, this constant,
-# the `BROWSERHIVE_REF` default in compose.{dev,prod}.yaml, then run
-# `npm run openapi:sync && npm run openapi:generate && ./setup.sh`.
-BROWSERHIVE_VERSION="1.6.0"
-BROWSERHIVE_BASE_URL="https://raw.githubusercontent.com/uraitakahito/browserhive/refs/tags/${BROWSERHIVE_VERSION}"
-
-usage() {
-  cat <<'USAGE'
-Usage: ./setup.sh [--help]
-
-Bootstraps waggle's dev environment by:
-
-  1. Downloading Dockerfile.dev + docker-entrypoint.sh from the pinned
-     uraitakahito/hello-javascript template tag (both are gitignored).
-  2. Downloading etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}
-     from the pinned uraitakahito/browserhive tag (gitignored). These
-     are mounted into the seaweedfs service by the
-     compose stacks.
-  3. Regenerating .env at the repository root based on host info:
-
-       USER_ID, GROUP_ID                                detected via `id -u` / `id -g`
-       TZ                                               from $TZ if set, otherwise Asia/Tokyo
-       BROWSERHIVE_REF                                  = 1.6.0
-       CHROMIUM_SERVER_REF                              = main
-       BROWSERHIVE_HOST_PORT                            = 8080
-       LOG_LEVEL, BROWSERHIVE_LOG_LEVEL                 = info
-       BROWSERHIVE_S3_REGION                            = us-east-1
-       BROWSERHIVE_S3_BUCKET                            = browserhive
-       BROWSERHIVE_S3_ACCESS_KEY_ID, _SECRET_ACCESS_KEY = browserhive (dev defaults)
-       POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB    = waggle / waggle / waggle
-       POSTGRES_HOST_PORT                               = 5432
-
-The script always regenerates .env and re-downloads the dev assets.
-Persistent overrides should live in your shell environment, not in .env.
-
-Options:
-  -h, --help    Show this message and exit.
-USAGE
-}
+cd "$(dirname "$0")"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
 if [[ $# -gt 0 ]]; then
-  echo "ERROR: Unknown argument: $1" >&2
-  echo "Run \`./setup.sh --help\` for usage." >&2
+  echo "ERROR: unexpected argument: $1" >&2
+  echo "Run '$0 --help' for usage." >&2
   exit 1
 fi
 
-echo "Starting waggle setup..."
-
-# --- Prerequisite checks (warnings only) ---------------------------------
-# Don't fail here: a host-Node-only workflow (npm run dev against a remote
-# BrowserHive) doesn't need Docker.
-if ! command -v docker >/dev/null 2>&1; then
-  echo "WARNING: \`docker\` not found in PATH; you'll need it before \`docker compose ... up\`." >&2
-elif ! docker compose version >/dev/null 2>&1; then
-  echo "WARNING: \`docker compose\` plugin unavailable; install Docker Compose v2." >&2
-fi
-
-if ! command -v curl >/dev/null 2>&1; then
-  echo "ERROR: \`curl\` is required to fetch the dev image template." >&2
-  exit 1
-fi
-
-# --- Download Dockerfile.dev / docker-entrypoint.sh ----------------------
-echo "Downloading Dockerfile.dev (hello-javascript ${HELLO_JAVASCRIPT_VERSION})..."
-if ! curl -fL -o Dockerfile.dev "${HELLO_JAVASCRIPT_BASE_URL}/Dockerfile.dev"; then
-  echo "ERROR: Failed to download Dockerfile.dev from:" >&2
-  echo "  ${HELLO_JAVASCRIPT_BASE_URL}/Dockerfile.dev" >&2
-  echo "Check network access and that the version tag exists." >&2
-  exit 1
-fi
-
-echo "Downloading docker-entrypoint.sh (hello-javascript ${HELLO_JAVASCRIPT_VERSION})..."
-if ! curl -fL -o docker-entrypoint.sh "${HELLO_JAVASCRIPT_BASE_URL}/docker-entrypoint.sh"; then
-  echo "ERROR: Failed to download docker-entrypoint.sh from:" >&2
-  echo "  ${HELLO_JAVASCRIPT_BASE_URL}/docker-entrypoint.sh" >&2
-  echo "Check network access and that the version tag exists." >&2
-  exit 1
-fi
-chmod 755 docker-entrypoint.sh
-
-# --- Download etc/seaweedfs/* (BrowserHive ${BROWSERHIVE_VERSION}) -------
-mkdir -p etc/seaweedfs
-for f in entrypoint.sh init-bucket.sh s3.template.json; do
-  echo "Downloading etc/seaweedfs/${f} (browserhive ${BROWSERHIVE_VERSION})..."
-  if ! curl -fL -o "etc/seaweedfs/${f}" "${BROWSERHIVE_BASE_URL}/etc/seaweedfs/${f}"; then
-    echo "ERROR: Failed to download etc/seaweedfs/${f} from:" >&2
-    echo "  ${BROWSERHIVE_BASE_URL}/etc/seaweedfs/${f}" >&2
-    echo "Check network access and that the version tag exists." >&2
+# --- Toolchain ------------------------------------------------------------
+for cmd in container container-compose git; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "ERROR: \`$cmd\` is required but not on PATH." >&2
+    echo "Install Apple Container and container-compose (Homebrew), then re-run." >&2
     exit 1
   fi
 done
-chmod 755 etc/seaweedfs/entrypoint.sh etc/seaweedfs/init-bucket.sh
+
+# --- DNS domain -----------------------------------------------------------
+# The project name in docker-compose.yml IS the DNS domain. Without it,
+# container-compose falls back to patching /etc/hosts, which silently fails for
+# the non-root containers in this stack (browserhive, chromium) — the failure
+# mode is "names mysteriously do not resolve", so fail loudly here instead.
+if ! container system dns ls 2>/dev/null | grep -qx "waggle"; then
+  echo "ERROR: the 'waggle' DNS domain is not registered." >&2
+  echo "" >&2
+  echo "    sudo container system dns create waggle" >&2
+  echo "" >&2
+  echo "Run that once (it needs sudo), then re-run this script." >&2
+  exit 1
+fi
+
+# --- Upstream submodule ---------------------------------------------------
+echo "Initialising upstream submodule..."
+git submodule update --init --recursive
+git submodule status --recursive | sed 's/^/  /'
 
 # --- Generate .env --------------------------------------------------------
+# Only what the host side needs: waggle runs on the host and reaches the stack
+# through the platform DNS. Service-to-service wiring lives in
+# docker-compose.yml.
 cat > .env <<EOF
-USER_ID=$(id -u)
-GROUP_ID=$(id -g)
-TZ=${TZ:-Asia/Tokyo}
-BROWSERHIVE_REF=${BROWSERHIVE_VERSION}
-CHROMIUM_SERVER_REF=main
-BROWSERHIVE_HOST_PORT=8080
+DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
+BROWSERHIVE_SERVER=http://browserhive.waggle:8080
 LOG_LEVEL=info
-BROWSERHIVE_LOG_LEVEL=info
-BROWSERHIVE_S3_REGION=us-east-1
-BROWSERHIVE_S3_BUCKET=browserhive
-BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
-BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
-POSTGRES_USER=waggle
-POSTGRES_PASSWORD=waggle
-POSTGRES_DB=waggle
-POSTGRES_HOST_PORT=5432
 EOF
-echo "Created .env (regenerated from host info)"
+echo "Created .env"
 
-echo ""
-echo "Setup complete!"
-echo ""
-echo "Next steps:"
-echo "  docker compose -f compose.dev.yaml up --build -d"
-echo "  docker compose -f compose.dev.yaml exec waggle zsh -ic '"
-echo "    cd /app && npm ci && npm run db:migrate && npm run db:seed'"
-echo "  docker compose -f compose.dev.yaml exec waggle \\"
-echo "    npm run dev -- --webp --html --limit 3"
+cat <<'EOF'
+
+Setup complete.
+
+  container-compose up -d -b                  # build and start the stack
+  until curl -sf http://localhost:8080/v1/status >/dev/null; do sleep 1; done
+
+Then work on the host — there is no dev container; the stack is reachable by
+name:
+
+  npm ci
+  npm run db:migrate && npm run db:seed
+  npm run dev -- --webp --limit 3
+EOF

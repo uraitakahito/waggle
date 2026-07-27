@@ -130,7 +130,7 @@ export const createProgram = (): Command => {
     .addOption(
       new Option(
         "--operation-delay-ms <ms>",
-        "Delay before each browser operation, in ms. Slows a capture down enough to watch it via noVNC.",
+        "Delay before each browser operation, in ms. Slows a capture down enough to watch in a chrome://inspect screencast.",
       ).argParser(parseNonNegativeInt),
     )
     .addOption(

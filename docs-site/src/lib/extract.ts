@@ -3,14 +3,14 @@
  *
  * ドキュメントに書かれた事実のうち、waggle のソースやピン留め設定を写しただけの
  * ものは、ここを経由して実物から読む。手書きでコピーするとコード側の変更に
- * 追随せず、しかも間違いに誰も気付かない（実際、docs/architecture.md は
- * ピンを持つ箇所を「3 箇所」と書いていたが実際は 4 箇所だった）。
+ * 追随せず、しかも間違いに誰も気付かない。
  *
  * BrowserHive 側の事実は対象外。あちらの docs へリンクする（DRY）。
  *
  * browserhive の同名ファイルは ts-morph で `@glossary` も抽出するが、waggle には
  * 用語集にすべき語彙がないので `#region` とピン検査だけを持つ。依存はゼロ。
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -33,26 +33,30 @@ export function sourceRegion(file: string, region: string): string {
 }
 
 /**
- * BrowserHive のピン留めバージョンを、それを持つ 4 ファイルすべてから読む。
- * 1 つでも食い違えば throw する（= astro build が落ちる）。
+ * The BrowserHive version the `.upstream/browserhive` submodule points at.
  *
- * ドキュメントはこの戻り値だけを表示するので、版数表記が実体とずれること自体が
- * 起こらない。同時に「上げ忘れたファイルがある」状態も検出できる — 4 箇所を手で
- * 直す運用は現に一度失敗しかけている。
+ * There used to be four copies of this string — the openapi:sync URL, setup.sh,
+ * and both compose files — and a check here that they agreed, because a bump
+ * had to edit all four by hand. The submodule replaced all of them, so there is
+ * nothing left to disagree: this reads the one pointer and reports it.
+ *
+ * `git describe --tags` gives the tag name when the submodule sits exactly on a
+ * tag (`1.6.0`) and a descriptor when it does not (`1.6.0-3-gabc1234`) — so the
+ * docs show, accurately, that the pin has drifted off a release. An
+ * uninitialised submodule throws, which fails the build.
  */
 export function browserhivePin(): string {
-  const found: Record<string, string | undefined> = {
-    "package.json": /refs\/tags\/([^/]+)\//.exec(read("package.json"))?.[1],
-    "setup.sh": /BROWSERHIVE_VERSION="([^"]+)"/.exec(read("setup.sh"))?.[1],
-    "compose.dev.yaml": /BROWSERHIVE_REF:-([^}]+)\}/.exec(read("compose.dev.yaml"))?.[1],
-    "compose.prod.yaml": /BROWSERHIVE_REF:-([^}]+)\}/.exec(read("compose.prod.yaml"))?.[1],
-  };
-
-  const values = [...new Set(Object.values(found))];
-  if (values.length !== 1 || values[0] === undefined) {
+  try {
+    return execFileSync("git", ["-C", ".upstream/browserhive", "describe", "--tags"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch (cause) {
     throw new Error(
-      `BrowserHive pin disagrees across the files that carry it:\n${JSON.stringify(found, null, 2)}`,
+      "cannot read the BrowserHive pin from .upstream/browserhive — " +
+        "run `git submodule update --init --recursive`",
+      { cause },
     );
   }
-  return values[0];
 }

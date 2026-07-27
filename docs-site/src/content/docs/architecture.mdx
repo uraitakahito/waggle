@@ -68,20 +68,22 @@ field that was wrong rather than a bare status code.
 
 ## Network layout
 
-All Compose services share the `chromium-network` bridge.
+The stack runs on Apple Container. The project name is the DNS domain, so every
+service is `<service>.waggle` — resolvable between containers **and from the
+host**, which is why waggle itself needs no container.
 
-| Service           | In-network name     | Container port     | Host port (dev)   |
-| ----------------- | ------------------- | ------------------ | ----------------- |
-| postgres          | `postgres`          | 5432               | 5432              |
-| seaweedfs         | `seaweedfs`         | 8333 / 8888 / 9333 | — (internal only) |
-| chromium-server-1 | `chromium-server-1` | 9222 (CDP)         | 9222              |
-| chromium-server-2 | `chromium-server-2` | 9222 (CDP)         | 9223              |
-| browserhive       | `browserhive`       | 8080               | 8080              |
-| waggle            | `waggle`            | —                  | —                 |
+| Service     | DNS name             | Container port     | Host port         |
+| ----------- | -------------------- | ------------------ | ----------------- |
+| postgres    | `postgres.waggle`    | 5432               | 5432              |
+| seaweedfs   | `seaweedfs.waggle`   | 8333 / 8888 / 9333 | — (internal only) |
+| chromium-1  | `chromium-1.waggle`  | 9222 (CDP)         | 9222              |
+| chromium-2  | `chromium-2.waggle`  | 9222 (CDP)         | 9223              |
+| browserhive | `browserhive.waggle` | 8080               | 8080              |
+| waggle      | — (runs on the host) | —                  | —                 |
 
-`compose.prod.yaml` drops the CDP and Postgres host ports — the workers and the
-database are internal only — and adds the one-shot `waggle-migrator` and
-`waggle-seeder` services that `scripts/prod-smoke.sh` runs in sequence.
+There is one compose file. The one-shot migrate/seed/capture jobs are not
+services: `scripts/prod-smoke.sh` invokes them with `container run --rm`,
+because container-compose has no `run` subcommand.
 
 Bucket creation is **not** a separate service. BrowserHive's SeaweedFS entrypoint
 spawns its `init-bucket.sh` alongside `weed server`, and its retry loop does the
@@ -91,6 +93,6 @@ until the S3 listener answers before starting the server, because the boot
 
 ## Upstream pinning
 
-waggle tracks a fixed BrowserHive tag across four files — see
+waggle tracks a fixed BrowserHive version through one submodule pointer — see
 [Upgrading BrowserHive](/waggle/upgrading-browserhive/), which reads the current
 value out of the repository rather than restating it.

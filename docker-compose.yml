@@ -1,0 +1,113 @@
+# waggle stack on Apple Container, driven by container-compose
+# (https://github.com/Mcrich23/Container-Compose — installed via Homebrew).
+#
+#   container-compose up -d -b     # build and start everything
+#   container-compose down         # stop; volumes (and their data) survive
+#
+# One-time machine setup:
+#   sudo container system dns create waggle
+# The project-named DNS domain switches container-compose into its real-DNS
+# mode: containers are named <service>.waggle, registered with the platform
+# DNS, and resolvable from other containers AND from the host — which is what
+# lets waggle itself run on the host against this stack.
+# Do NOT add container_name: keys — they suppress the DNS naming and drop the
+# stack back to /etc/hosts patching, which silently fails for the non-root
+# containers here (browserhive, chromium).
+#
+# Readiness is deliberately NOT handled here (container-compose has no
+# healthcheck support, and depends_on is start order only): the S3 bucket init
+# runs inside seaweedfs's entrypoint, browserhive waits on WAIT_FOR_S3, and
+# humans use the curl wait loop in the docs.
+#
+# Upstream source comes from the .upstream/browserhive submodule, not from a
+# git URL — `container build` only accepts a context directory. The submodule
+# carries browserhive, its chromium-server-docker (at the version browserhive
+# was tested against), and the SeaweedFS config, so there is exactly one
+# upstream pin: the submodule pointer.
+
+# Pin the project name. container-compose derives it from the directory name
+# otherwise, and the project name IS the DNS domain here: it must equal the
+# `container system dns create <name>` domain and the `<service>.waggle`
+# hostnames below.
+name: waggle
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    environment:
+      - POSTGRES_USER=waggle
+      - POSTGRES_PASSWORD=waggle
+      - POSTGRES_DB=waggle
+      # A named volume here is a formatted filesystem, so its mount point
+      # already contains lost+found and initdb refuses to use it
+      # ("directory exists but is not empty"). Put the cluster in a
+      # subdirectory of the mount, which is what the image documents for this
+      # case.
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    # Published so host tooling (psql, and waggle itself) can reach it either
+    # by name (postgres.waggle) or on localhost.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  seaweedfs:
+    image: docker.io/chrislusf/seaweedfs:4.23
+    # The entrypoint also creates the bucket (background retry loop) — there is
+    # no separate one-shot init container to order around.
+    entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
+    environment:
+      - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
+      - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
+      - BROWSERHIVE_S3_BUCKET=browserhive
+    volumes:
+      # Mounted straight out of the submodule rather than copied in by
+      # setup.sh: whatever browserhive ships at the pinned version is what runs,
+      # and a file added upstream cannot be missed.
+      - ./.upstream/browserhive/etc/seaweedfs:/etc/seaweedfs:ro
+      - seaweedfs-data:/data
+
+  chromium-1: &worker
+    build:
+      # The chromium version browserhive itself was tested against — it is a
+      # submodule of the submodule, so the pair moves together.
+      context: ./.upstream/browserhive/chromium-server-docker
+      dockerfile: docker/Dockerfile
+      target: production
+    mem_limit: 4gb
+  chromium-2:
+    <<: *worker
+
+  browserhive:
+    build:
+      context: ./.upstream/browserhive
+      dockerfile: Dockerfile.prod
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Name-based wiring via the platform DNS (<service>.waggle).
+      - BROWSERHIVE_BROWSER_URLS=http://chromium-1.waggle:9222,http://chromium-2.waggle:9222
+      - BROWSERHIVE_S3_ENDPOINT=http://seaweedfs.waggle:8333
+      - BROWSERHIVE_S3_REGION=us-east-1
+      - BROWSERHIVE_S3_BUCKET=browserhive
+      - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
+      - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
+      # The bundled SeaweedFS has no wildcard DNS for the bucket subdomain, so
+      # virtual-hosted-style addressing fails. Path-style makes the bundled
+      # stack work out of the box; leave it unset when pointing at AWS.
+      - BROWSERHIVE_S3_FORCE_PATH_STYLE=true
+      - LOG_LEVEL=info
+      # The entrypoint shim polls this before starting the server — depends_on
+      # is start order only, and the boot HeadBucket is fatal.
+      - WAIT_FOR_S3=http://seaweedfs.waggle:8333
+      # The platform DNS publishes AAAA records too, but there is no v6 route
+      # between the VMs — resolve v4 first or worker WS URLs land on
+      # unreachable v6 addresses.
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+    depends_on:
+      - seaweedfs
+      - chromium-1
+
+volumes:
+  postgres-data:
+  seaweedfs-data:

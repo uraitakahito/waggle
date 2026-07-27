@@ -20,8 +20,7 @@ on:
       - "src/**"
       - "docs-site/**"
       - "setup.sh"
-      - "compose.dev.yaml"
-      - "compose.prod.yaml"
+      - "docker-compose.yml"
       - "package.json"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
@@ -41,6 +40,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The BrowserHive pin shown in the docs is read from the
+          # .upstream/browserhive submodule via `git describe`.
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

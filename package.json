@@ -29,7 +29,7 @@
     "format:check": "prettier --check .",
     "openapi:generate": "openapi-ts",
     "openapi:check": "npm run openapi:generate && git diff --exit-code -- src/http/generated",
-    "openapi:sync": "curl -fsSL https://raw.githubusercontent.com/uraitakahito/browserhive/refs/tags/1.6.0/src/http/openapi.yaml -o openapi/browserhive.yaml",
+    "openapi:sync": "cp .upstream/browserhive/src/http/openapi.yaml openapi/browserhive.yaml",
     "site:dev": "npm --prefix docs-site run dev",
     "site:build": "npm --prefix docs-site run build",
     "site:preview": "npm --prefix docs-site run preview",

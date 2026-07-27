@@ -67,20 +67,22 @@ HTTP の失敗 (RFC 7807 の problem レスポンス) も転送の失敗も、�
 
 ## ネットワーク構成
 
-Compose の全サービスは `chromium-network` ブリッジを共有します。
+スタックは Apple Container 上で動きます。プロジェクト名がそのまま DNS ドメインに
+なるので、各サービスは `<service>.waggle` です。**コンテナ間からもホストからも**
+解決できるため、waggle 自身はコンテナを必要としません。
 
-| サービス          | ネットワーク内の名前 | コンテナポート     | ホストポート (dev) |
-| ----------------- | -------------------- | ------------------ | ------------------ |
-| postgres          | `postgres`           | 5432               | 5432               |
-| seaweedfs         | `seaweedfs`          | 8333 / 8888 / 9333 | — (内部のみ)       |
-| chromium-server-1 | `chromium-server-1`  | 9222 (CDP)         | 9222               |
-| chromium-server-2 | `chromium-server-2`  | 9222 (CDP)         | 9223               |
-| browserhive       | `browserhive`        | 8080               | 8080               |
-| waggle            | `waggle`             | —                  | —                  |
+| サービス    | DNS 名               | コンテナポート     | ホストポート |
+| ----------- | -------------------- | ------------------ | ------------ |
+| postgres    | `postgres.waggle`    | 5432               | 5432         |
+| seaweedfs   | `seaweedfs.waggle`   | 8333 / 8888 / 9333 | — (内部のみ) |
+| chromium-1  | `chromium-1.waggle`  | 9222 (CDP)         | 9222         |
+| chromium-2  | `chromium-2.waggle`  | 9222 (CDP)         | 9223         |
+| browserhive | `browserhive.waggle` | 8080               | 8080         |
+| waggle      | —（ホストで動く）    | —                  | —            |
 
-`compose.prod.yaml` は CDP と Postgres のホストポートを外し (ワーカーと DB は
-内部のみ)、`scripts/prod-smoke.sh` が順に実行する一発サービス
-`waggle-migrator` と `waggle-seeder` を追加します。
+compose ファイルは 1 つです。migrate / seed / キャプチャの一発ジョブはサービス
+ではなく、`scripts/prod-smoke.sh` が `container run --rm` で起動します
+（container-compose に `run` が無いため）。
 
 バケットの作成は**独立したサービスではありません**。BrowserHive の SeaweedFS
 entrypoint が `weed server` と並行して `init-bucket.sh` を起動し、そのリトライ
@@ -90,6 +92,6 @@ entrypoint が S3 リスナーの応答を待ってからサーバを起動し�
 
 ## 上流のピン留め
 
-waggle は 4 つのファイルで BrowserHive のタグを固定しています。
+waggle は submodule ポインタ 1 つで BrowserHive の版を固定しています。
 [BrowserHive の更新](/waggle/ja/upgrading-browserhive/)を参照してください
 (そのページは現在の値をリポジトリから読んでおり、ここに再掲しません)。
