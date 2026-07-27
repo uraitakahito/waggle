@@ -21,6 +21,7 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema
     .createTable("urls")
     .addColumn("id", "bigserial", (col) => col.primaryKey())
+    // #region urls-columns
     .addColumn("url", "text", (col) => col.notNull().check(sql`url <> '' AND url = btrim(url)`))
     .addColumn("url_hash", sql`bytea`, (col) =>
       col.generatedAlwaysAs(sql`digest(url, 'sha256')`).stored(),
@@ -29,6 +30,7 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn("enabled", "boolean", (col) => col.notNull().defaultTo(true))
     .addColumn("created_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn("updated_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))
+    // #endregion urls-columns
     .execute();
 
   await db.schema.createIndex("urls_url_hash_key").on("urls").column("url_hash").unique().execute();

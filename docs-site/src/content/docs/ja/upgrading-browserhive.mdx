@@ -1,0 +1,82 @@
+---
+title: BrowserHive の更新
+description: waggle を新しい BrowserHive タグへ上げる手順と、そこで起きうる問題。
+---
+
+import { browserhivePin } from "../../../lib/extract";
+
+waggle は `main` ではなく **特定の BrowserHive タグ**に固定されています。
+現在のピンは **{browserhivePin()}** です。
+
+この数値はビルド時にリポジトリから読んでいます。ピンを持つファイルは 4 つあり、
+**食い違っているとこのページのビルドが落ちます** — 以前は手で管理していて、
+「何箇所あるか」という記述自体が間違っていたことがあります。
+
+## 4 箇所
+
+| ファイル            | 形式                                  | 影響範囲                                                                |
+| ------------------- | ------------------------------------- | ----------------------------------------------------------------------- |
+| `package.json`      | `openapi:sync` 内の `refs/tags/<v>/…` | vendored の `openapi/browserhive.yaml` と生成 SDK                       |
+| `setup.sh`          | `BROWSERHIVE_VERSION="<v>"`           | `etc/seaweedfs/*` のダウンロードと、`.env` に書かれる `BROWSERHIVE_REF` |
+| `compose.dev.yaml`  | `BROWSERHIVE_REF:-<v>`                | dev スタックでビルドされるイメージ                                      |
+| `compose.prod.yaml` | `BROWSERHIVE_REF:-<v>`                | prod スタックでビルドされるイメージ                                     |
+
+## 手順
+
+```sh
+# 1. 4 箇所をまとめて上げる。
+#    編集時点で強制する仕組みは無く、docs のビルドが漏れを検出する。
+
+# 2. spec を取り直してクライアントを再生成する。
+npm run openapi:sync
+npm run openapi:generate
+npm run openapi:check     # コミット後に exit 0 になること
+
+# 3. SeaweedFS 用アセットを新しいタグから取り直す。
+./setup.sh
+
+# 4. まっさらな状態から作り直す。古いボリュームには前のバケットと DB が残っており、
+#    更新で入り込んだ順序の不具合を隠してしまう。
+docker compose -f compose.dev.yaml down -v --remove-orphans
+docker compose -f compose.dev.yaml up --build -d
+
+# 5. 端から端まで確認する。
+npm run check
+./scripts/prod-smoke.sh
+```
+
+## タグの選び方
+
+:::danger[そのタグがビルドできるか先に確認する]
+両スタックとも BrowserHive の `Dockerfile.prod` を**git URL から直接**ビルドするので、
+Dockerfile が壊れているタグを掴むとスタックごと立ちません。実際に一度起きています:
+`8a66b72` から `b772480` の間は BrowserHive の whitelist dockerignore に COPY 対象が
+1 つ足りず、その区間のタグはすべて
+`"/tsconfig.behaviors.json": not found` で失敗します。
+
+固定する前に確かめてください。
+
+```sh
+docker build -f Dockerfile.prod \
+  "https://github.com/uraitakahito/browserhive.git#<tag>" -t bh-probe:<tag> .
+```
+
+:::
+
+## waggle 側で何が変わるか
+
+API の追加だけの変更 (オプショナルなリクエストフィールドが増える等) なら、手順 2
+以外は何も要りません。再生成した型はそのままコンパイルが通り、テストも無修正で
+通ります。1.6.0 はまさにこれでした。
+
+厄介なのは**インフラの変更**です。OpenAPI の差分にはまったく現れません。
+1.5.2 → 1.6.0 の移行で実際にあった 2 例:
+
+- BrowserHive の SeaweedFS entrypoint がバケットを自分で作るようになり、waggle
+  側の一発 init コンテナが不要になった (同時に `depends_on` による順序保証も
+  意味を失い、`WAIT_FOR_S3` が置き換えた)。
+- 上流の Chromium イメージが開発用 Dockerfile を `attic/` へ退避させ、
+  両スタックが参照していたパスが消えた。
+
+ピンを上げたら、`etc/seaweedfs/*`・entrypoint・compose の契約に触れる変更が
+無いか、上流のリリースノートを読んでください。

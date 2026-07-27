@@ -1,0 +1,49 @@
+---
+title: waggle
+description: Postgres から URL を読み、BrowserHive に投げるキャプチャオーケストレータ。
+template: splash
+hero:
+  tagline: Postgres のテーブルから URL を読み、巣に「どこを撮るか」を伝えます。
+  actions:
+    - text: クイックスタート
+      link: /waggle/ja/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: BrowserHive Docs
+      link: https://uraitakahito.github.io/browserhive/ja/
+      icon: external
+---
+
+## waggle とは
+
+waggle が答えるのは **「どの URL を撮るか」** の一点だけです。Postgres の
+`urls` テーブルから `enabled` な行を読み、1 行につき 1 回
+`POST /v1/captures` を [BrowserHive](https://uraitakahito.github.io/browserhive/ja/)
+へ並列に投げます。
+
+名前はミツバチの[尻振りダンス](https://ja.wikipedia.org/wiki/8の字ダンス)から。
+仲間に蜜のありかを伝える踊りです。
+
+## waggle がやらないこと
+
+ブラウザを操作しません。スクリーンショットも撮らず、WACZ も作らず、S3 にも
+書きません。**それは全部 BrowserHive の仕事**で、このサイトでは説明しません。
+「どう撮るか」に関することは
+[BrowserHive のドキュメント](https://uraitakahito.github.io/browserhive/ja/)にあります。
+
+やり取りは **投げっぱなし (fire-and-forget)** です。BrowserHive は `202` と
+`taskId` を即座に返し、実際のキャプチャはワーカープール上で非同期に走ります。
+waggle は受理されたかどうかだけを記録して終了します。タスクの完了追跡は
+未実装で (ロードマップの Stage 1)、結果は BrowserHive のログと成果物ストアに
+現れます。
+
+## 目的別の入口
+
+| やりたいこと                 | ページ                                                  |
+| ---------------------------- | ------------------------------------------------------- |
+| はじめてキャプチャを走らせる | [クイックスタート](/waggle/ja/quickstart/)              |
+| 開発環境を用意する           | [開発環境](/waggle/ja/development-environment/)         |
+| URL のリストを管理する       | [URL ソース](/waggle/ja/url-source/)                    |
+| キャプチャの撮り方を変える   | [キャプチャオプション](/waggle/ja/capture-options/)     |
+| 新しい BrowserHive に上げる  | [BrowserHive の更新](/waggle/ja/upgrading-browserhive/) |
+| 構成を理解する               | [アーキテクチャ](/waggle/ja/architecture/)              |

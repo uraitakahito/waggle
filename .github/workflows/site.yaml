@@ -1,0 +1,70 @@
+name: site
+
+# Sync guard for the documentation site (Astro/Starlight).
+#
+# Builds docs-site/ and runs scripts/check-doc-refs.mjs so a pull request cannot
+# merge documentation that has drifted from the repository:
+#
+#   - the build injects `// #region` snippets and resolves the BrowserHive pin
+#     from the four files that carry it (docs-site/src/lib/extract.ts); a pin
+#     that disagrees fails the build outright.
+#   - check-doc-refs.mjs catches what the build does not: a page that exists in
+#     only one language, a `src/….ts` path that was renamed, and a missing
+#     `#region` marker — `astro build` logs that one but still exits 0, so it
+#     cannot be relied on as a gate.
+#
+# Note the paths filter: setup.sh and compose.*.yaml are inputs to the pin
+# check, so a PR touching them has to run this workflow.
+#
+# Security: read-only check. It never deploys and references no secrets, so
+# running on pull_request (including from forks) is safe — unlike docs.yaml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "docs-site/**"
+      - "scripts/check-doc-refs.mjs"
+      - "setup.sh"
+      - "compose.dev.yaml"
+      - "compose.prod.yaml"
+      - "package.json"
+      - ".github/workflows/site.yaml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "docs-site/**"
+      - "scripts/check-doc-refs.mjs"
+      - "setup.sh"
+      - "compose.dev.yaml"
+      - "compose.prod.yaml"
+      - "package.json"
+      - ".github/workflows/site.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Docs sync guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      # Only docs-site dependencies. The root install is not needed — the site
+      # reads waggle's source as text, it does not compile it.
+      - name: Install docs-site dependencies
+        run: npm ci --prefix docs-site
+      - name: Build site and verify doc references
+        run: npm run site:check
