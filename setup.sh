@@ -13,7 +13,7 @@ HELLO_JAVASCRIPT_BASE_URL="https://raw.githubusercontent.com/uraitakahito/hello-
 
 # Pinned BrowserHive version. The OpenAPI spec under `openapi/` and the
 # generated SDK under `src/http/generated/` are tied to this tag, and the
-# `seaweedfs` / `seaweedfs-init` services in compose mount config files
+# The `seaweedfs` service in compose mounts these config files
 # downloaded from the same tag (so all three move together on bump).
 # When bumping: update `package.json#openapi:sync` URL, this constant,
 # the `BROWSERHIVE_REF` default in compose.{dev,prod}.yaml, then run
@@ -31,7 +31,7 @@ Bootstraps waggle's dev environment by:
      uraitakahito/hello-javascript template tag (both are gitignored).
   2. Downloading etc/seaweedfs/{entrypoint.sh,init-bucket.sh,s3.template.json}
      from the pinned uraitakahito/browserhive tag (gitignored). These
-     are mounted into the seaweedfs / seaweedfs-init services by the
+     are mounted into the seaweedfs service by the
      compose stacks.
   3. Regenerating .env at the repository root based on host info:
 

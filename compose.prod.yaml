@@ -2,7 +2,7 @@
 #
 # Differences from compose.dev.yaml:
 #   - chromium-server-{1,2} use the headless production Dockerfile and
-#     do not expose noVNC ports.
+#     do not expose the CDP ports.
 #   - waggle uses the multi-stage `runtime` target (runs compiled dist/).
 #   - both browserhive and the chromium servers carry `restart: unless-stopped`.
 #   - browserhive has an HTTP healthcheck; waggle waits for it.
@@ -125,21 +125,6 @@ services:
   # One-shot init: create the configured bucket and exit. Bucket name is
   # interpolated by docker compose at parse time so the container does
   # not read env at runtime.
-  seaweedfs-init:
-    image: chrislusf/seaweedfs:4.23
-    container_name: waggle-seaweedfs-init-prod
-    depends_on:
-      seaweedfs:
-        condition: service_healthy
-    volumes:
-      - ./etc/seaweedfs:/etc/seaweedfs:ro
-    networks:
-      - chromium-network
-    entrypoint:
-      - "/etc/seaweedfs/init-bucket.sh"
-      - "${BROWSERHIVE_S3_BUCKET:-browserhive}"
-      - "seaweedfs:9333"
-
   browserhive:
     build:
       context: ${BROWSERHIVE_REPO:-https://github.com/uraitakahito/browserhive.git#${BROWSERHIVE_REF:-1.6.0}}
@@ -163,6 +148,12 @@ services:
       # BrowserHive image itself is virtual-hosted-style (AWS S3); leave
       # this unset / false when pointing at AWS.
       BROWSERHIVE_S3_FORCE_PATH_STYLE: "true"
+      # The image's entrypoint polls this URL before starting the server.
+      # depends_on only orders *starts*, and BrowserHive's boot HeadBucket is
+      # fatal — so without this the server can lose the race against SeaweedFS
+      # and exit. This is what replaced the one-shot init container: the bucket
+      # is now created by a background job inside the seaweedfs entrypoint.
+      WAIT_FOR_S3: http://seaweedfs:8333
       TZ: ${TZ:-Asia/Tokyo}
     networks:
       - chromium-network
@@ -171,8 +162,8 @@ services:
         condition: service_healthy
       chromium-server-2:
         condition: service_healthy
-      seaweedfs-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
     healthcheck:
       test:
         - "CMD-SHELL"
