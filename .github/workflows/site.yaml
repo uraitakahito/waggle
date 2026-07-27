@@ -60,6 +60,12 @@ jobs:
           # The BrowserHive pin shown in the docs is read from the
           # .upstream/browserhive submodule via `git describe`.
           submodules: recursive
+      # actions/checkout clones submodules shallow and without tag refs, so
+      # `git describe --tags` — how the docs read the BrowserHive pin — finds
+      # nothing ("No names found"). The commit is already checked out; this
+      # just brings the tag names with it.
+      - name: Fetch upstream tags
+        run: git -C .upstream/browserhive fetch --tags --force
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
