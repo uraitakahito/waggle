@@ -51,10 +51,8 @@ services:
   chromium-server-1:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
-      dockerfile: docker/production/Dockerfile
-      args:
-        user_id: ${USER_ID:-1000}
-        group_id: ${GROUP_ID:-1000}
+      dockerfile: docker/Dockerfile
+      target: production
     container_name: waggle-chromium-server-1-prod
     init: true
     networks:
@@ -70,10 +68,8 @@ services:
   chromium-server-2:
     build:
       context: ${CHROMIUM_SERVER_REPO:-https://github.com/uraitakahito/chromium-server-docker.git#${CHROMIUM_SERVER_REF:-main}}
-      dockerfile: docker/production/Dockerfile
-      args:
-        user_id: ${USER_ID:-1000}
-        group_id: ${GROUP_ID:-1000}
+      dockerfile: docker/Dockerfile
+      target: production
     container_name: waggle-chromium-server-2-prod
     init: true
     networks:
