@@ -23,11 +23,12 @@ rows of a Postgres `urls` table and submits one `POST /v1/captures` per row to a
 The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance)
 bees use to point hive-mates at nectar.
 
-## What waggle is not
+## What is not waggle's responsibility
 
-It never drives a browser. It takes no screenshots, builds no WACZ, writes
-nothing to S3 — **that is all BrowserHive's job**, and this site does not
-document it. Anything about _how_ a page is captured lives in
+Driving a browser, taking screenshots, building a WACZ, writing to S3 — every
+one of those is **BrowserHive's responsibility**. Not a gap waggle has yet to
+fill: a division of labour. This site therefore does not document them, and
+anything about _how_ a page is captured lives in
 [BrowserHive's documentation](https://uraitakahito.github.io/browserhive/).
 
 The interaction is **fire-and-forget**: BrowserHive answers `202` with a
