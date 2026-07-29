@@ -69,6 +69,7 @@ export default defineConfig({
             { label: "Development environment", slug: "development-environment" },
             { label: "URL source", slug: "url-source" },
             { label: "Capture options", slug: "capture-options" },
+            { label: "Archive ledger", slug: "archive-ledger" },
             { label: "Upgrading BrowserHive", slug: "upgrading-browserhive" },
           ],
         },

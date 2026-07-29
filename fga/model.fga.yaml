@@ -1,0 +1,128 @@
+# Assertions for fga/model.fga, run by `npm run fga:test` (OpenFGA CLI).
+#
+# These are the questions the signing endpoint asks. If any of them flips, a
+# WACZ becomes visible to someone who should not see it — so this file is the
+# regression net for the whole authorization design, not a formality.
+name: waxlens authorization model
+model_file: ./model.fga
+
+# Stored state. Note what is NOT here: user→organization membership. That
+# arrives as a contextual tuple from the caller's token, so the tests below
+# supply it the same way production does.
+tuples:
+  - user: user:alice
+    relation: owner
+    object: capture_job:job-1
+  - user: organization:acme
+    relation: parent
+    object: capture_job:job-1
+  - user: capture_job:job-1
+    relation: parent
+    object: archive:arch-1
+
+  # A second organization's archive, to prove isolation.
+  - user: organization:contoso
+    relation: parent
+    object: capture_job:job-2
+  - user: capture_job:job-2
+    relation: parent
+    object: archive:arch-2
+
+tests:
+  - name: the owner of the job can view what it produced
+    check:
+      - user: user:alice
+        object: archive:arch-1
+        assertions:
+          can_view: true
+          can_delete: true
+
+  - name: a member of the owning organization can view but not delete
+    # Membership supplied contextually, exactly as the API does from the JWT.
+    tuples:
+      - user: user:bob
+        relation: member
+        object: organization:acme
+    check:
+      - user: user:bob
+        object: archive:arch-1
+        assertions:
+          can_view: true
+          can_delete: false
+
+  - name: an unrelated user sees nothing
+    check:
+      - user: user:mallory
+        object: archive:arch-1
+        assertions:
+          can_view: false
+          can_delete: false
+
+  - name: membership in another organization grants nothing
+    tuples:
+      - user: user:carol
+        relation: member
+        object: organization:contoso
+    check:
+      - user: user:carol
+        object: archive:arch-1
+        assertions:
+          can_view: false
+      - user: user:carol
+        object: archive:arch-2
+        assertions:
+          can_view: true
+
+  - name: a direct share is visible inside its window
+    tuples:
+      - user: user:dave
+        relation: viewer
+        object: archive:arch-1
+        condition:
+          name: non_expired_grant
+          context:
+            grant_time: "2026-07-29T00:00:00Z"
+            grant_duration: 168h
+    check:
+      - user: user:dave
+        object: archive:arch-1
+        context:
+          current_time: "2026-07-30T00:00:00Z"
+        assertions:
+          can_view: true
+
+  - name: the same share has lapsed after its window
+    tuples:
+      - user: user:dave
+        relation: viewer
+        object: archive:arch-1
+        condition:
+          name: non_expired_grant
+          context:
+            grant_time: "2026-07-29T00:00:00Z"
+            grant_duration: 168h
+    check:
+      - user: user:dave
+        object: archive:arch-1
+        context:
+          current_time: "2026-08-30T00:00:00Z"
+        assertions:
+          can_view: false
+
+  - name: a shared archive still cannot be deleted by the recipient
+    tuples:
+      - user: user:dave
+        relation: viewer
+        object: archive:arch-1
+        condition:
+          name: non_expired_grant
+          context:
+            grant_time: "2026-07-29T00:00:00Z"
+            grant_duration: 168h
+    check:
+      - user: user:dave
+        object: archive:arch-1
+        context:
+          current_time: "2026-07-30T00:00:00Z"
+        assertions:
+          can_delete: false

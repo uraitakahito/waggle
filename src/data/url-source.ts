@@ -13,6 +13,13 @@ import type { Pool } from "pg";
 export interface DataEntry {
   labels: string[];
   url: string;
+  /**
+   * Which organization this capture is run for. Carried through to
+   * `capture_submissions` so a result can still be attributed later, when the
+   * only thing left is a manifest in the bucket that knows nothing about
+   * organizations.
+   */
+  orgId: string;
 }
 
 export interface UrlSourceQuery {
@@ -22,14 +29,15 @@ export interface UrlSourceQuery {
 interface UrlRow {
   url: string;
   labels: string[];
+  org_id: string;
 }
 
 export const loadUrls = async (pool: Pool, query: UrlSourceQuery): Promise<DataEntry[]> => {
   const sql =
     query.limit !== undefined
-      ? "SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC LIMIT $1"
-      : "SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC";
+      ? "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1"
+      : "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC";
   const params = query.limit !== undefined ? [query.limit] : [];
   const result = await pool.query<UrlRow>(sql, params);
-  return result.rows.map((row) => ({ url: row.url, labels: row.labels }));
+  return result.rows.map((row) => ({ url: row.url, labels: row.labels, orgId: row.org_id }));
 };

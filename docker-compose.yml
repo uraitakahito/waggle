@@ -51,6 +51,60 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  # OpenFGA's own store, deliberately NOT the `postgres` service above.
+  #
+  # Sharing one instance would invite the assumption that a tuple can be
+  # written inside waggle's application transaction — it cannot: OpenFGA is
+  # written through its HTTP API, never through SQL, so no transaction spans
+  # both. Keeping the databases apart makes that boundary visible, which is
+  # exactly why the fga_outbox table exists. (OpenFGA's own docs also want a
+  # dedicated database.)
+  openfga-db:
+    image: docker.io/library/postgres:17-alpine
+    environment:
+      - POSTGRES_USER=openfga
+      - POSTGRES_PASSWORD=openfga
+      - POSTGRES_DB=openfga
+      # Same lost+found problem as the `postgres` service — see above.
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - openfga-db-data:/var/lib/postgresql/data
+
+  openfga:
+    image: docker.io/openfga/openfga:v1.10.2
+    # The datastore is configured with FLAGS, not env vars, on purpose.
+    #
+    # container-compose injects Docker-link-style variables for every service
+    # (OPENFGA_DB_PORT_5432_TCP_ADDR and friends, from the `openfga-db` name).
+    # OpenFGA reads its config through viper with an OPENFGA_ prefix, picks
+    # those up, and misreads them: with the datastore set via env the server
+    # panicked with `storage engine '192.168.64.202' is unsupported` — the
+    # database container's IP address. Flags take precedence over env, so they
+    # sidestep the collision entirely. Do not move these back to `environment:`.
+    #
+    # `migrate` is NOT run here: this image is distroless (no /bin/sh), so an
+    # entrypoint retry loop like seaweedfs's is not possible, and
+    # container-compose has no one-shot service. Run `npm run fga:migrate`
+    # after `up` — the server starts fine against an unmigrated database and
+    # simply answers 500 (including /healthz) until it has been migrated.
+    command:
+      - "run"
+      - "--datastore-engine=postgres"
+      - "--datastore-uri=postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable"
+    environment:
+      # Default is no authentication at all. waggle reaches OpenFGA over the
+      # published loopback port, but anything else on the host could too.
+      # (/healthz stays open — only the API requires the key.)
+      - OPENFGA_AUTHN_METHOD=preshared
+      - OPENFGA_AUTHN_PRESHARED_KEYS=dev-key
+      - OPENFGA_LOG_LEVEL=info
+    ports:
+      # 8080 is taken by browserhive below, so the published port differs from
+      # the container port. WAGGLE_FGA_API_URL must use 8090.
+      - "127.0.0.1:8090:8080"
+    depends_on:
+      - openfga-db
+
   seaweedfs:
     image: docker.io/chrislusf/seaweedfs:4.23
     # The entrypoint also creates the bucket (background retry loop) — there is
@@ -60,6 +114,12 @@ services:
       - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
       - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
       - BROWSERHIVE_S3_BUCKET=browserhive
+    # Published for host-side tooling. browserhive reaches this by name, but
+    # waggle runs on the host and now reads result manifests and signs URLs
+    # against it — 8333 is the S3 API, 8888 the filer UI.
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:8888:8888"
     volumes:
       # Mounted straight out of the submodule rather than copied in by
       # setup.sh: whatever browserhive ships at the pinned version is what runs,
@@ -111,3 +171,4 @@ services:
 volumes:
   postgres-data:
   seaweedfs-data:
+  openfga-db-data:
