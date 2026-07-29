@@ -513,6 +513,101 @@ export type CaptureAcceptance = {
 };
 
 /**
+ * Outcome of a finished capture. Only `success` means artifacts were
+ * produced and uploaded.
+ *
+ */
+export type CaptureStatus = 'success' | 'failed' | 'timeout' | 'httpError';
+
+/**
+ * External location of each artifact the task produced, keyed by
+ * format. A key is absent when that format was not requested or the
+ * capture failed before producing it. Values are whatever the
+ * configured artifact store returns — `s3://<bucket>/<key>` for
+ * S3-compatible storage.
+ *
+ */
+export type CaptureArtifacts = {
+    png?: string;
+    webp?: string;
+    html?: string;
+    links?: string;
+    mhtml?: string;
+    wacz?: string;
+};
+
+/**
+ * NetworkRecorder tallies for the WACZ recording. Present only when
+ * `wacz` was requested and the recording finished.
+ *
+ */
+export type WaczStats = {
+    totalRecorded: number;
+    totalBlocked: number;
+    totalSkippedContentType: number;
+    totalTruncatedTooLarge: number;
+    totalTruncatedTaskCap: number;
+    totalFailed: number;
+    totalIncomplete: number;
+    totalBodyBytes: number;
+};
+
+/**
+ * Whether the archive actually holds the bytes a replay will ask for.
+ * `complete: false` means at least one URL was only ever seen as a
+ * `304`, so no body reached the recorder and replay cannot fetch it.
+ *
+ */
+export type WaczCompleteness = {
+    bodylessUrls: Array<string>;
+    complete: boolean;
+};
+
+/**
+ * Why a capture did not succeed. Absent on success.
+ */
+export type CaptureErrorDetails = {
+    type: ErrorType;
+    message: string;
+    httpStatusCode?: number;
+    httpStatusText?: string;
+    timeoutMs?: number;
+};
+
+/**
+ * What became of one capture task. Returned by
+ * `GET /v1/captures/{taskId}` and written verbatim as the
+ * `.result.json` manifest next to the artifacts, so a consumer can
+ * parse either source with the same code.
+ *
+ */
+export type CaptureResultReport = {
+    taskId: string;
+    /**
+     * Echoed from the request, when one was provided.
+     */
+    correlationId?: string;
+    url: string;
+    labels: Array<string>;
+    status: CaptureStatus;
+    /**
+     * HTTP status of the captured page's main response.
+     */
+    httpStatusCode?: number;
+    timestamp: string;
+    captureProcessingTimeMs: number;
+    /**
+     * How many retries the task had consumed when it finished.
+     */
+    retryCount: number;
+    workerIndex: number;
+    artifacts: CaptureArtifacts;
+    waczStats?: WaczStats;
+    completeness?: WaczCompleteness;
+    errorDetails?: CaptureErrorDetails;
+};
+
+/**
  * RFC 7807 Problem Details
  */
 export type Problem = {
@@ -626,7 +721,19 @@ export type QueueSnapshot = {
 export type StatusResponse = {
     pending: number;
     processing: number;
-    completed: number;
+    /**
+     * Tasks that finished with a capture and uploaded artifacts.
+     *
+     */
+    succeeded: number;
+    /**
+     * Tasks the server gave up on after exhausting the retry budget.
+     * Counted separately from `succeeded` because the two are not
+     * interchangeable: a client reconciling its own records needs to
+     * know which tasks will never produce an artifact.
+     *
+     */
+    failed: number;
     operationalWorkers: number;
     totalWorkers: number;
     isRunning: boolean;
@@ -690,6 +797,45 @@ export type SubmitCaptureResponses = {
 };
 
 export type SubmitCaptureResponse = SubmitCaptureResponses[keyof SubmitCaptureResponses];
+
+export type GetCaptureData = {
+    body?: never;
+    path: {
+        /**
+         * The `taskId` returned by `POST /v1/captures`.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/v1/captures/{taskId}';
+};
+
+export type GetCaptureErrors = {
+    /**
+     * No such task, or the result was evicted from the bounded cache.
+     * These are deliberately not distinguished: the server no longer
+     * holds the information needed to tell them apart.
+     *
+     */
+    404: Problem;
+};
+
+export type GetCaptureError = GetCaptureErrors[keyof GetCaptureErrors];
+
+export type GetCaptureResponses = {
+    /**
+     * The task finished and its result is still cached
+     */
+    200: CaptureResultReport;
+    /**
+     * The task is still pending or being processed. The body is empty —
+     * there is nothing to report yet.
+     *
+     */
+    202: unknown;
+};
+
+export type GetCaptureResponse = GetCaptureResponses[keyof GetCaptureResponses];
 
 export type GetStatusData = {
     body?: never;

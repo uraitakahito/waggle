@@ -343,6 +343,59 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/captures/{taskId}:
+    get:
+      operationId: getCapture
+      summary: Get the result of a submitted capture
+      description: |
+        Report what became of a single task, by the `taskId` returned from
+        `POST /v1/captures`.
+
+        Unlike `/v1/status` — which is a snapshot of the queue and says
+        nothing about tasks that already left it — this answers per task and
+        distinguishes the three states a client needs:
+
+        | Response | Meaning |
+        |----------|---------|
+        | `200` | The task finished. `status` says whether it produced artifacts. |
+        | `202` | Still queued or in flight. Poll again. |
+        | `404` | Unknown task, **or** its result aged out of the cache. |
+
+        The cache is bounded (`--result-cache-size`, default 1000, oldest
+        evicted first) and does not survive a restart. The durable record is
+        the `.result.json` manifest written next to the artifacts in the
+        configured bucket; it carries the same body as the `200` response
+        here. A client that must not miss results should read the manifest
+        rather than rely on this endpoint.
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: The `taskId` returned by `POST /v1/captures`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The task finished and its result is still cached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureResultReport"
+        "202":
+          description: |
+            The task is still pending or being processed. The body is empty —
+            there is nothing to report yet.
+        "404":
+          description: |
+            No such task, or the result was evicted from the bounded cache.
+            These are deliberately not distinguished: the server no longer
+            holds the information needed to tell them apart.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
   /v1/status:
     get:
       operationId: getStatus
@@ -910,6 +963,151 @@ components:
         correlationId:
           type: string
           description: Correlation ID echoed from the request, when provided
+    CaptureStatus:
+      type: string
+      description: |
+        Outcome of a finished capture. Only `success` means artifacts were
+        produced and uploaded.
+      enum: [success, failed, timeout, httpError]
+    CaptureArtifacts:
+      type: object
+      description: |
+        External location of each artifact the task produced, keyed by
+        format. A key is absent when that format was not requested or the
+        capture failed before producing it. Values are whatever the
+        configured artifact store returns — `s3://<bucket>/<key>` for
+        S3-compatible storage.
+      additionalProperties: false
+      properties:
+        png:
+          type: string
+        webp:
+          type: string
+        html:
+          type: string
+        links:
+          type: string
+        mhtml:
+          type: string
+        wacz:
+          type: string
+    WaczStats:
+      type: object
+      description: |
+        NetworkRecorder tallies for the WACZ recording. Present only when
+        `wacz` was requested and the recording finished.
+      required:
+        - totalRecorded
+        - totalBlocked
+        - totalSkippedContentType
+        - totalTruncatedTooLarge
+        - totalTruncatedTaskCap
+        - totalFailed
+        - totalIncomplete
+        - totalBodyBytes
+      additionalProperties: false
+      properties:
+        totalRecorded:
+          type: integer
+        totalBlocked:
+          type: integer
+        totalSkippedContentType:
+          type: integer
+        totalTruncatedTooLarge:
+          type: integer
+        totalTruncatedTaskCap:
+          type: integer
+        totalFailed:
+          type: integer
+        totalIncomplete:
+          type: integer
+        totalBodyBytes:
+          type: integer
+    WaczCompleteness:
+      type: object
+      description: |
+        Whether the archive actually holds the bytes a replay will ask for.
+        `complete: false` means at least one URL was only ever seen as a
+        `304`, so no body reached the recorder and replay cannot fetch it.
+      required: [bodylessUrls, complete]
+      additionalProperties: false
+      properties:
+        bodylessUrls:
+          type: array
+          items:
+            type: string
+        complete:
+          type: boolean
+    CaptureErrorDetails:
+      type: object
+      description: Why a capture did not succeed. Absent on success.
+      required: [type, message]
+      additionalProperties: false
+      properties:
+        type:
+          $ref: "#/components/schemas/ErrorType"
+        message:
+          type: string
+        httpStatusCode:
+          type: integer
+        httpStatusText:
+          type: string
+        timeoutMs:
+          type: integer
+    CaptureResultReport:
+      type: object
+      description: |
+        What became of one capture task. Returned by
+        `GET /v1/captures/{taskId}` and written verbatim as the
+        `.result.json` manifest next to the artifacts, so a consumer can
+        parse either source with the same code.
+      required:
+        - taskId
+        - url
+        - labels
+        - status
+        - timestamp
+        - captureProcessingTimeMs
+        - retryCount
+        - workerIndex
+        - artifacts
+      additionalProperties: false
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          description: Echoed from the request, when one was provided.
+        url:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/CaptureStatus"
+        httpStatusCode:
+          type: integer
+          description: HTTP status of the captured page's main response.
+        timestamp:
+          type: string
+          format: date-time
+        captureProcessingTimeMs:
+          type: integer
+        retryCount:
+          type: integer
+          description: How many retries the task had consumed when it finished.
+        workerIndex:
+          type: integer
+        artifacts:
+          $ref: "#/components/schemas/CaptureArtifacts"
+        waczStats:
+          $ref: "#/components/schemas/WaczStats"
+        completeness:
+          $ref: "#/components/schemas/WaczCompleteness"
+        errorDetails:
+          $ref: "#/components/schemas/CaptureErrorDetails"
     Problem:
       type: object
       description: RFC 7807 Problem Details
@@ -1123,7 +1321,8 @@ components:
       required:
         - pending
         - processing
-        - completed
+        - succeeded
+        - failed
         - operationalWorkers
         - totalWorkers
         - isRunning
@@ -1137,8 +1336,17 @@ components:
           type: integer
         processing:
           type: integer
-        completed:
+        succeeded:
           type: integer
+          description: |
+            Tasks that finished with a capture and uploaded artifacts.
+        failed:
+          type: integer
+          description: |
+            Tasks the server gave up on after exhausting the retry budget.
+            Counted separately from `succeeded` because the two are not
+            interchangeable: a client reconciling its own records needs to
+            know which tasks will never produce an artifact.
         operationalWorkers:
           type: integer
         totalWorkers:

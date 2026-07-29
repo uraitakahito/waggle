@@ -78,12 +78,18 @@ Each accepted URL produces one log line, and the run ends with a summary:
 ## 6. See what came out
 
 waggle exposes no endpoint for that; the capture is asynchronous and the result
-belongs to BrowserHive. Read its completion log:
+belongs to BrowserHive. Ask BrowserHive about the task, using a `taskId` from
+the run above:
 
 ```sh
-container logs browserhive.waggle \
-  | grep '"Task completed"' | tail -1 | jq -c '{waczLocation, completeness}'
+curl -sS http://localhost:8080/v1/captures/<taskId> \
+  | jq -c '{status, artifacts, completeness}'
 ```
+
+`202` means it is still running — ask again. The same body is also written to
+the bucket as `<taskId>_..._<labels>.result.json`, which is the one to read if
+missing a result is not acceptable. See
+[Capture results](https://uraitakahito.github.io/browserhive/capture-results/).
 
 Artifacts land in the bundled SeaweedFS bucket (`browserhive`). How they are
 named and what a WACZ contains is documented on
