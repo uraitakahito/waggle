@@ -34,9 +34,15 @@ BrowserHive answers **202** with a `taskId` as soon as the request is queued, an
 runs the capture asynchronously. waggle records which submissions were accepted
 and exits.
 
-There is **no endpoint to poll**: the API has exactly two paths,
-`POST /v1/captures` and `GET /v1/status`. A task's outcome appears in
-BrowserHive's completion log and in the artifact store — not in waggle.
+waggle itself exposes no endpoint for the outcome, but BrowserHive does:
+`GET /v1/captures/{taskId}` answers `202` while a task is still in flight and
+`200` once it finished, with the status and every artifact location. The same
+body is also written to the bucket as `{taskId}_..._{labels}.result.json`,
+which survives a BrowserHive restart. See
+[Capture results](https://uraitakahito.github.io/browserhive/capture-results/).
+
+waggle does not poll it today — it records which submissions were accepted and
+exits.
 
 Consequences worth knowing:
 

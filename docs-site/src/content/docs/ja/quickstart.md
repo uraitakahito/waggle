@@ -78,12 +78,18 @@ npm run dev -- --wacz --limit 1
 ## 6. 結果を見る
 
 waggle にそのためのエンドポイントはありません。キャプチャは非同期で、結果は
-BrowserHive のものだからです。完了ログを読みます。
+BrowserHive のものだからです。上の実行で得た `taskId` で BrowserHive に
+問い合わせます。
 
 ```sh
-container logs browserhive.waggle \
-  | grep '"Task completed"' | tail -1 | jq -c '{waczLocation, completeness}'
+curl -sS http://localhost:8080/v1/captures/<taskId> \
+  | jq -c '{status, artifacts, completeness}'
 ```
+
+`202` はまだ処理中という意味なので、もう一度問い合わせてください。同じ内容は
+`<taskId>_..._<labels>.result.json` としてバケットにも書かれます。結果を
+取りこぼしてはいけない用途ではそちらを読みます。
+[キャプチャ結果](https://uraitakahito.github.io/browserhive/ja/capture-results/)を参照。
 
 成果物は同梱の SeaweedFS バケット (`browserhive`) に置かれます。命名規則や WACZ の
 中身は

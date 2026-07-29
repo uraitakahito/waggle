@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client/index.js';
-import type { GetStatusData, GetStatusErrors, GetStatusResponses, SubmitCaptureData, SubmitCaptureErrors, SubmitCaptureResponses } from './types.gen.js';
+import type { GetCaptureData, GetCaptureErrors, GetCaptureResponses, GetStatusData, GetStatusErrors, GetStatusResponses, SubmitCaptureData, SubmitCaptureErrors, SubmitCaptureResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -55,6 +55,32 @@ export const submitCapture = <ThrowOnError extends boolean = false>(options: Opt
         ...options.headers
     }
 });
+
+/**
+ * Get the result of a submitted capture
+ *
+ * Report what became of a single task, by the `taskId` returned from
+ * `POST /v1/captures`.
+ *
+ * Unlike `/v1/status` — which is a snapshot of the queue and says
+ * nothing about tasks that already left it — this answers per task and
+ * distinguishes the three states a client needs:
+ *
+ * | Response | Meaning |
+ * |----------|---------|
+ * | `200` | The task finished. `status` says whether it produced artifacts. |
+ * | `202` | Still queued or in flight. Poll again. |
+ * | `404` | Unknown task, **or** its result aged out of the cache. |
+ *
+ * The cache is bounded (`--result-cache-size`, default 1000, oldest
+ * evicted first) and does not survive a restart. The durable record is
+ * the `.result.json` manifest written next to the artifacts in the
+ * configured bucket; it carries the same body as the `200` response
+ * here. A client that must not miss results should read the manifest
+ * rather than rely on this endpoint.
+ *
+ */
+export const getCapture = <ThrowOnError extends boolean = false>(options: Options<GetCaptureData, ThrowOnError>): RequestResult<GetCaptureResponses, GetCaptureErrors, ThrowOnError> => (options.client ?? client).get<GetCaptureResponses, GetCaptureErrors, ThrowOnError>({ url: '/v1/captures/{taskId}', ...options });
 
 /**
  * Get capture coordinator status
