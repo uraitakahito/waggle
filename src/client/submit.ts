@@ -7,6 +7,9 @@ export interface SubmitResult {
   taskId: string;
   correlationId: string;
   labels: string[];
+  /** Echoed back from the entry so the caller can attribute the task. */
+  orgId: string;
+  sourceUrl: string;
   accepted: boolean;
   error?: string;
 }
@@ -66,6 +69,8 @@ export const submitRequest = async (
         taskId: data.taskId,
         correlationId,
         labels: entry.labels,
+        orgId: entry.orgId,
+        sourceUrl: entry.url,
         accepted: true,
       };
     }
@@ -77,6 +82,8 @@ export const submitRequest = async (
       taskId: "",
       correlationId,
       labels: entry.labels,
+      orgId: entry.orgId,
+      sourceUrl: entry.url,
       accepted: false,
       error: message,
     };
@@ -86,6 +93,8 @@ export const submitRequest = async (
       taskId: "",
       correlationId,
       labels: entry.labels,
+      orgId: entry.orgId,
+      sourceUrl: entry.url,
       accepted: false,
       error: errorMessage,
     };

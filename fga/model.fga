@@ -1,0 +1,47 @@
+model
+  schema 1.1
+
+type user
+
+type organization
+  relations
+    define member: [user]
+    define admin: [user]
+
+# One submitted capture. The unit of ownership: a job knows who asked for it
+# and which organization it was run for, and every artifact it produced
+# inherits from it.
+type capture_job
+  relations
+    define owner: [user]
+    define parent: [organization]
+    # Re-exposes the owning organization's membership one level down.
+    # `from` traverses exactly one edge, so `archive` cannot reach
+    # `organization#member` through `archive#parent` (a capture_job) on its
+    # own — this relation is the missing hop.
+    define member: member from parent
+
+# One WACZ produced by a capture_job.
+type archive
+  relations
+    define parent: [capture_job]
+    # Direct share with someone outside the owning organization. Only ever
+    # granted with an expiry — see the condition below.
+    define viewer: [user with non_expired_grant, organization#member]
+
+    # The effective permission the signing endpoint checks. Membership is not
+    # stored as a tuple: it arrives as a contextual tuple built from the
+    # caller's token, so joining or leaving an organization never has to be
+    # synchronised into OpenFGA.
+    define can_view: viewer or owner from parent or member from parent
+
+    # Deleting is the owner's alone. A member of the organization can look but
+    # not destroy.
+    define can_delete: owner from parent
+
+# Time-boxed grant. `current_time` is supplied on every Check, so a share
+# lapses on its own — nothing has to sweep expired tuples, and a sweeper
+# falling behind cannot leave a hole open.
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}

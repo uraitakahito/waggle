@@ -5,9 +5,14 @@ import { loadUrls } from "../src/data/url-source.js";
 interface UrlRow extends QueryResultRow {
   url: string;
   labels: string[];
+  org_id: string;
 }
 
-const makeRow = (url: string, labels: string[]): UrlRow => ({ url, labels });
+const makeRow = (url: string, labels: string[], orgId = "acme"): UrlRow => ({
+  url,
+  labels,
+  org_id: orgId,
+});
 
 const makePool = (rows: UrlRow[]) => {
   const result: QueryResult<UrlRow> = {
@@ -30,8 +35,8 @@ describe("loadUrls", () => {
     ]);
     const entries = await loadUrls(pool, {});
     expect(entries).toEqual([
-      { url: "https://www.apple.com/", labels: ["Apple"] },
-      { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"] },
+      { url: "https://www.apple.com/", labels: ["Apple"], orgId: "acme" },
+      { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"], orgId: "acme" },
     ]);
   });
 
@@ -39,7 +44,7 @@ describe("loadUrls", () => {
     const { pool, query } = makePool([]);
     await loadUrls(pool, {});
     expect(query).toHaveBeenCalledWith(
-      "SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC",
+      "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC",
       [],
     );
   });
@@ -48,7 +53,7 @@ describe("loadUrls", () => {
     const { pool, query } = makePool([]);
     await loadUrls(pool, { limit: 3 });
     expect(query).toHaveBeenCalledWith(
-      "SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC LIMIT $1",
+      "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1",
       [3],
     );
   });

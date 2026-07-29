@@ -39,6 +39,13 @@ export interface ClientOptions {
   operationDelayMs?: number;
   behaviors?: string[];
   siteBehaviors?: boolean;
+  /**
+   * Wait for each accepted capture and add the successful ones to the ledger.
+   * `--no-collect` submits and exits, leaving `waggle fga:reconcile` to pick
+   * the results up from the durable manifests later.
+   */
+  collect?: boolean;
+  captureTimeoutMs?: number;
 }
 
 const parsePositiveInt = (value: string): number => {
@@ -81,7 +88,7 @@ export const createProgram = (): Command => {
   program
     .name("waggle")
     .description(
-      "BrowserHive capture client — submit capture requests sourced from Postgres (fire-and-forget)",
+      "BrowserHive capture client — submit capture requests sourced from Postgres, then record the results in the archive ledger",
     )
     .addOption(
       new Option(
@@ -143,6 +150,15 @@ export const createProgram = (): Command => {
       "--no-site-behaviors",
       "Skip the site-specific behaviors BrowserHive bundles (they are considered on every capture by default)",
     )
+    .option(
+      "--no-collect",
+      "Submit and exit without waiting for results (fga:reconcile picks them up from the bucket later)",
+    )
+    .option(
+      "--capture-timeout-ms <ms>",
+      "How long to wait for one capture before leaving it to fga:reconcile",
+      parsePositiveInt,
+    )
     .addOption(
       new Option(
         "--tls-ca-cert <path>",
@@ -178,10 +194,14 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     operationDelayMs?: number;
     behaviors?: string[];
     siteBehaviors?: boolean;
+    collect?: boolean;
+    captureTimeoutMs?: number;
   }>();
 
   return {
     databaseUrl: opts.databaseUrl,
+    ...(opts.collect !== undefined && { collect: opts.collect }),
+    ...(opts.captureTimeoutMs !== undefined && { captureTimeoutMs: opts.captureTimeoutMs }),
     ...(opts.server !== undefined && { server: opts.server }),
     ...(opts.png !== undefined && { png: opts.png }),
     ...(opts.webp !== undefined && { webp: opts.webp }),

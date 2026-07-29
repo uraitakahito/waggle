@@ -11,7 +11,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "waggle": "dist/cli.js"
+    "waggle": "dist/cli.js",
+    "waggle-ledger": "dist/fga/cli.js",
+    "waggle-api": "dist/api/server.js"
   },
   "files": [
     "dist",
@@ -34,6 +36,12 @@
     "site:build": "npm --prefix docs-site run build",
     "site:preview": "npm --prefix docs-site run preview",
     "site:check": "npm run site:build && node scripts/check-doc-refs.mjs",
+    "fga:migrate": "node scripts/fga-migrate.mjs",
+    "fga:test": "fga model test --tests fga/model.fga.yaml",
+    "fga:deploy": "node scripts/fga-deploy.mjs",
+    "fga:drain": "npm run build && node dist/fga/cli.js drain",
+    "fga:reconcile": "npm run build && node dist/fga/cli.js reconcile",
+    "api": "npm run build && node dist/api/server.js",
     "db:migrate": "npm run build && node dist/db/migrate.js up",
     "db:migrate:down": "npm run build && node dist/db/migrate.js down",
     "db:seed": "npm run build && node dist/db/seed.js up",
@@ -41,8 +49,12 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1095.0",
+    "@aws-sdk/s3-request-presigner": "^3.1095.0",
     "@hey-api/client-fetch": "^0.13.1",
+    "@openfga/sdk": "^0.9.6",
     "commander": "^12.1.0",
+    "fastify": "^5.10.0",
     "kysely": "^0.28.17",
     "pg": "^8.20.0",
     "pino": "^9.5.0"
@@ -61,6 +73,7 @@
   },
   "overrides": {
     "js-yaml": "^4.3.0",
-    "brace-expansion": "^5.0.8"
+    "brace-expansion": "^5.0.8",
+    "axios": "^1.18.1"
   }
 }
