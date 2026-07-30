@@ -19,6 +19,11 @@ on:
     paths:
       - "src/**"
       - "docs-site/**"
+      # The site renders the pinned BrowserHive version straight out of this
+      # submodule (browserhivePin() shells out to `git describe --tags`), so a
+      # bump changes a published page while touching nothing else. Without this
+      # line the docs keep serving the previous version indefinitely.
+      - ".upstream/browserhive"
       - "setup.sh"
       - "docker-compose.yml"
       - "package.json"
