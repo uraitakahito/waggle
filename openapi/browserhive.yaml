@@ -620,7 +620,7 @@ components:
         operationDelayMs:
           type: integer
           minimum: 0
-          maximum: 5000
+          maximum: 10000
           description: |
             Delay (ms) inserted before each browser operation for this capture,
             so a headless run can be watched live over the DevTools screencast
@@ -634,8 +634,44 @@ components:
 
             When omitted, the server-side default applies (configured via
             `--operation-delay-ms` / `BROWSERHIVE_OPERATION_DELAY_MS`; the
-            built-in default is `0`, i.e. no delay). A large value eats into
-            `--task-timeout` (130s by default) and can fail the task.
+            built-in default is `0`, i.e. no delay).
+
+            The ceiling comes from the task budget and nothing else. A capture
+            issues roughly a dozen paced operations, so about 10s apiece is what
+            still fits inside `--task-timeout` (130s by default); past that the
+            task is failed for taking too long, which is correct. The
+            per-operation budgets do not charge for this delay at all — they
+            bound the operation, not the pause in front of it.
+        trace:
+          type: boolean
+          description: |
+            Log what BrowserHive did to the **captured page's** console for this
+            capture, so a run can be read in `chrome://inspect` next to the live
+            screencast. Every line is prefixed `[bh]`; filter the DevTools
+            console on that to separate them from the page's own output, and
+            turn on `Preserve log` so a client-side redirect does not clear them.
+
+            Three groups are emitted:
+
+            - `[bh] interventions` — what was done *to* the page: viewport and
+              device pixel ratio, User-Agent and Accept-Language overrides,
+              hidden scrollbars, and any banners removed.
+            - `[bh] decisions` — what the behaviors *chose*: whether
+              `autoscroll` reached the bottom or ran out of steps, and how many
+              of `autofetch`'s candidates the browser would never have
+              requested on its own.
+            - `[bh] archive` — which responses did **not** reach the archive,
+              and why: blocked by pattern, body omitted (content-type / too
+              large / task cap), or bodyless (seen only as `304`). Emitted only
+              when `wacz` was requested, since there is no recorder otherwise.
+
+            Deliberately excludes timings: the Network and Performance panels
+            already show those. What is here is what DevTools cannot know.
+
+            Pairs well with `operationDelayMs`, which slows the run down enough
+            to watch. Off by default; the server-wide default is set with
+            `--capture-trace` / `BROWSERHIVE_CAPTURE_TRACE`. Writes to the page
+            only — artifacts and the `behaviorReport` are unaffected.
         archiveMode:
           type: string
           enum: [single-pass, multipass]
