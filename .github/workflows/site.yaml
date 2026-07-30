@@ -27,6 +27,10 @@ on:
       - "src/**"
       - "docs-site/**"
       - "scripts/check-doc-refs.mjs"
+      # The pinned BrowserHive version is read out of this submodule at build
+      # time, so a bump can break the build (an off-tag pin fails `git
+      # describe`) while touching nothing else the filter lists.
+      - ".upstream/browserhive"
       - "setup.sh"
       - "docker-compose.yml"
       - "package.json"
@@ -36,6 +40,10 @@ on:
       - "src/**"
       - "docs-site/**"
       - "scripts/check-doc-refs.mjs"
+      # The pinned BrowserHive version is read out of this submodule at build
+      # time, so a bump can break the build (an off-tag pin fails `git
+      # describe`) while touching nothing else the filter lists.
+      - ".upstream/browserhive"
       - "setup.sh"
       - "docker-compose.yml"
       - "package.json"
