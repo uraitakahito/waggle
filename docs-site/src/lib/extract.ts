@@ -41,17 +41,25 @@ export function sourceRegion(file: string, region: string): string {
  * nothing left to disagree: this reads the one pointer and reports it.
  *
  * `git describe --tags` gives the tag name when the submodule sits exactly on a
- * tag (`1.6.0`) and a descriptor when it does not (`1.6.0-3-gabc1234`) — so the
- * docs show, accurately, that the pin has drifted off a release. An
+ * tag (`v1.6.0`) and a descriptor when it does not (`v1.6.0-3-gabc1234`) — so
+ * the docs show, accurately, that the pin has drifted off a release. An
  * uninitialised submodule throws, which fails the build.
+ *
+ * The leading `v` is dropped. What `describe` hands back is a tag NAME, and the
+ * page asks which VERSION is pinned — Semantic Versioning is explicit that
+ * `v1.6.0` is the former and `1.6.0` the latter. Stripping one character keeps
+ * the two apart, and keeps this page reading the same either side of the day
+ * BrowserHive started prefixing its tags.
  */
 export function browserhivePin(): string {
   try {
-    return execFileSync("git", ["-C", ".upstream/browserhive", "describe", "--tags"], {
+    const described = execFileSync("git", ["-C", ".upstream/browserhive", "describe", "--tags"], {
       cwd: ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
+    // Anchored, so only a prefix goes — a drift descriptor keeps its own text.
+    return described.replace(/^v/, "");
   } catch (cause) {
     throw new Error(
       "cannot read the BrowserHive pin from .upstream/browserhive — " +
