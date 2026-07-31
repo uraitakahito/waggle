@@ -61,25 +61,53 @@ export default defineConfig({
         root: { label: "English", lang: "en" },
         ja: { label: "日本語", lang: "ja" },
       },
+      // 各項目に `ja` 訳を持たせる。Starlight はページを翻訳するが
+      // ナビゲーションは翻訳しないので、これが無いと日本語ドキュメントは
+      // 翻訳済みのページが英語の目次にぶら下がった状態になる。
       sidebar: [
-        { label: "Quickstart", slug: "quickstart" },
+        { label: "Quickstart", translations: { ja: "クイックスタート" }, slug: "quickstart" },
         {
           label: "Guides",
+          translations: { ja: "ガイド" },
           items: [
-            { label: "Development environment", slug: "development-environment" },
-            { label: "URL source", slug: "url-source" },
-            { label: "Capture options", slug: "capture-options" },
-            { label: "Archive ledger", slug: "archive-ledger" },
-            { label: "Upgrading BrowserHive", slug: "upgrading-browserhive" },
+            {
+              label: "Development environment",
+              translations: { ja: "開発環境" },
+              slug: "development-environment",
+            },
+            { label: "URL source", translations: { ja: "URL ソース" }, slug: "url-source" },
+            {
+              label: "Capture options",
+              translations: { ja: "キャプチャオプション" },
+              slug: "capture-options",
+            },
+            {
+              label: "Archive ledger",
+              translations: { ja: "アーカイブ台帳" },
+              slug: "archive-ledger",
+            },
+            {
+              label: "Upgrading BrowserHive",
+              translations: { ja: "BrowserHive の更新" },
+              slug: "upgrading-browserhive",
+            },
           ],
         },
         {
           label: "For developers",
-          items: [{ label: "Architecture", slug: "architecture" }],
+          translations: { ja: "開発者向け" },
+          items: [
+            { label: "Architecture", translations: { ja: "アーキテクチャ" }, slug: "architecture" },
+          ],
         },
         // 一次情報への出口。waggle が説明しないことは全部この先にある。
-        { label: "BrowserHive Docs ↗", link: `${BH}/` },
-        { label: "BrowserHive API ↗", link: `${BH}/api/` },
+        // ラベルはサイトの名前なので訳さない。
+        { label: "BrowserHive Docs ↗", translations: { ja: "BrowserHive Docs ↗" }, link: `${BH}/` },
+        {
+          label: "BrowserHive API ↗",
+          translations: { ja: "BrowserHive API ↗" },
+          link: `${BH}/api/`,
+        },
       ],
     }),
   ],
