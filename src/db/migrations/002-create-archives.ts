@@ -30,10 +30,12 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn("object_key", "text", (col) => col.notNull())
     .addColumn("source_url", "text", (col) => col.notNull())
     .addColumn("labels", sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'::text[]`))
-    // CaptureResultReport.completeness.complete. `false` means at least one URL
-    // was only ever seen as a 304, so replay cannot fetch its body — worth
-    // knowing before handing the archive to waxlens. NULL when the capture
-    // predates the field or did not record one.
+    // CaptureResultReport.completeness.complete. `false` means the archive is
+    // missing at least one body — either a URL only ever seen as a 304, or one
+    // BrowserHive dropped for exceeding a size cap (v1.11.0 added the second
+    // case; before it, capped captures reported `true`). Worth knowing before
+    // handing the archive to waxlens. NULL when the capture predates the field
+    // or did not record one.
     .addColumn("wacz_complete", "boolean")
     // BrowserHive's own timestamp for the capture, not waggle's receive time:
     // the reconciler may register a row hours later and must not reorder history.
