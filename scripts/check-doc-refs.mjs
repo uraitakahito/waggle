@@ -1,10 +1,10 @@
 /**
  * Verify that the Starlight docs in docs-site/ stay honest.
  *
- * `astro build` catches one kind of drift on its own: a BrowserHive pin that
- * disagrees across the four files carrying it throws out of
- * docs-site/src/lib/extract.ts while rendering, and that does fail the build.
- * Everything else is this script's job:
+ * `astro build` catches one kind of drift on its own: an uninitialised
+ * .upstream/browserhive submodule throws out of docs-site/src/lib/extract.ts
+ * while rendering, and because the pin is read from an .mdx page that does
+ * fail the build. Everything else is this script's job:
  *
  *   1. Missing translations — an English page with no Japanese counterpart, or
  *      a Japanese page with no English original. Starlight silently falls back
@@ -13,7 +13,11 @@
  *   2. Broken `#region` snippets. Do not assume the build covers these: a
  *      missing region logs "Failed to parse Markdown file" and `astro build`
  *      still reports every page built and exits 0 (measured, twice, on a cold
- *      cache). Left to the build, a doc would ship an empty code fence.
+ *      cache). Left to the build, a doc would ship an empty code fence. The
+ *      reason it differs from the pin above is the extension — a throw from an
+ *      .mdx page surfaces through vite, one from a .md page is caught by
+ *      Starlight's docs loader — and every page carrying a `#region` reference
+ *      here is .md.
  *   3. Dead source paths — a `src/….ts` written in a code span that has since
  *      been renamed or deleted.
  *
@@ -85,7 +89,15 @@ for (const file of walk(DOCS).filter((f) => isPage(f))) {
       continue;
     }
     const source = readFileSync(abs, "utf8");
-    const re = new RegExp(String.raw`//\s*#region\s+${region}\b[\s\S]*?//\s*#endregion`);
+    // The name must run to the end of its line, matching extract.ts. `\b` is
+    // not enough: a word boundary sits between `s` and `-`, so asking for
+    // `urls-columns` would also match a marker reading `#region
+    // urls-columns-v2` — and this check is the only thing that exits non-zero,
+    // so a permissive pattern here means the drift ships.
+    const re = new RegExp(
+      String.raw`//\s*#region\s+${region}[ \t]*\r?$[\s\S]*?//\s*#endregion`,
+      "m",
+    );
     if (!re.test(source)) {
       problems.push(
         `${rel}: region "${region}" not found in ${path} (renamed, removed, or missing #endregion?)`,
