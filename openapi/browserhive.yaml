@@ -1063,12 +1063,21 @@ components:
       type: object
       description: |
         Whether the archive actually holds the bytes a replay will ask for.
-        `complete: false` means at least one URL was only ever seen as a
-        `304`, so no body reached the recorder and replay cannot fetch it.
-      required: [bodylessUrls, complete]
+        `complete: false` means at least one body is missing, for one of two
+        reasons kept in separate lists: `bodylessUrls` (the URL was only ever
+        seen as a `304`, so no body reached the recorder) and `truncatedUrls`
+        (the body arrived but was dropped for exceeding a size cap — raising
+        `--wacz-max-response-bytes` or `--wacz-max-task-bytes` would keep it).
+        Bodies omitted by the content-type filter are not counted: that filter
+        is the caller's own configuration.
+      required: [bodylessUrls, truncatedUrls, complete]
       additionalProperties: false
       properties:
         bodylessUrls:
+          type: array
+          items:
+            type: string
+        truncatedUrls:
           type: array
           items:
             type: string
