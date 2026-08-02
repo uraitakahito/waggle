@@ -94,6 +94,25 @@ export type CaptureRequest = {
      */
     acceptLanguage?: string;
     /**
+     * Ask the configured signing service for a wacz-auth signature and
+     * store it as `datapackage-digest.json` inside the WACZ.
+     *
+     * Requires `captureFormats.wacz: true` — asking to sign a capture
+     * that produces no WACZ is rejected with 400, because there would be
+     * nowhere to put the signature.
+     *
+     * A capture whose signature fails still succeeds. The WACZ is written
+     * without one and the outcome is reported in the result's `signature`
+     * field, so an unsigned archive is never silently indistinguishable
+     * from a signed one.
+     *
+     * Not part of `captureFormats`: a signature is a property of the WACZ,
+     * not a separate artefact, and every field in `captureFormats` is
+     * required of every client.
+     *
+     */
+    signing?: boolean;
+    /**
      * Run banner / modal dismissal before capturing. Removes known
      * consent-management-platform overlays and large fixed/sticky
      * overlays via heuristic.
@@ -226,6 +245,35 @@ export type CaptureRequest = {
      *
      */
     trace?: boolean;
+    /**
+     * How this capture treats the browser's HTTP cache. Omitted → the
+     * server default (`--cache` / `BROWSERHIVE_CACHE`), which ships as
+     * `clear`.
+     *
+     * - `default` — use it. A URL captured before can come back
+     * `304 Not Modified`, which carries no body: there is nothing to
+     * archive and the capture fails with `status: httpError`.
+     * - `bypass` — do not read the cache for this capture. Entries left
+     * by earlier captures stay where they are.
+     * - `clear` — empty the whole cache first, then capture without
+     * reading it. Nothing an earlier capture stored can influence this
+     * one.
+     *
+     * Neither `bypass` nor `clear` stops this capture from *filling* the
+     * cache: Chromium keeps storing responses while cache reads are
+     * disabled. So a `default` capture of the same URL afterwards can
+     * still see a `304` in both cases — which is why the default is to
+     * clear on every capture rather than once.
+     *
+     * Ships as `clear` because this is an archiver: an archive assembled
+     * from cache hits is not an archive.
+     *
+     * `archiveMode: multipass` never reads the cache regardless of this
+     * setting — a later pass served from what an earlier pass stored
+     * would defeat the sweep.
+     *
+     */
+    cache?: 'default' | 'bypass' | 'clear';
     /**
      * How many passes the capture makes over the page.
      *
@@ -590,6 +638,32 @@ export type WaczStats = {
 };
 
 /**
+ * What became of the wacz-auth signature. Present only when the capture
+ * asked to be signed — its absence means nobody requested one, which is a
+ * different statement from `signed: false`.
+ *
+ */
+export type WaczSignature = {
+    /**
+     * Whether `datapackage-digest.json` was written into the WACZ.
+     *
+     * `false` is not a failed capture. A signature is optional, so a
+     * signing service that is down, slow, or refusing a token leaves an
+     * archive that is still worth keeping.
+     *
+     */
+    signed: boolean;
+    /**
+     * Why there is no signature. Set when `signed` is false.
+     */
+    reason?: string;
+    /**
+     * The domain the signing certificate is issued for. Set when `signed` is true.
+     */
+    domain?: string;
+};
+
+/**
  * Whether the archive actually holds the bytes a replay will ask for.
  * `complete: false` means at least one body is missing, for one of two
  * reasons kept in separate lists: `bodylessUrls` (the URL was only ever
@@ -647,6 +721,7 @@ export type CaptureResultReport = {
     artifacts: CaptureArtifacts;
     waczStats?: WaczStats;
     completeness?: WaczCompleteness;
+    signature?: WaczSignature;
     errorDetails?: CaptureErrorDetails;
 };
 

@@ -23,10 +23,30 @@ const read = (rel: string): string => readFileSync(resolve(ROOT, rel), "utf8");
 
 /**
  * `// #region <name>` … `// #endregion` で囲まれた実ソース片を返す。
- * region が見つからなければ throw = astro build が落ちる。
+ *
+ * region 名は行末までで区切る。`\b` では不十分で、`s` と `-` の間には単語境界が
+ * あるため、`archives-columns` を要求すると `#region archives-columns-v2` にも
+ * マッチして黙って別の断片を配信してしまう。この仕組みが防ぐはずの乖離そのもの。
+ *
+ * region が見つからなければ throw するが、**それでビルドが落ちるとは限らない**。
+ * 拡張子次第で、実測（Starlight 0.41.4 / Astro 7.1.3）した結果はこう:
+ *
+ *   .mdx — @astrojs/mdx の vite プラグイン経由で throw が表面化し exit 1。
+ *          下の browserhivePin() は .mdx から呼ばれているので、こちらは本当に
+ *          ビルドが落ちる。
+ *   .md  — Starlight の docs loader が捕まえて
+ *          `[ERROR] [starlight-docs-loader] Error rendering …` と記録するだけで
+ *          exit 0 になる。
+ *
+ * region を参照しているページ（capture-options / url-source と各 ja）は全部
+ * .md なので、region に関してはビルドはガードにならない。非ゼロで落ちるのは
+ * scripts/check-doc-refs.mjs の方で、CI が site:check を走らせるのはこのため。
  */
 export function sourceRegion(file: string, region: string): string {
-  const re = new RegExp(String.raw`//\s*#region\s+${region}\b([\s\S]*?)//\s*#endregion`);
+  const re = new RegExp(
+    String.raw`//\s*#region\s+${region}[ \t]*\r?$([\s\S]*?)//\s*#endregion`,
+    "m",
+  );
   const m = re.exec(read(file));
   if (!m) throw new Error(`region '${region}' not found in ${file}`);
   return m[1].replace(/^\n/, "").replace(/\s+$/, "");
