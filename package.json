@@ -49,26 +49,26 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1095.0",
-    "@aws-sdk/s3-request-presigner": "^3.1095.0",
+    "@aws-sdk/client-s3": "^3.1107.0",
+    "@aws-sdk/s3-request-presigner": "^3.1107.0",
     "@hey-api/client-fetch": "^0.13.1",
     "@openfga/sdk": "^0.9.6",
-    "commander": "^12.1.0",
-    "fastify": "^5.10.0",
-    "kysely": "^0.28.17",
-    "pg": "^8.20.0",
-    "pino": "^9.5.0"
+    "commander": "^15.0.0",
+    "fastify": "^5.11.3",
+    "kysely": "^0.29.5",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.15.0",
+    "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
-    "@types/node": "^24.0.0",
-    "@types/pg": "^8.20.0",
-    "eslint": "^9.15.0",
-    "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.4.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.18.0",
+    "@types/node": "^26.1.2",
+    "@types/pg": "^8.21.0",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
   },
   "overrides": {

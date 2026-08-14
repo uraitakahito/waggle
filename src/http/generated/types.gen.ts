@@ -101,10 +101,22 @@ export type CaptureRequest = {
      * that produces no WACZ is rejected with 400, because there would be
      * nowhere to put the signature.
      *
-     * A capture whose signature fails still succeeds. The WACZ is written
-     * without one and the outcome is reported in the result's `signature`
-     * field, so an unsigned archive is never silently indistinguishable
-     * from a signed one.
+     * Asking for a signature makes it a requirement: a capture that
+     * cannot be signed fails (`status: "failed"`, `errorDetails.type:
+     * "signing"`) and no artefact is stored. There is no "sign if you
+     * can" — an archive whose value depends on whether a service happened
+     * to be up is one nobody can rely on without checking.
+     *
+     * Omit the field, or set it to `false`, to store without a signature.
+     * That capture succeeds exactly as it did before, and its result
+     * carries no `signature` field at all — "nobody asked" and "we asked
+     * and it failed" are different answers.
+     *
+     * What this field is allowed to say depends on the server's
+     * `--signing-policy`. Under `forbidden` a request asking for a
+     * signature is rejected with 400; under `required` every capture is
+     * signed and `signing: false` is rejected with 400; under `optional`
+     * (the default) the choice is this field's.
      *
      * Not part of `captureFormats`: a signature is a property of the WACZ,
      * not a separate artefact, and every field in `captureFormats` is
@@ -645,11 +657,17 @@ export type WaczStats = {
  */
 export type WaczSignature = {
     /**
-     * Whether `datapackage-digest.json` was written into the WACZ.
+     * Whether a verified `datapackage-digest.json` was written into the
+     * WACZ.
      *
-     * `false` is not a failed capture. A signature is optional, so a
-     * signing service that is down, slow, or refusing a token leaves an
-     * archive that is still worth keeping.
+     * `true` means the signature was checked, not merely received: it
+     * covers the `datapackage.json` this capture produced, under a
+     * certificate issued for `domain`. See `checks` for how far that went
+     * — a deployment with no trust anchor configured verifies less than
+     * one with.
+     *
+     * `false` here is always a failed capture, because this field is only
+     * present when a signature was required.
      *
      */
     signed: boolean;
@@ -661,7 +679,27 @@ export type WaczSignature = {
      * The domain the signing certificate is issued for. Set when `signed` is true.
      */
     domain?: string;
+    /**
+     * Which verification checks ran, and how each came out.
+     *
+     * `skipped` is not a pass. The chain and timestamp checks each need a
+     * trust anchor to check against, and a deployment that configured
+     * neither still gets `signature` and `domain` — those need no
+     * configuration and are what catch a service signing the wrong bytes.
+     *
+     */
+    checks?: {
+        signature: CheckOutcome;
+        chain: CheckOutcome;
+        domain: CheckOutcome;
+        timestamp: CheckOutcome;
+    };
 };
+
+/**
+ * `ok` ran and passed, `failed` ran and did not, `skipped` never ran.
+ */
+export type CheckOutcome = 'ok' | 'failed' | 'skipped';
 
 /**
  * Whether the archive actually holds the bytes a replay will ask for.
@@ -738,7 +776,7 @@ export type Problem = {
 
 export type WorkerHealth = 'ready' | 'busy' | 'error' | 'disconnected';
 
-export type ErrorType = 'http' | 'timeout' | 'connection' | 'internal';
+export type ErrorType = 'http' | 'timeout' | 'connection' | 'signing' | 'internal';
 
 export type ErrorTaskInfo = {
     taskId: string;

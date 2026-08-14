@@ -14,8 +14,13 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FileMigrationProvider, Migrator } from "kysely";
-import type { Kysely, MigrationInfo, MigrationResultSet } from "kysely";
+// kysely 0.29 で migration API は `kysely/migration` のサブパスへ移った。root は
+// 「import from 'kysely/migration' instead」という KyselyTypeError のスタブを
+// 置いているので、古い import は Migrator が構築できず MigrationInfo からも
+// プロパティが消えたように見える。
+import { FileMigrationProvider, Migrator } from "kysely/migration";
+import type { MigrationInfo, MigrationResultSet } from "kysely/migration";
+import type { Kysely } from "kysely";
 import type { Logger } from "../logger.js";
 
 export interface KyselyMigratorConfig {
