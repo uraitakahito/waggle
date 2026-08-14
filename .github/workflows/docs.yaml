@@ -44,7 +44,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The BrowserHive pin shown in the docs is read from the
           # .upstream/browserhive submodule via `git describe`.
@@ -55,7 +55,7 @@ jobs:
       # just brings the tag names with it.
       - name: Fetch upstream tags
         run: git -C .upstream/browserhive fetch --tags --force
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -66,7 +66,7 @@ jobs:
       # a half-translated page or a stale snippet, and the check is seconds.
       - name: Build and verify
         run: npm run site:check
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/dist
 
@@ -82,4 +82,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
