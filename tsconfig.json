@@ -50,10 +50,14 @@
     // (type-only imports must use `import type`). Required for safe ESM
     // emit under `module: NodeNext`.
     "verbatimModuleSyntax": true,
-    // Off intentionally (BrowserHive has it on). With `verbatimModuleSyntax`
-    // there is no synthetic default-import rewrite, and Node's NodeNext
-    // CJS-interop handles default imports of CJS modules at runtime.
-    "esModuleInterop": false,
+    // On, matching BrowserHive. This used to be off: with `verbatimModuleSyntax`
+    // there is no synthetic default-import rewrite, so it changed nothing we
+    // emit, and Node's NodeNext CJS-interop already handles default imports of
+    // CJS modules at runtime. TypeScript 6.0 deprecates `false` and 7.0 drops
+    // the option entirely, so the choice is going away — turning it on now
+    // rather than silencing the deprecation. Verified emit-neutral: dist/ is
+    // byte-identical to the same build with the flag off.
+    "esModuleInterop": true,
     // Ensure each file can be safely transpiled in isolation (forward-compat
     // with single-file transpilers such as esbuild / SWC)
     "isolatedModules": true,
