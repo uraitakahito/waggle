@@ -1,7 +1,9 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
-import remarkCodeRegion from "./src/plugins/remark-code-region";
+import { satteri } from "@astrojs/markdown-satteri";
+import mdastCodeRegion from "./src/plugins/mdast-code-region";
+import hastRebaseLinks from "./src/plugins/hast-rebase-links";
 
 const BASE = "/waggle";
 
@@ -10,43 +12,6 @@ const BASE = "/waggle";
 // root-relative にすると Starlight が日本語ページ上で /ja/ を注入し 404 になる。
 const BH = "https://uraitakahito.github.io/browserhive";
 
-// Rehype プラグイン: markdown 本文内の絶対ローカルリンク (/page/) に base を付与し、
-// /ja/ 配下のページからのリンクには /ja ロケールも注入する。Starlight のサイドバーや
-// ナビは slug 経由で base/locale-aware だが、MD/MDX 本文に書かれた [text](/page/) は
-// 素通しになるため rehype 段で補正する。アセット(最終セグメントに拡張子を持つ href)は
-// base のみ付与する。既に base-aware なリンクは二重付与しない。
-function rehypeRebaseLinks() {
-  return function (tree: any, file: any): void {
-    const path: string = file?.path ?? file?.history?.[0] ?? "";
-    const inJa = /[\\/]docs[\\/]ja[\\/]/.test(path);
-    const walk = (node: any): void => {
-      if (
-        node.type === "element" &&
-        node.tagName === "a" &&
-        typeof node.properties?.href === "string"
-      ) {
-        const href: string = node.properties.href;
-        if (
-          href.startsWith("/") &&
-          !href.startsWith("//") &&
-          !href.startsWith(BASE + "/") &&
-          href !== BASE
-        ) {
-          const lastSeg = href.split(/[?#]/)[0].split("/").pop() ?? "";
-          const isAsset = lastSeg.includes(".");
-          const locale =
-            inJa && !isAsset && !href.startsWith("/ja/") && href !== "/ja" ? "/ja" : "";
-          node.properties.href = BASE + locale + href;
-        }
-      }
-      for (const child of node.children ?? []) walk(child);
-    };
-    walk(tree);
-  };
-}
-
-// waggle ドキュメントサイト。英語(root)と日本語(/ja/)を最初から対で持つ。
-// 対訳の欠落は scripts/check-doc-refs.mjs が検出する。
 export default defineConfig({
   site: "https://uraitakahito.github.io",
   base: BASE,
@@ -113,7 +78,11 @@ export default defineConfig({
   ],
   // ```ts file="src/…#region" を実ソースに差し替える(コード片を live 化)
   markdown: {
-    remarkPlugins: [remarkCodeRegion],
-    rehypePlugins: [rehypeRebaseLinks],
+    // Astro 7.2 の既定プロセッサ。legacy の remarkPlugins/rehypePlugins は
+    // @astrojs/markdown-remark(unified) を要求するので、そちらは使わない。
+    processor: satteri({
+      mdastPlugins: [mdastCodeRegion],
+      hastPlugins: [hastRebaseLinks],
+    }),
   },
 });
