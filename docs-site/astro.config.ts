@@ -12,7 +12,6 @@ const BASE = "/waggle";
 // root-relative にすると Starlight が日本語ページ上で /ja/ を注入し 404 になる。
 const BH = "https://uraitakahito.github.io/browserhive";
 
-
 export default defineConfig({
   site: "https://uraitakahito.github.io",
   base: BASE,

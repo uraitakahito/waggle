@@ -19,7 +19,12 @@ export default defineHastPlugin({
       const href = node.properties?.href;
       if (typeof href !== "string") return;
       // Leave links that already carry the base alone.
-      if (!href.startsWith("/") || href.startsWith("//") || href.startsWith(`${BASE}/`) || href === BASE) {
+      if (
+        !href.startsWith("/") ||
+        href.startsWith("//") ||
+        href.startsWith(`${BASE}/`) ||
+        href === BASE
+      ) {
         return;
       }
       // 日本語ページかどうかはファイルパスで判定する。unified の `file.path` に
