@@ -17,7 +17,8 @@ Higher-level capture client and orchestrator built on top of [BrowserHive](https
 | [Upgrading BrowserHive](https://uraitakahito.github.io/waggle/upgrading-browserhive/)     | The pinned tag and how to move it              |
 | [Architecture](https://uraitakahito.github.io/waggle/architecture/)                       | How the pieces fit together                    |
 
-Anything about _how_ a page is captured — behaviors, WACZ, storage, workers — belongs to BrowserHive and is documented at <https://uraitakahito.github.io/browserhive/>.
+Anything about _how_ a page is captured — behaviors, WACZ, storage, workers — belongs to BrowserHive. Its docs are not published on the web — build them from
+the BrowserHive checkout with `pnpm run docs:local`.
 
 ## Quickstart
 

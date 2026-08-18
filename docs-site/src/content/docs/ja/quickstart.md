@@ -89,11 +89,11 @@ curl -sS http://localhost:8080/v1/captures/<taskId> \
 `202` はまだ処理中という意味なので、もう一度問い合わせてください。同じ内容は
 `<taskId>_..._<labels>.result.json` としてバケットにも書かれます。結果を
 取りこぼしてはいけない用途ではそちらを読みます。
-[キャプチャ結果](https://uraitakahito.github.io/browserhive/ja/capture-results/)を参照。
+キャプチャ結果を参照。
 
 成果物は同梱の SeaweedFS バケット (`browserhive`) に置かれます。命名規則や WACZ の
 中身は
-[BrowserHive のストレージのページ](https://uraitakahito.github.io/browserhive/ja/storage/)にあります。
+BrowserHive のストレージのページにあります。
 
 ## 次に読むもの
 

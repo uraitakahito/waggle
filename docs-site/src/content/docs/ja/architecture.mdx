@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 waggle の担当範囲が小さいのは意図的です。`POST /v1/captures` から右側はすべて
-BrowserHive のもので、[あちらのドキュメント](https://uraitakahito.github.io/browserhive/ja/)に
+BrowserHive のもので、あちらのドキュメントに
 書かれています。
 
 ## 投げっぱなし (fire-and-forget)
@@ -38,7 +38,7 @@ waggle 自身に結末を返すエンドポイントはありませんが、Brow
 成否と全成果物の場所が入っています。同じ内容は
 `{taskId}_..._{labels}.result.json` としてバケットにも書かれ、こちらは
 BrowserHive の再起動にも耐えます。
-[キャプチャ結果](https://uraitakahito.github.io/browserhive/ja/capture-results/)を参照。
+キャプチャ結果を参照。
 
 現在の waggle はこれをポーリングしません ― 受理されたかどうかを記録して終了します。
 

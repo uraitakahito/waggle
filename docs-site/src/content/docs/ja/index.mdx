@@ -9,16 +9,13 @@ hero:
       link: /waggle/ja/quickstart/
       icon: right-arrow
       variant: primary
-    - text: BrowserHive Docs
-      link: https://uraitakahito.github.io/browserhive/ja/
-      icon: external
 ---
 
 ## waggle とは
 
 waggle が答えるのは **「どの URL を撮るか」** の一点だけです。Postgres の
 `urls` テーブルから `enabled` な行を読み、1 行につき 1 回
-`POST /v1/captures` を [BrowserHive](https://uraitakahito.github.io/browserhive/ja/)
+`POST /v1/captures` を BrowserHive
 へ並列に投げます。
 
 名前はミツバチの[尻振りダンス](https://en.wikipedia.org/wiki/Waggle_dance)から。
@@ -30,7 +27,8 @@ waggle が答えるのは **「どの URL を撮るか」** の一点だけで�
 **すべて BrowserHive の責務**です。waggle が肩代わりしないという話ではなく、
 そもそも担当が分かれています。したがってこのサイトでも説明しません。
 「どう撮るか」に関することは
-[BrowserHive のドキュメント](https://uraitakahito.github.io/browserhive/ja/)にあります。
+BrowserHive のドキュメントにあります。あちらの docs は web に公開されていないので、
+BrowserHive のチェックアウトで `pnpm run docs:local` を実行して読んでください。
 
 やり取りは **投げっぱなし (fire-and-forget)** です。BrowserHive は `202` と
 `taskId` を即座に返し、実際のキャプチャはワーカープール上で非同期に走ります。
