@@ -89,11 +89,11 @@ curl -sS http://localhost:8080/v1/captures/<taskId> \
 `202` means it is still running — ask again. The same body is also written to
 the bucket as `<taskId>_..._<labels>.result.json`, which is the one to read if
 missing a result is not acceptable. See
-[Capture results](https://uraitakahito.github.io/browserhive/capture-results/).
+Capture results.
 
 Artifacts land in the bundled SeaweedFS bucket (`browserhive`). How they are
 named and what a WACZ contains is documented on
-[BrowserHive's storage page](https://uraitakahito.github.io/browserhive/storage/).
+BrowserHive's storage page.
 
 ## Next
 

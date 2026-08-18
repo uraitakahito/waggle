@@ -28,13 +28,13 @@ At least one must be true, or BrowserHive rejects the request.
 
 | Flag                                      | `CaptureRequest` field    | What it means                                                                                           |
 | ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `--device-scale-factor <n>`               | `deviceScaleFactor`       | [BrowserHive: Behaviors](https://uraitakahito.github.io/browserhive/behaviors/)                         |
-| `--archive-mode <single-pass\|multipass>` | `archiveMode`             | [BrowserHive: Behaviors](https://uraitakahito.github.io/browserhive/behaviors/)                         |
-| `--operation-delay-ms <ms>`               | `operationDelayMs`        | [BrowserHive: Environment variables](https://uraitakahito.github.io/browserhive/environment-variables/) |
-| `--behaviors <ids>`                       | `behaviors.builtins`      | [BrowserHive: Behaviors](https://uraitakahito.github.io/browserhive/behaviors/)                         |
-| `--no-site-behaviors`                     | `behaviors.siteBehaviors` | [BrowserHive: Behaviors](https://uraitakahito.github.io/browserhive/behaviors/)                         |
-| `--dismiss-banners`                       | `dismissBanners`          | [BrowserHive: Behaviors](https://uraitakahito.github.io/browserhive/behaviors/)                         |
-| `--accept-language <bcp47>`               | `acceptLanguage`          | [BrowserHive: Quickstart](https://uraitakahito.github.io/browserhive/quickstart/)                       |
+| `--device-scale-factor <n>`               | `deviceScaleFactor`       | BrowserHive: Behaviors                         |
+| `--archive-mode <single-pass\|multipass>` | `archiveMode`             | BrowserHive: Behaviors                         |
+| `--operation-delay-ms <ms>`               | `operationDelayMs`        | BrowserHive: Environment variables |
+| `--behaviors <ids>`                       | `behaviors.builtins`      | BrowserHive: Behaviors                         |
+| `--no-site-behaviors`                     | `behaviors.siteBehaviors` | BrowserHive: Behaviors                         |
+| `--dismiss-banners`                       | `dismissBanners`          | BrowserHive: Behaviors                         |
+| `--accept-language <bcp47>`               | `acceptLanguage`          | BrowserHive: Quickstart                       |
 
 ## Omitted means "server default"
 
