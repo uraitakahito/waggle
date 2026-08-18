@@ -26,15 +26,15 @@ At least one must be true, or BrowserHive rejects the request.
 
 ## Capture behaviour
 
-| Flag                                      | `CaptureRequest` field    | What it means                                                                                           |
-| ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `--device-scale-factor <n>`               | `deviceScaleFactor`       | BrowserHive: Behaviors                         |
-| `--archive-mode <single-pass\|multipass>` | `archiveMode`             | BrowserHive: Behaviors                         |
+| Flag                                      | `CaptureRequest` field    | What it means                      |
+| ----------------------------------------- | ------------------------- | ---------------------------------- |
+| `--device-scale-factor <n>`               | `deviceScaleFactor`       | BrowserHive: Behaviors             |
+| `--archive-mode <single-pass\|multipass>` | `archiveMode`             | BrowserHive: Behaviors             |
 | `--operation-delay-ms <ms>`               | `operationDelayMs`        | BrowserHive: Environment variables |
-| `--behaviors <ids>`                       | `behaviors.builtins`      | BrowserHive: Behaviors                         |
-| `--no-site-behaviors`                     | `behaviors.siteBehaviors` | BrowserHive: Behaviors                         |
-| `--dismiss-banners`                       | `dismissBanners`          | BrowserHive: Behaviors                         |
-| `--accept-language <bcp47>`               | `acceptLanguage`          | BrowserHive: Quickstart                       |
+| `--behaviors <ids>`                       | `behaviors.builtins`      | BrowserHive: Behaviors             |
+| `--no-site-behaviors`                     | `behaviors.siteBehaviors` | BrowserHive: Behaviors             |
+| `--dismiss-banners`                       | `dismissBanners`          | BrowserHive: Behaviors             |
+| `--accept-language <bcp47>`               | `acceptLanguage`          | BrowserHive: Quickstart            |
 
 ## Omitted means "server default"
 

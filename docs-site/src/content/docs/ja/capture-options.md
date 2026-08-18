@@ -26,15 +26,15 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 
 ## キャプチャの挙動
 
-| フラグ                                    | `CaptureRequest` のフィールド | 意味                                                                                          |
-| ----------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------- |
-| `--device-scale-factor <n>`               | `deviceScaleFactor`           | BrowserHive: Behaviors            |
-| `--archive-mode <single-pass\|multipass>` | `archiveMode`                 | BrowserHive: Behaviors            |
-| `--operation-delay-ms <ms>`               | `operationDelayMs`            | BrowserHive: 環境変数 |
-| `--behaviors <ids>`                       | `behaviors.builtins`          | BrowserHive: Behaviors            |
-| `--no-site-behaviors`                     | `behaviors.siteBehaviors`     | BrowserHive: Behaviors            |
-| `--dismiss-banners`                       | `dismissBanners`              | BrowserHive: Behaviors            |
-| `--accept-language <bcp47>`               | `acceptLanguage`              | BrowserHive: クイックスタート    |
+| フラグ                                    | `CaptureRequest` のフィールド | 意味                          |
+| ----------------------------------------- | ----------------------------- | ----------------------------- |
+| `--device-scale-factor <n>`               | `deviceScaleFactor`           | BrowserHive: Behaviors        |
+| `--archive-mode <single-pass\|multipass>` | `archiveMode`                 | BrowserHive: Behaviors        |
+| `--operation-delay-ms <ms>`               | `operationDelayMs`            | BrowserHive: 環境変数         |
+| `--behaviors <ids>`                       | `behaviors.builtins`          | BrowserHive: Behaviors        |
+| `--no-site-behaviors`                     | `behaviors.siteBehaviors`     | BrowserHive: Behaviors        |
+| `--dismiss-banners`                       | `dismissBanners`              | BrowserHive: Behaviors        |
+| `--accept-language <bcp47>`               | `acceptLanguage`              | BrowserHive: クイックスタート |
 
 ## 指定しなければ「サーバ既定」
 
