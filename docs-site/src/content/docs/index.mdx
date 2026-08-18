@@ -9,16 +9,13 @@ hero:
       link: /waggle/quickstart/
       icon: right-arrow
       variant: primary
-    - text: BrowserHive Docs
-      link: https://uraitakahito.github.io/browserhive/
-      icon: external
 ---
 
 ## What waggle is
 
 waggle answers one question: **which URLs get captured**. It selects the enabled
 rows of a Postgres `urls` table and submits one `POST /v1/captures` per row to a
-[BrowserHive](https://uraitakahito.github.io/browserhive/) server, in parallel.
+BrowserHive server, in parallel.
 
 The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance)
 bees use to point hive-mates at nectar.
@@ -29,7 +26,8 @@ Driving a browser, taking screenshots, building a WACZ, writing to S3 — every
 one of those is **BrowserHive's responsibility**. Not a gap waggle has yet to
 fill: a division of labour. This site therefore does not document them, and
 anything about _how_ a page is captured lives in
-[BrowserHive's documentation](https://uraitakahito.github.io/browserhive/).
+BrowserHive's documentation. Those docs are not published on the web — build
+them from the BrowserHive checkout with `pnpm run docs:local`.
 
 The interaction is **fire-and-forget**: BrowserHive answers `202` with a
 `taskId` and runs the capture asynchronously on its worker pool. waggle records

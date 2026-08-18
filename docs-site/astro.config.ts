@@ -10,7 +10,6 @@ const BASE = "/waggle";
 // BrowserHive の公開ドキュメント。waggle は BrowserHive の挙動を一切書かず、
 // ここへリンクする(DRY: 一次情報は向こうにしかない)。絶対 URL なのは意図的で、
 // root-relative にすると Starlight が日本語ページ上で /ja/ を注入し 404 になる。
-const BH = "https://uraitakahito.github.io/browserhive";
 
 export default defineConfig({
   site: "https://uraitakahito.github.io",
@@ -65,14 +64,9 @@ export default defineConfig({
             { label: "Architecture", translations: { ja: "アーキテクチャ" }, slug: "architecture" },
           ],
         },
-        // 一次情報への出口。waggle が説明しないことは全部この先にある。
-        // ラベルはサイトの名前なので訳さない。
-        { label: "BrowserHive Docs ↗", translations: { ja: "BrowserHive Docs ↗" }, link: `${BH}/` },
-        {
-          label: "BrowserHive API ↗",
-          translations: { ja: "BrowserHive API ↗" },
-          link: `${BH}/api/`,
-        },
+        // 一次情報 (BrowserHive の docs) への出口はここに置いていた。あちらが
+        // web への公開をやめ、チェックアウトで `pnpm run docs:local` を実行して
+        // 読む形になったので、リンクとして張れるものが無くなった。
       ],
     }),
   ],

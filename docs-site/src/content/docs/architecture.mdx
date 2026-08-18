@@ -25,8 +25,8 @@ flowchart LR
 ```
 
 waggle's half of that picture is small on purpose. Everything to the right of
-`POST /v1/captures` is BrowserHive's, and is documented
-[there](https://uraitakahito.github.io/browserhive/).
+`POST /v1/captures` is BrowserHive's, and is documented in that project's own
+docs.
 
 ## Fire-and-forget
 
@@ -39,7 +39,7 @@ waggle itself exposes no endpoint for the outcome, but BrowserHive does:
 `200` once it finished, with the status and every artifact location. The same
 body is also written to the bucket as `{taskId}_..._{labels}.result.json`,
 which survives a BrowserHive restart. See
-[Capture results](https://uraitakahito.github.io/browserhive/capture-results/).
+Capture results.
 
 waggle does not poll it today — it records which submissions were accepted and
 exits.
