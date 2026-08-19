@@ -21,7 +21,7 @@
  */
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import type { CaptureResultReport } from "../http/generated/index.js";
+import { readManifest } from "./manifest.js";
 import type { Database } from "../db/database.js";
 import { getJsonObject, listAllKeys } from "./s3.js";
 import { registerArchive } from "./register.js";
@@ -91,8 +91,8 @@ export const reconcile = async (
       continue;
     }
 
-    const report = await getJsonObject<CaptureResultReport>(s3, bucket, key);
-    if (!report) {
+    const raw = await getJsonObject<unknown>(s3, bucket, key);
+    if (raw === undefined) {
       // Listed a moment ago, gone now. Nothing to do but note it.
       log.warn({ key }, "Manifest disappeared between listing and read");
       result.skipped += 1;
@@ -100,7 +100,7 @@ export const reconcile = async (
     }
 
     // Idempotent: the unique index absorbs a race with the polling path.
-    const registered = await registerArchive(db, report, submission.orgId);
+    const registered = await registerArchive(db, readManifest(raw), submission.orgId);
     if (registered.archiveId !== undefined) result.registered += 1;
     else result.skipped += 1;
   }

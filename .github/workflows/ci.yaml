@@ -66,8 +66,8 @@ jobs:
           node dist/db/migrate.js down
           node dist/db/migrate.js up
 
-      - name: OpenAPI drift check
-        run: npm run openapi:check
+      - name: Proto drift check
+        run: npm run proto:check
 
       # `fga model test` runs the model in-process — no OpenFGA server needed.
       # These assertions are what stands between a one-line edit to

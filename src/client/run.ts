@@ -10,7 +10,7 @@ import { waitForCapture } from "../archive/watch.js";
 import { registerArchive } from "../archive/register.js";
 import { logger } from "../logger.js";
 import type { CaptureSettings } from "../types/capture.js";
-import { configureClient } from "./openapi-client.js";
+import { closeClient, configureClient } from "../rpc/client.js";
 import { submitRequest, type SubmitResult } from "./submit.js";
 
 /**
@@ -145,37 +145,44 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
 
   logClientConfig(options);
-  configureClient(options.server);
+  configureClient(options.server, options.tlsCaCert);
 
-  const pool = createPool(options.databaseUrl);
-  let entries: DataEntry[];
+  // The gRPC channel keeps the event loop alive on its own, unlike the
+  // fetch client this replaced. Without this the process finishes its work
+  // and then hangs.
   try {
-    entries = await loadUrls(pool, {
-      ...(options.limit !== undefined && { limit: options.limit }),
-    });
-  } finally {
-    await pool.end();
-  }
-
-  logger.info({ count: entries.length }, "Loaded entries from database");
-
-  if (entries.length === 0) {
-    logger.info("No entries to process");
-    return;
-  }
-
-  const results = await submitAll(entries, getCaptureSettings(options));
-
-  const db = createKyselyClient(options.databaseUrl);
-  try {
-    await recordSubmissions(db, results);
-    if (options.collect !== false) {
-      await collectResults(db, results, options);
+    const pool = createPool(options.databaseUrl);
+    let entries: DataEntry[];
+    try {
+      entries = await loadUrls(pool, {
+        ...(options.limit !== undefined && { limit: options.limit }),
+      });
+    } finally {
+      await pool.end();
     }
-  } finally {
-    await db.destroy();
-  }
 
-  const totalDuration = Date.now() - startTime;
-  logSummary(results, totalDuration);
+    logger.info({ count: entries.length }, "Loaded entries from database");
+
+    if (entries.length === 0) {
+      logger.info("No entries to process");
+      return;
+    }
+
+    const results = await submitAll(entries, getCaptureSettings(options));
+
+    const db = createKyselyClient(options.databaseUrl);
+    try {
+      await recordSubmissions(db, results);
+      if (options.collect !== false) {
+        await collectResults(db, results, options);
+      }
+    } finally {
+      await db.destroy();
+    }
+
+    const totalDuration = Date.now() - startTime;
+    logSummary(results, totalDuration);
+  } finally {
+    closeClient();
+  }
 };

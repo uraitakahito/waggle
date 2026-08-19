@@ -1,24 +1,30 @@
 /**
  * Wait for a submitted capture to finish, and report what became of it.
  *
- * `POST /v1/captures` is fire-and-forget, so the outcome has to be collected
- * afterwards. BrowserHive answers per task:
+ * `SubmitCapture` is fire-and-forget, so the outcome has to be collected
+ * afterwards. `GetCapture` answers per task:
  *
- *   202 — still queued or in flight, retries included
- *   200 — finished; `status` says whether artifacts exist
- *   404 — unknown, **or** evicted from the bounded result cache
+ *   PENDING / PROCESSING — still queued or in flight, retries included
+ *   DONE                 — finished; `report.status` says whether artifacts exist
+ *   NOT_FOUND (error)    — unknown, **or** evicted from the bounded result cache
  *
- * The 404 is why this is not a two-line loop. A result ages out after
+ * The NOT_FOUND is why this is not a two-line loop. A result ages out after
  * `--result-cache-size` newer ones (default 1000) and does not survive a
  * BrowserHive restart, so a long wait can end with the answer gone. The same
  * body is durable in the bucket as `.result.json`, so that is where this falls
  * back to — and if even that is missing, the manifest reconciler will pick the
  * task up later from a listing. Nothing is silently dropped.
+ *
+ * Anything that is not NOT_FOUND — an unreachable server, a broken channel —
+ * propagates. Those are not "this capture is missing", and swallowing them
+ * here would turn an outage into a run that quietly archives nothing.
  */
-import { getCapture } from "../http/generated/index.js";
-import type { CaptureResultReport } from "../http/generated/index.js";
+import { status } from "@grpc/grpc-js";
+import { getCapture, isStatus } from "../rpc/calls.js";
+import { CaptureState, type CaptureResultReport } from "../rpc/generated/browserhive/v1/capture.js";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { getJsonObject } from "./s3.js";
+import { readManifest } from "./manifest.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "capture-watch" });
@@ -55,6 +61,22 @@ export const manifestKey = (
   return `${parts.join("_")}.result.json`;
 };
 
+const readManifestFallback = async (
+  taskId: string,
+  correlationId: string | undefined,
+  labels: string[],
+  options: WatchOptions,
+): Promise<CaptureResultReport | undefined> => {
+  const key = manifestKey(taskId, correlationId, labels);
+  const raw = await getJsonObject<unknown>(options.s3, options.bucket, key);
+  if (raw !== undefined) {
+    log.debug({ taskId, key }, "result was evicted from the cache; read the manifest");
+    return readManifest(raw);
+  }
+  log.warn({ taskId, key }, "no cached result and no manifest; leaving it to reconcile");
+  return undefined;
+};
+
 export const waitForCapture = async (
   taskId: string,
   correlationId: string | undefined,
@@ -65,31 +87,30 @@ export const waitForCapture = async (
   const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   for (;;) {
-    const { data, response } = await getCapture({ path: { taskId } });
-    // `GetCaptureResponses` unions the 200 body with the empty 202 one, so the
-    // generated `data` widens to `{}`. The status is what disambiguates them.
-    const status = response?.status;
-
-    if (status === 200 && data) return data as CaptureResultReport;
-
-    if (status === 202) {
-      if (Date.now() > deadline) {
-        log.warn({ taskId }, "capture still running past the deadline; leaving it to reconcile");
-        return undefined;
-      }
-      await sleep(pollIntervalMs);
-      continue;
+    let state: CaptureState;
+    let report: CaptureResultReport | undefined;
+    try {
+      ({ state, report } = await getCapture({ taskId }));
+    } catch (caught) {
+      if (!isStatus(caught, status.NOT_FOUND)) throw caught;
+      // Unknown task, or the result was evicted. Both look identical from
+      // here, so ask the durable copy.
+      return readManifestFallback(taskId, correlationId, labels, options);
     }
 
-    // 404: unknown task, or the result was evicted. Both look identical from
-    // here, so ask the durable copy.
-    const key = manifestKey(taskId, correlationId, labels);
-    const manifest = await getJsonObject<CaptureResultReport>(options.s3, options.bucket, key);
-    if (manifest) {
-      log.debug({ taskId, key }, "result was evicted from the cache; read the manifest");
-      return manifest;
+    // DONE without a report would mean the server contradicted itself. Treat
+    // it as the same missing answer rather than returning an empty report
+    // that later reads as a failed capture.
+    if (state === CaptureState.CAPTURE_STATE_DONE) {
+      if (report !== undefined) return report;
+      log.warn({ taskId }, "capture reported DONE with no report; falling back to the manifest");
+      return readManifestFallback(taskId, correlationId, labels, options);
     }
-    log.warn({ taskId, key, status }, "no cached result and no manifest; leaving it to reconcile");
-    return undefined;
+
+    if (Date.now() > deadline) {
+      log.warn({ taskId }, "capture still running past the deadline; leaving it to reconcile");
+      return undefined;
+    }
+    await sleep(pollIntervalMs);
   }
 };

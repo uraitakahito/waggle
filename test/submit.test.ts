@@ -1,6 +1,24 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { status } from "@grpc/grpc-js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { submitRequest } from "../src/client/submit.js";
+import {
+  ArchiveMode,
+  CacheMode,
+  type SubmitCaptureRequest,
+  type SubmitCaptureResponse,
+} from "../src/rpc/generated/browserhive/v1/capture.js";
 import type { CaptureFormats, CaptureSettings } from "../src/types/capture.js";
+
+/**
+ * The stub is mocked at the client, not at `calls.ts`, so the promise wrapper
+ * and its callback plumbing are under test too.
+ */
+type Callback = (error: unknown, response?: SubmitCaptureResponse) => void;
+const submitCapture = vi.fn<(request: SubmitCaptureRequest, callback: Callback) => void>();
+
+vi.mock("../src/rpc/client.js", () => ({
+  getClient: () => ({ submitCapture }),
+}));
 
 const allFormats: CaptureFormats = {
   png: true,
@@ -18,32 +36,32 @@ const settings = (extra: Partial<CaptureSettings> = {}): CaptureSettings => ({
   ...extra,
 });
 
-const acceptanceResponse = (taskId: string): Response =>
-  new Response(JSON.stringify({ accepted: true, taskId }), {
-    status: 202,
-    headers: { "Content-Type": "application/json" },
+const accepts = (taskId: string): void => {
+  submitCapture.mockImplementationOnce((_request, callback) => {
+    callback(null, { accepted: true, taskId });
   });
+};
 
-const problemResponse = (status: number, title: string, detail?: string): Response =>
-  new Response(JSON.stringify({ status, title, ...(detail !== undefined && { detail }) }), {
-    status,
-    headers: { "Content-Type": "application/problem+json" },
+/** What grpc-js hands a callback: an Error whose `message` carries the status. */
+const rejects = (code: status, name: string, details: string): void => {
+  submitCapture.mockImplementationOnce((_request, callback) => {
+    callback(Object.assign(new Error(`${String(code)} ${name}: ${details}`), { code, details }));
   });
+};
+
+const sentRequest = (): SubmitCaptureRequest => {
+  const request = submitCapture.mock.calls[0]?.[0];
+  if (request === undefined) throw new Error("submitCapture was not called");
+  return request;
+};
 
 describe("submitRequest", () => {
-  let fetchSpy: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+    submitCapture.mockReset();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("returns accepted=true when the server replies 202", async () => {
-    fetchSpy.mockResolvedValueOnce(acceptanceResponse("task-1"));
+  it("returns accepted=true when the call succeeds", async () => {
+    accepts("task-1");
 
     const result = await submitRequest(
       { url: "https://example.com/", labels: ["L"], orgId: "acme" },
@@ -57,8 +75,10 @@ describe("submitRequest", () => {
     expect(result.correlationId).toMatch(/^[a-f0-9]{8}$/);
   });
 
-  it("prefers Problem.detail over Problem.title for the error message", async () => {
-    fetchSpy.mockResolvedValueOnce(problemResponse(400, "Validation failure", "url is empty"));
+  // `message` would read "3 INVALID_ARGUMENT: url is empty". The status is
+  // already logged next to this, so the bare detail is what belongs here.
+  it("prefers ServiceError.details over the status-prefixed message", async () => {
+    rejects(status.INVALID_ARGUMENT, "INVALID_ARGUMENT", "url is empty");
 
     const result = await submitRequest(
       { url: "https://example.com/", labels: [], orgId: "acme" },
@@ -70,8 +90,17 @@ describe("submitRequest", () => {
     expect(result.taskId).toBe("");
   });
 
-  it("falls back to Problem.title when detail is missing", async () => {
-    fetchSpy.mockResolvedValueOnce(problemResponse(503, "No operational workers"));
+  // grpc-js leaves `details` empty for failures it raises itself rather than
+  // ones the server described, so the message has to still come through.
+  it("falls back to the message when details is empty", async () => {
+    submitCapture.mockImplementationOnce((_request, callback) => {
+      callback(
+        Object.assign(new Error("14 UNAVAILABLE: No connection established"), {
+          code: status.UNAVAILABLE,
+          details: "",
+        }),
+      );
+    });
 
     const result = await submitRequest(
       { url: "https://example.com/", labels: [], orgId: "acme" },
@@ -79,11 +108,13 @@ describe("submitRequest", () => {
     );
 
     expect(result.accepted).toBe(false);
-    expect(result.error).toBe("No operational workers");
+    expect(result.error).toBe("14 UNAVAILABLE: No connection established");
   });
 
-  it("captures network failures as accepted=false with the error message", async () => {
-    fetchSpy.mockRejectedValueOnce(new Error("ECONNREFUSED 127.0.0.1:8080"));
+  it("captures an unreachable server as accepted=false with the error message", async () => {
+    submitCapture.mockImplementationOnce((_request, callback) => {
+      callback(new Error("ECONNREFUSED 127.0.0.1:50051"));
+    });
 
     const result = await submitRequest(
       { url: "https://example.com/", labels: ["X"], orgId: "acme" },
@@ -91,43 +122,36 @@ describe("submitRequest", () => {
     );
 
     expect(result.accepted).toBe(false);
-    expect(result.error).toBe("ECONNREFUSED 127.0.0.1:8080");
+    expect(result.error).toBe("ECONNREFUSED 127.0.0.1:50051");
     expect(result.taskId).toBe("");
     expect(result.labels).toEqual(["X"]);
   });
 
-  it("includes acceptLanguage in the request body when provided", async () => {
-    fetchSpy.mockResolvedValueOnce(acceptanceResponse("task-2"));
+  it("includes acceptLanguage in the request when provided", async () => {
+    accepts("task-2");
 
     await submitRequest(
       { url: "https://example.com/", labels: ["L"], orgId: "acme" },
       settings({ acceptLanguage: "ja-JP,ja;q=0.9,en;q=0.8" }),
     );
 
-    const request = fetchSpy.mock.calls[0]?.[0] as Request;
-    expect(request).toBeInstanceOf(Request);
-    const body = await request.text();
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    expect(parsed["acceptLanguage"]).toBe("ja-JP,ja;q=0.9,en;q=0.8");
+    expect(sentRequest().acceptLanguage).toBe("ja-JP,ja;q=0.9,en;q=0.8");
   });
 
   it("omits acceptLanguage when not provided", async () => {
-    fetchSpy.mockResolvedValueOnce(acceptanceResponse("task-3"));
+    accepts("task-3");
 
     await submitRequest(
       { url: "https://example.com/", labels: [], orgId: "acme" },
       settings({ dismissBanners: true }),
     );
 
-    const request = fetchSpy.mock.calls[0]?.[0] as Request;
-    const body = await request.text();
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    expect(parsed).not.toHaveProperty("acceptLanguage");
-    expect(parsed["dismissBanners"]).toBe(true);
+    expect(sentRequest()).not.toHaveProperty("acceptLanguage");
+    expect(sentRequest().dismissBannersEnabled).toBe(true);
   });
 
-  it("sends the 1.6.0 capture knobs when set", async () => {
-    fetchSpy.mockResolvedValueOnce(acceptanceResponse("task-4"));
+  it("sends the capture knobs when set", async () => {
+    accepts("task-4");
 
     await submitRequest(
       { url: "https://example.com/", labels: [], orgId: "acme" },
@@ -139,26 +163,33 @@ describe("submitRequest", () => {
       }),
     );
 
-    const request = fetchSpy.mock.calls[0]?.[0] as Request;
-    const parsed = JSON.parse(await request.text()) as Record<string, unknown>;
-    expect(parsed["deviceScaleFactor"]).toBe(2);
-    expect(parsed["archiveMode"]).toBe("multipass");
-    expect(parsed["operationDelayMs"]).toBe(250);
-    expect(parsed["behaviors"]).toEqual({ builtins: ["autoscroll"], siteBehaviors: false });
+    const request = sentRequest();
+    expect(request.deviceScaleFactor).toBe(2);
+    expect(request.archiveMode).toBe(ArchiveMode.ARCHIVE_MODE_MULTIPASS);
+    expect(request.operationDelayMs).toBe(250);
+    expect(request.behaviors).toEqual({
+      builtins: ["autoscroll"],
+      custom: [],
+      siteBehaviors: false,
+    });
   });
 
-  // The server owns the defaults for all four. Sending an explicit `undefined`
-  // would be a different request than sending nothing, so the keys must be
-  // absent, not null.
+  // The server owns the defaults for all four, so an unset knob must not
+  // reach the wire as a value the server would obey.
   it("omits every optional knob the caller did not set", async () => {
-    fetchSpy.mockResolvedValueOnce(acceptanceResponse("task-5"));
+    accepts("task-5");
 
     await submitRequest({ url: "https://example.com/", labels: [], orgId: "acme" }, settings());
 
-    const request = fetchSpy.mock.calls[0]?.[0] as Request;
-    const parsed = JSON.parse(await request.text()) as Record<string, unknown>;
-    for (const key of ["deviceScaleFactor", "archiveMode", "operationDelayMs", "behaviors"]) {
-      expect(parsed).not.toHaveProperty(key);
+    const request = sentRequest();
+    for (const key of ["deviceScaleFactor", "operationDelayMs", "behaviors"]) {
+      expect(request).not.toHaveProperty(key);
     }
+    // `cache` and `archiveMode` are the exception, and not by choice: a proto3
+    // enum field cannot be absent. UNSPECIFIED (0) is the encoding of "the
+    // caller did not say", which BrowserHive maps back to its own default —
+    // so this asserts the value rather than the absence.
+    expect(request.archiveMode).toBe(ArchiveMode.ARCHIVE_MODE_UNSPECIFIED);
+    expect(request.cache).toBe(CacheMode.CACHE_MODE_UNSPECIFIED);
   });
 });
