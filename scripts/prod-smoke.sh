@@ -20,6 +20,21 @@ DATABASE_URL="postgres://waggle:waggle@postgres.waggle:5432/waggle"
 BROWSERHIVE_SERVER="browserhive.waggle:50051"
 HEALTH_TARGET="localhost:50051"
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
+
+# The capture does not stop at "accepted": it polls GetCapture, reads the
+# durable `.result.json` manifest when a result has aged out of BrowserHive's
+# cache, and registers the archive in the ledger. All of that needs the bucket,
+# so the S3 settings belong to the capture run and not just to BrowserHive.
+# They match docker-compose.yml's seaweedfs service; path-style because the
+# bundled SeaweedFS has no wildcard DNS for the bucket subdomain.
+S3_ENV=(
+  -e "WAGGLE_S3_ENDPOINT=http://seaweedfs.waggle:8333"
+  -e "WAGGLE_S3_REGION=us-east-1"
+  -e "WAGGLE_S3_BUCKET=browserhive"
+  -e "WAGGLE_S3_ACCESS_KEY_ID=browserhive"
+  -e "WAGGLE_S3_SECRET_ACCESS_KEY=browserhive"
+  -e "WAGGLE_S3_FORCE_PATH_STYLE=true"
+)
 TEAR_DOWN_ON_EXIT="${TEAR_DOWN_ON_EXIT:-1}"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -84,7 +99,8 @@ container run --rm \
   -e "DATABASE_URL=${DATABASE_URL}" \
   -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
   -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
-  waggle:latest --webp --limit 3
+  "${S3_ENV[@]}" \
+  waggle:latest --wacz --limit 3
 WAGGLE_EXIT=$?
 set -e
 
