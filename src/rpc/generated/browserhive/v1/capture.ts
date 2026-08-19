@@ -442,7 +442,20 @@ export interface SubmitCaptureRequest {
   fullPage?: boolean | undefined;
   behaviors?: BehaviorSpec | undefined;
   resetStateEnabled?: boolean | undefined;
-  resetStateSpec?: ResetStateSpec | undefined;
+  resetStateSpec?:
+    | ResetStateSpec
+    | undefined;
+  /**
+   * この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetStatus の
+   * limits.max_response_bytes)。
+   *
+   * 動くのは締める方向だけで、既定より大きい値は既定に丸める。上限は資源を守る
+   * ために運用者が置くもので、呼ぶ側が上げられるならそれは上限ではない。拒否では
+   * なく丸めにしているのは、呼ぶ側が配備の既定を知らずに要求できるようにするため
+   * —— 効いた値は archive の settings.limits.max_response_bytes に残るので、
+   * 何が起きたかは後から読める。
+   */
+  maxResponseBytes?: number | undefined;
 }
 
 export interface GetCaptureRequest {
@@ -615,6 +628,26 @@ export interface BuildInfo {
   buildTime: string;
 }
 
+/**
+ * サーバが強いる境界。リクエストでは変えられないもの。
+ *
+ * 投げる前に「この大きさは切り詰められる」と分かるために在る。archive 側の
+ * settings.limits と同じ値だが、答える問いが違う —— あちらは「何が起きたか」、
+ * こちらは「これから何が起きるか」。
+ *
+ * 載せるのは境界だけ。viewport や archiveMode はリクエストで上書きできるので
+ * 境界ではなく、ここには来ない。設定の置き場にし始めたら、それは status とは
+ * 別の RPC に切る合図。
+ */
+export interface ServerLimits {
+  /** 1 レスポンスの本文の上限。超えた本文は落とし、切り詰めとして記録する。 */
+  maxResponseBytes: number;
+  /** 1 タスクが記録する本文の合計の上限。 */
+  maxTaskBytes: number;
+  /** 1 タスクが同時に抱える保留リクエストの上限。 */
+  maxPendingRequests: number;
+}
+
 export interface GetStatusResponse {
   pending: number;
   processing: number;
@@ -627,6 +660,7 @@ export interface GetStatusResponse {
   workers: WorkerInfo[];
   queue?: QueueSnapshot | undefined;
   build?: BuildInfo | undefined;
+  limits?: ServerLimits | undefined;
 }
 
 function createBaseCaptureFormats(): CaptureFormats {
@@ -1447,6 +1481,7 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
     behaviors: undefined,
     resetStateEnabled: undefined,
     resetStateSpec: undefined,
+    maxResponseBytes: undefined,
   };
 }
 
@@ -1505,6 +1540,9 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     }
     if (message.resetStateSpec !== undefined) {
       ResetStateSpec.encode(message.resetStateSpec, writer.uint32(146).fork()).join();
+    }
+    if (message.maxResponseBytes !== undefined) {
+      writer.uint32(152).int64(message.maxResponseBytes);
     }
     return writer;
   },
@@ -1660,6 +1698,14 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
           message.resetStateSpec = ResetStateSpec.decode(reader, reader.uint32());
           continue;
         }
+        case 19: {
+          if (tag !== 152) {
+            break;
+          }
+
+          message.maxResponseBytes = longToNumber(reader.int64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1733,6 +1779,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         : isSet(object.reset_state_spec)
         ? ResetStateSpec.fromJSON(object.reset_state_spec)
         : undefined,
+      maxResponseBytes: isSet(object.maxResponseBytes)
+        ? globalThis.Number(object.maxResponseBytes)
+        : isSet(object.max_response_bytes)
+        ? globalThis.Number(object.max_response_bytes)
+        : undefined,
     };
   },
 
@@ -1792,6 +1843,9 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.resetStateSpec !== undefined) {
       obj.resetStateSpec = ResetStateSpec.toJSON(message.resetStateSpec);
     }
+    if (message.maxResponseBytes !== undefined) {
+      obj.maxResponseBytes = Math.round(message.maxResponseBytes);
+    }
     return obj;
   },
 
@@ -1828,6 +1882,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     message.resetStateSpec = (object.resetStateSpec !== undefined && object.resetStateSpec !== null)
       ? ResetStateSpec.fromPartial(object.resetStateSpec)
       : undefined;
+    message.maxResponseBytes = object.maxResponseBytes ?? undefined;
     return message;
   },
 };
@@ -4592,6 +4647,110 @@ export const BuildInfo: MessageFns<BuildInfo> = {
   },
 };
 
+function createBaseServerLimits(): ServerLimits {
+  return { maxResponseBytes: 0, maxTaskBytes: 0, maxPendingRequests: 0 };
+}
+
+export const ServerLimits: MessageFns<ServerLimits> = {
+  encode(message: ServerLimits, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.maxResponseBytes !== 0) {
+      writer.uint32(8).int64(message.maxResponseBytes);
+    }
+    if (message.maxTaskBytes !== 0) {
+      writer.uint32(16).int64(message.maxTaskBytes);
+    }
+    if (message.maxPendingRequests !== 0) {
+      writer.uint32(24).int32(message.maxPendingRequests);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ServerLimits {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseServerLimits();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.maxResponseBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.maxTaskBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.maxPendingRequests = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ServerLimits {
+    return {
+      maxResponseBytes: isSet(object.maxResponseBytes)
+        ? globalThis.Number(object.maxResponseBytes)
+        : isSet(object.max_response_bytes)
+        ? globalThis.Number(object.max_response_bytes)
+        : 0,
+      maxTaskBytes: isSet(object.maxTaskBytes)
+        ? globalThis.Number(object.maxTaskBytes)
+        : isSet(object.max_task_bytes)
+        ? globalThis.Number(object.max_task_bytes)
+        : 0,
+      maxPendingRequests: isSet(object.maxPendingRequests)
+        ? globalThis.Number(object.maxPendingRequests)
+        : isSet(object.max_pending_requests)
+        ? globalThis.Number(object.max_pending_requests)
+        : 0,
+    };
+  },
+
+  toJSON(message: ServerLimits): unknown {
+    const obj: any = {};
+    if (message.maxResponseBytes !== 0) {
+      obj.maxResponseBytes = Math.round(message.maxResponseBytes);
+    }
+    if (message.maxTaskBytes !== 0) {
+      obj.maxTaskBytes = Math.round(message.maxTaskBytes);
+    }
+    if (message.maxPendingRequests !== 0) {
+      obj.maxPendingRequests = Math.round(message.maxPendingRequests);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ServerLimits>, I>>(base?: I): ServerLimits {
+    return ServerLimits.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ServerLimits>, I>>(object: I): ServerLimits {
+    const message = createBaseServerLimits();
+    message.maxResponseBytes = object.maxResponseBytes ?? 0;
+    message.maxTaskBytes = object.maxTaskBytes ?? 0;
+    message.maxPendingRequests = object.maxPendingRequests ?? 0;
+    return message;
+  },
+};
+
 function createBaseGetStatusResponse(): GetStatusResponse {
   return {
     pending: 0,
@@ -4605,6 +4764,7 @@ function createBaseGetStatusResponse(): GetStatusResponse {
     workers: [],
     queue: undefined,
     build: undefined,
+    limits: undefined,
   };
 }
 
@@ -4642,6 +4802,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     }
     if (message.build !== undefined) {
       BuildInfo.encode(message.build, writer.uint32(90).fork()).join();
+    }
+    if (message.limits !== undefined) {
+      ServerLimits.encode(message.limits, writer.uint32(98).fork()).join();
     }
     return writer;
   },
@@ -4741,6 +4904,14 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
           message.build = BuildInfo.decode(reader, reader.uint32());
           continue;
         }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.limits = ServerLimits.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4781,6 +4952,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
         : [],
       queue: isSet(object.queue) ? QueueSnapshot.fromJSON(object.queue) : undefined,
       build: isSet(object.build) ? BuildInfo.fromJSON(object.build) : undefined,
+      limits: isSet(object.limits) ? ServerLimits.fromJSON(object.limits) : undefined,
     };
   },
 
@@ -4819,6 +4991,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     if (message.build !== undefined) {
       obj.build = BuildInfo.toJSON(message.build);
     }
+    if (message.limits !== undefined) {
+      obj.limits = ServerLimits.toJSON(message.limits);
+    }
     return obj;
   },
 
@@ -4841,6 +5016,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
       : undefined;
     message.build = (object.build !== undefined && object.build !== null)
       ? BuildInfo.fromPartial(object.build)
+      : undefined;
+    message.limits = (object.limits !== undefined && object.limits !== null)
+      ? ServerLimits.fromPartial(object.limits)
       : undefined;
     return message;
   },
