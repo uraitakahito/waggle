@@ -4,7 +4,7 @@ description: Which waggle flag maps to which BrowserHive request field.
 ---
 
 waggle does not capture anything itself, so this page is a **mapping**, not an
-explanation. Each flag sets one field on the `POST /v1/captures` body; what the
+explanation. Each flag sets one field on the `SubmitCapture` request; what the
 field _does_ is BrowserHive's to define, and its documentation is the only place
 that stays correct when the behaviour changes.
 

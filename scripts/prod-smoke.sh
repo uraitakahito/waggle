@@ -17,8 +17,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DATABASE_URL="postgres://waggle:waggle@postgres.waggle:5432/waggle"
-BROWSERHIVE_SERVER="http://browserhive.waggle:8080"
-HEALTH_URL="http://localhost:8080/v1/status"
+BROWSERHIVE_SERVER="browserhive.waggle:50051"
+HEALTH_TARGET="localhost:50051"
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
 TEAR_DOWN_ON_EXIT="${TEAR_DOWN_ON_EXIT:-1}"
 
@@ -38,11 +38,22 @@ log "Starting the stack..."
 container-compose up -d -b
 
 # container-compose has no healthcheck support, so readiness is ours to check.
+# BrowserHive serves no HTTP and no gRPC health service, so the probe is a real
+# GetStatus call over the vendored contract — which is also the strongest
+# readiness signal available: it only answers once the coordinator is up.
+if ! command -v grpcurl >/dev/null 2>&1; then
+  log "ERROR: grpcurl is required to probe BrowserHive (brew install grpcurl)"
+  exit 1
+fi
+probe() {
+  grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+    "${HEALTH_TARGET}" browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1
+}
 log "Waiting for BrowserHive (up to ${HEALTH_TIMEOUT_S}s)..."
 deadline=$((SECONDS + HEALTH_TIMEOUT_S))
-until curl -sf "${HEALTH_URL}" >/dev/null; do
+until probe; do
   if (( SECONDS >= deadline )); then
-    log "ERROR: BrowserHive never answered at ${HEALTH_URL}"
+    log "ERROR: BrowserHive never answered at ${HEALTH_TARGET}"
     exit 1
   fi
   sleep 1

@@ -37,12 +37,18 @@ container-compose up -d -b
 ```
 
 初回は BrowserHive と Chromium イメージをソースからビルドするため、数分かかります。
-状態を確認します (まだ起動していなければ curl がそのまま失敗を報告します):
+状態を確認します (まだ起動していなければ grpcurl がそのまま失敗を報告します):
 
 ```sh
-curl -sS --fail-with-body http://localhost:8080/v1/status | jq '{isRunning, workers: [.workers[].health]}'
-# → { "isRunning": true, "workers": ["ready", "ready"] }
+grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetStatus \
+  | jq '{isRunning, workers: [.workers[].health]}'
+# → { "isRunning": true, "workers": ["WORKER_HEALTH_READY", "WORKER_HEALTH_READY"] }
 ```
+
+`-import-path proto -proto …` は、この repo に vendor した契約を grpcurl に
+指しています。BrowserHive は reflection を提供しないので、呼ぶ側がサービスを
+知る手段がこの `.proto` です —— クライアントの生成元と同じファイルです。
 
 ワーカーは headless です。描画を見たい場合は、ローカルの Chrome で
 `chrome://inspect` を開き、_Configure…_ に `localhost:9222` と `localhost:9223`
@@ -82,11 +88,14 @@ BrowserHive のものだからです。上の実行で得た `taskId` で Browse
 問い合わせます。
 
 ```sh
-curl -sS http://localhost:8080/v1/captures/<taskId> \
-  | jq -c '{status, artifacts, completeness}'
+grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  -d '{"taskId":"<taskId>"}' \
+  localhost:50051 browserhive.v1.CaptureService/GetCapture \
+  | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
 ```
 
-`202` はまだ処理中という意味なので、もう一度問い合わせてください。同じ内容は
+`state` が `CAPTURE_STATE_PENDING` か `_PROCESSING` ならまだ処理中なので、もう
+一度問い合わせてください。同じ内容は
 `<taskId>_..._<labels>.result.json` としてバケットにも書かれます。結果を
 取りこぼしてはいけない用途ではそちらを読みます。
 キャプチャ結果を参照。

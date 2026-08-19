@@ -32,28 +32,30 @@ npm run check       # typecheck + lint + format:check + テスト
 
 ## 日々のコマンド
 
-| コマンド                                 | 内容                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| `npm run dev -- <args>`                  | ビルドしてから CLI を実行 (`tsc` → `node dist/cli.js`)。                 |
-| `npm run build`                          | `tsconfig.build.json` で `dist/` に JS/d.ts を出力。                     |
-| `npm run typecheck`                      | `tsc --noEmit`。テストと `*.config.ts` も含む。                          |
-| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked)。          |
-| `npm run format` / `format:check`        | Prettier。`.prettierignore` が `dist/` と `src/http/generated/` を除外。 |
-| `npm test` / `test:watch`                | `test/` 配下の Vitest ユニットテスト。                                   |
-| `npm run check`                          | typecheck + lint + format:check + test。push 前に実行。                  |
-| `npm run db:migrate` / `db:migrate:down` | `DATABASE_URL` に対する Kysely マイグレーション。                        |
-| `npm run db:seed` / `db:seed:down`       | `src/db/seeds/` の seed。                                                |
-| `npm run openapi:generate`               | vendored spec から `src/http/generated/` を再生成。                      |
-| `npm run openapi:check`                  | 生成して `git diff --exit-code` (CI のドリフト検査)。                    |
-| `npm run openapi:sync`                   | 固定タグから spec を取り直す。                                           |
-| `npm run site:dev` / `site:build`        | このドキュメントサイト。                                                 |
-| `npm run site:check`                     | サイトをビルドし、参照の整合を検証。                                     |
+| コマンド                                 | 内容                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `npm run dev -- <args>`                  | ビルドしてから CLI を実行 (`tsc` → `node dist/cli.js`)。                |
+| `npm run build`                          | `tsconfig.build.json` で `dist/` に JS/d.ts を出力。                    |
+| `npm run typecheck`                      | `tsc --noEmit`。テストと `*.config.ts` も含む。                         |
+| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked)。         |
+| `npm run format` / `format:check`        | Prettier。`.prettierignore` が `dist/` と `src/rpc/generated/` を除外。 |
+| `npm test` / `test:watch`                | `test/` 配下の Vitest ユニットテスト。                                  |
+| `npm run check`                          | typecheck + lint + format:check + test。push 前に実行。                 |
+| `npm run db:migrate` / `db:migrate:down` | `DATABASE_URL` に対する Kysely マイグレーション。                       |
+| `npm run db:seed` / `db:seed:down`       | `src/db/seeds/` の seed。                                               |
+| `npm run proto:generate`                 | vendored の `.proto` から `src/rpc/generated/` を再生成 (buf)。         |
+| `npm run proto:check`                    | 生成して `git diff --exit-code` (CI のドリフト検査)。                   |
+| `npm run proto:sync`                     | 固定した submodule から `.proto` を取り直す。                           |
+| `npm run site:dev` / `site:build`        | このドキュメントサイト。                                                |
+| `npm run site:check`                     | サイトをビルドし、参照の整合を検証。                                    |
 
 ## スタックで作業する
 
 ```sh
 container-compose up -d -b
-until curl -sf http://localhost:8080/v1/status >/dev/null; do sleep 1; done
+# grpcurl は vendored の契約を読む。準備完了の判定は GetStatus。
+until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
 ```
 
 **dev コンテナはありません。** container-compose のサブコマンドは
@@ -64,7 +66,7 @@ until curl -sf http://localhost:8080/v1/status >/dev/null; do sleep 1; done
 
 ```sh
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=http://browserhive.waggle:8080
+BROWSERHIVE_SERVER=browserhive.waggle:50051
 ```
 
 Postgres は `127.0.0.1:5432` にも公開しているので `localhost` でも繋がります。
@@ -137,7 +139,7 @@ BROWSERHIVE_SERVER=https://browserhive.example/ \
 ## リポジトリの約束
 
 - ソースは `src/`、テストは `test/`、1 モジュール 1 関心。
-- `src/http/generated/` は生成物でコミット対象。手で編集しない。
+- `src/rpc/generated/` は生成物でコミット対象。手で編集しない。
 - Prettier と ESLint が正。push 前に `npm run check`。
 - ドキュメントは `docs-site/` に英語と日本語で置く。英語ページだけを追加すると
   `npm run site:check` が落ちます。

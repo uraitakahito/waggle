@@ -33,28 +33,30 @@ points at, and refuses to continue if the `waggle` DNS domain is missing.
 
 ## Daily commands
 
-| Command                                  | What it does                                                         |
-| ---------------------------------------- | -------------------------------------------------------------------- |
-| `npm run dev -- <args>`                  | Build, then run the CLI (`tsc` then `node dist/cli.js`).             |
-| `npm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                   |
-| `npm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                   |
-| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).       |
-| `npm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/http/generated/`. |
-| `npm test` / `test:watch`                | Vitest unit tests under `test/`.                                     |
-| `npm run check`                          | typecheck + lint + format:check + test. Run before pushing.          |
-| `npm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                            |
-| `npm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                   |
-| `npm run openapi:generate`               | Regenerate `src/http/generated/` from the vendored spec.             |
-| `npm run openapi:check`                  | Generate, then `git diff --exit-code` (CI drift gate).               |
-| `npm run openapi:sync`                   | Re-download the spec from the pinned tag.                            |
-| `npm run site:dev` / `site:build`        | This documentation site.                                             |
-| `npm run site:check`                     | Build the site and verify its references.                            |
+| Command                                  | What it does                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `npm run dev -- <args>`                  | Build, then run the CLI (`tsc` then `node dist/cli.js`).            |
+| `npm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                  |
+| `npm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                  |
+| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).      |
+| `npm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`. |
+| `npm test` / `test:watch`                | Vitest unit tests under `test/`.                                    |
+| `npm run check`                          | typecheck + lint + format:check + test. Run before pushing.         |
+| `npm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                           |
+| `npm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                  |
+| `npm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).   |
+| `npm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).              |
+| `npm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                     |
+| `npm run site:dev` / `site:build`        | This documentation site.                                            |
+| `npm run site:check`                     | Build the site and verify its references.                           |
 
 ## Working against the stack
 
 ```sh
 container-compose up -d -b
-until curl -sf http://localhost:8080/v1/status >/dev/null; do sleep 1; done
+# grpcurl reads the vendored contract; GetStatus is the readiness probe.
+until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
 ```
 
 **There is no dev container.** container-compose has exactly four subcommands —
@@ -65,7 +67,7 @@ stack. `setup.sh` writes the two connection strings into `.env`:
 
 ```sh
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=http://browserhive.waggle:8080
+BROWSERHIVE_SERVER=browserhive.waggle:50051
 ```
 
 Postgres is also published on `127.0.0.1:5432`, so `localhost` works too.
@@ -138,7 +140,7 @@ Postgres TLS, encode the parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
 ## Repo conventions
 
 - Source under `src/`, tests under `test/`, one concern per module.
-- `src/http/generated/` is generated and committed; never edit it by hand.
+- `src/rpc/generated/` is generated and committed; never edit it by hand.
 - Prettier and ESLint are authoritative — run `npm run check` before pushing.
 - Documentation lives in `docs-site/`, in English and Japanese. Adding an
   English page without its Japanese counterpart fails `npm run site:check`.

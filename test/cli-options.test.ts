@@ -60,7 +60,7 @@ describe("parseClientOptions", () => {
         FAKE_DB_URL,
         "--png",
         "--server",
-        "http://localhost:8080",
+        "browserhive.example:50051",
         "--limit",
         "5",
         "--accept-language",
@@ -70,7 +70,7 @@ describe("parseClientOptions", () => {
         "/etc/ssl/ca.pem",
       ),
     );
-    expect(opts.server).toBe("http://localhost:8080");
+    expect(opts.server).toBe("browserhive.example:50051");
     expect(opts.limit).toBe(5);
     expect(opts.acceptLanguage).toBe("ja-JP,ja;q=0.9");
     expect(opts.dismissBanners).toBe(true);

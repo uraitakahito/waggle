@@ -99,8 +99,9 @@ services:
       - OPENFGA_AUTHN_PRESHARED_KEYS=dev-key
       - OPENFGA_LOG_LEVEL=info
     ports:
-      # 8080 is taken by browserhive below, so the published port differs from
-      # the container port. WAGGLE_FGA_API_URL must use 8090.
+      # Published on 8090 rather than 8080 so nothing on the host has to guess
+      # which service owns the conventional port. WAGGLE_FGA_API_URL must use
+      # 8090.
       - "127.0.0.1:8090:8080"
     depends_on:
       - openfga-db
@@ -143,7 +144,8 @@ services:
       context: ./.upstream/browserhive
       dockerfile: Dockerfile.prod
     ports:
-      - "127.0.0.1:8080:8080"
+      # gRPC. BrowserHive stopped serving HTTP in v3.
+      - "127.0.0.1:50051:50051"
     environment:
       # Name-based wiring via the platform DNS (<service>.waggle).
       - BROWSERHIVE_BROWSER_URLS=http://chromium-1.waggle:9222,http://chromium-2.waggle:9222

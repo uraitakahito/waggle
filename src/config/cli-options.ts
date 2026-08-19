@@ -75,7 +75,9 @@ const parseIdList = (value: string): string[] =>
     .filter((id) => id !== "");
 
 // Reject empty / whitespace-only values up front; length and printable-ASCII
-// constraints are enforced server-side by Ajv via the OpenAPI schema.
+// constraints are enforced server-side, in BrowserHive's RPC handlers —
+// protobuf has no way to state a value range, so those checks moved out of the
+// contract and into code when the transport changed.
 const parseNonEmpty = (value: string): string => {
   const trimmed = value.trim();
   if (trimmed === "") {

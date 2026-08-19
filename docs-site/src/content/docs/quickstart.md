@@ -38,13 +38,19 @@ container-compose up -d -b
 ```
 
 The first build compiles BrowserHive and the Chromium image from source, so
-expect several minutes. Check the state — until the stack is up, curl reports
+expect several minutes. Check the state — until the stack is up, grpcurl reports
 the failure itself:
 
 ```sh
-curl -sS --fail-with-body http://localhost:8080/v1/status | jq '{isRunning, workers: [.workers[].health]}'
-# → { "isRunning": true, "workers": ["ready", "ready"] }
+grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetStatus \
+  | jq '{isRunning, workers: [.workers[].health]}'
+# → { "isRunning": true, "workers": ["WORKER_HEALTH_READY", "WORKER_HEALTH_READY"] }
 ```
+
+`-import-path proto -proto …` points grpcurl at the contract vendored in this
+repo. BrowserHive does not serve reflection, so the `.proto` is how a caller
+learns the service — the same file the client is generated from.
 
 The workers are headless. To watch one render, open `chrome://inspect` in a
 local Chrome and add `localhost:9222` and `localhost:9223` under _Configure…_.
@@ -82,11 +88,14 @@ belongs to BrowserHive. Ask BrowserHive about the task, using a `taskId` from
 the run above:
 
 ```sh
-curl -sS http://localhost:8080/v1/captures/<taskId> \
-  | jq -c '{status, artifacts, completeness}'
+grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+  -d '{"taskId":"<taskId>"}' \
+  localhost:50051 browserhive.v1.CaptureService/GetCapture \
+  | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
 ```
 
-`202` means it is still running — ask again. The same body is also written to
+A `state` of `CAPTURE_STATE_PENDING` or `_PROCESSING` means it is still
+running — ask again. The same report is also written to
 the bucket as `<taskId>_..._<labels>.result.json`, which is the one to read if
 missing a result is not acceptable. See
 Capture results.

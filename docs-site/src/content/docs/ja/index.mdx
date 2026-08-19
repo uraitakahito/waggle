@@ -15,7 +15,7 @@ hero:
 
 waggle が答えるのは **「どの URL を撮るか」** の一点だけです。Postgres の
 `urls` テーブルから `enabled` な行を読み、1 行につき 1 回
-`POST /v1/captures` を BrowserHive
+`SubmitCapture` を BrowserHive
 へ並列に投げます。
 
 名前はミツバチの[尻振りダンス](https://en.wikipedia.org/wiki/Waggle_dance)から。

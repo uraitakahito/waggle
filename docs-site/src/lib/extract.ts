@@ -55,7 +55,7 @@ export function sourceRegion(file: string, region: string): string {
 /**
  * The BrowserHive version the `.upstream/browserhive` submodule points at.
  *
- * There used to be four copies of this string — the openapi:sync URL, setup.sh,
+ * There used to be four copies of this string — the proto:sync path, setup.sh,
  * and both compose files — and a check here that they agreed, because a bump
  * had to edit all four by hand. The submodule replaced all of them, so there is
  * nothing left to disagree: this reads the one pointer and reports it.
