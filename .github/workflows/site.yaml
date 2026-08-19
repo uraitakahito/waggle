@@ -76,15 +76,20 @@ jobs:
       # uses the same credential for the superproject and its submodules.
       #
       # Setup (one time, outside this repo):
-      #   1. A GitHub App with Contents: Read, installed on waggle AND
-      #      browserhive.
-      #   2. Its App ID as the repository variable UPSTREAM_APP_ID and its
-      #      private key as the secret UPSTREAM_APP_KEY.
+      #   1. A GitHub App with Contents: Read — uraitakahito-submodule-reader
+      #      — installed with access to waggle AND browserhive.
+      #   2. Its App ID as the repository variable SUBMODULE_APP_ID and its
+      #      private key as the secret SUBMODULE_APP_KEY.
+      #
+      # The App is named for the job rather than for a repository because it
+      # is meant to be shared: any other repo of this account that grows a
+      # private submodule reuses the same App, key, and variable names, and
+      # changes only the `repositories` list below.
       - uses: actions/create-github-app-token@v3
-        id: upstream-token
+        id: submodule-token
         with:
-          app-id: ${{ vars.UPSTREAM_APP_ID }}
-          private-key: ${{ secrets.UPSTREAM_APP_KEY }}
+          app-id: ${{ vars.SUBMODULE_APP_ID }}
+          private-key: ${{ secrets.SUBMODULE_APP_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: |
             waggle
@@ -99,7 +104,7 @@ jobs:
           # The BrowserHive pin shown in the docs is read from the
           # .upstream/browserhive submodule via `git describe`.
           submodules: recursive
-          token: ${{ steps.upstream-token.outputs.token }}
+          token: ${{ steps.submodule-token.outputs.token }}
       # actions/checkout clones submodules shallow and without tag refs, so
       # `git describe --tags` — how the docs read the BrowserHive pin — finds
       # nothing ("No names found"). The commit is already checked out; this
