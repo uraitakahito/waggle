@@ -44,11 +44,34 @@ jobs:
     permissions:
       contents: read
     steps:
+      # BrowserHive is a private repository, so the default GITHUB_TOKEN cannot
+      # clone the .upstream/browserhive submodule ("Repository not found" —
+      # GitHub does not distinguish absent from unreadable). A GitHub App token
+      # scoped to both repositories does.
+      #
+      # The token has to cover waggle as well as browserhive: actions/checkout
+      # uses the same credential for the superproject and its submodules.
+      #
+      # Setup (one time, outside this repo):
+      #   1. A GitHub App with Contents: Read, installed on waggle AND
+      #      browserhive.
+      #   2. Its App ID as the repository variable UPSTREAM_APP_ID and its
+      #      private key as the secret UPSTREAM_APP_KEY.
+      - uses: actions/create-github-app-token@v3
+        id: upstream-token
+        with:
+          app-id: ${{ vars.UPSTREAM_APP_ID }}
+          private-key: ${{ secrets.UPSTREAM_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            waggle
+            browserhive
       - uses: actions/checkout@v7
         with:
           # The BrowserHive pin shown in the docs is read from the
           # .upstream/browserhive submodule via `git describe`.
           submodules: recursive
+          token: ${{ steps.upstream-token.outputs.token }}
       # actions/checkout clones submodules shallow and without tag refs, so
       # `git describe --tags` — how the docs read the BrowserHive pin — finds
       # nothing ("No names found"). The commit is already checked out; this
