@@ -69,6 +69,13 @@ jobs:
       - name: Proto drift check
         run: npm run proto:check
 
+      # Separate from the drift check: that one asks whether the generated tree
+      # matches the .proto, this one asks whether what it imports will still be
+      # installed after `npm prune --omit=dev`. Only the second catches a
+      # package that npm hoists out of ts-proto's tree during development.
+      - name: Generated dependency check
+        run: npm run proto:check-deps
+
       # `fga model test` runs the model in-process — no OpenFGA server needed.
       # These assertions are what stands between a one-line edit to
       # `fga/model.fga` and another organization's archives becoming readable,
