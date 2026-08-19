@@ -11,14 +11,16 @@
  * deployment configuration. BrowserHive has its own env vars for the same
  * knobs, and those are what set the server-wide defaults.
  *
- * `--server` has no commander-level default. When omitted, the generated
- * SDK falls back to its built-in baseUrl (extracted from `servers[0].url`
- * in `openapi/browserhive.yaml` at generation time), keeping the spec as
- * the single source of truth for the default address.
+ * `--server` has no commander-level default; `configureClient` falls back to
+ * `DEFAULT_TARGET`. The OpenAPI SDK used to bake the default in from
+ * `servers[0].url`, so the spec was the single source of truth for the
+ * address — a `.proto` describes the service and not where it listens, so
+ * that default now lives in `src/rpc/client.ts` and is stated below.
  */
 import { Command, InvalidArgumentError, Option } from "commander";
 import { logger } from "../logger.js";
 import { redactDatabaseUrl } from "../db/pool.js";
+import { DEFAULT_TARGET } from "../rpc/client.js";
 import type { CaptureFormats, CaptureSettings } from "../types/capture.js";
 
 export interface ClientOptions {
@@ -73,7 +75,9 @@ const parseIdList = (value: string): string[] =>
     .filter((id) => id !== "");
 
 // Reject empty / whitespace-only values up front; length and printable-ASCII
-// constraints are enforced server-side by Ajv via the OpenAPI schema.
+// constraints are enforced server-side, in BrowserHive's RPC handlers —
+// protobuf has no way to state a value range, so those checks moved out of the
+// contract and into code when the transport changed.
 const parseNonEmpty = (value: string): string => {
   const trimmed = value.trim();
   if (trimmed === "") {
@@ -100,8 +104,8 @@ export const createProgram = (): Command => {
     )
     .addOption(
       new Option(
-        "--server <url>",
-        "BrowserHive base URL. Defaults to the SDK's baked-in baseUrl (servers[0].url in openapi.yaml).",
+        "--server <host:port>",
+        `BrowserHive gRPC address. Defaults to ${DEFAULT_TARGET}. A URL scheme is accepted and stripped.`,
       ).env("BROWSERHIVE_SERVER"),
     )
     .option("--png", "Capture PNG screenshot")
@@ -268,7 +272,9 @@ export const logClientConfig = (options: ClientOptions): void => {
   const settings = getCaptureSettings(options);
   logger.info(
     {
-      server: options.server ?? "(SDK default)",
+      server: options.server ?? DEFAULT_TARGET,
+      // TLS is on exactly when a CA is named — the address carries no scheme
+      // to disagree with.
       tls: options.tlsCaCert
         ? { enabled: true, caCertPath: options.tlsCaCert }
         : { enabled: false },

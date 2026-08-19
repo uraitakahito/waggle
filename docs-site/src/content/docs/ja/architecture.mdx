@@ -12,9 +12,9 @@ flowchart LR
     direction TB
     US[url-source<br/>pg クエリ] --> CO[cli-options<br/>フラグ → CaptureSettings]
     CO --> RUN[run.ts → submit.ts<br/>並列]
-    RUN --> SDK[生成 SDK<br/>hey-api / fetch]
+    RUN --> SDK[生成スタブ<br/>buf / ts-proto / grpc-js]
   end
-  SDK -->|POST /v1/captures| BH
+  SDK -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]
   end
@@ -24,51 +24,54 @@ flowchart LR
   W -.->|ログのみ| OUT["Request accepted × N<br/>Request summary"]
 ```
 
-waggle の担当範囲が小さいのは意図的です。`POST /v1/captures` から右側はすべて
-BrowserHive のもので、あちらのドキュメントに
-書かれています。
+waggle の担当範囲が小さいのは意図的です。`SubmitCapture` から右側はすべて
+BrowserHive のもので、あちらのドキュメントに書かれています。
 
 ## 投げっぱなし (fire-and-forget)
 
-BrowserHive はリクエストをキューに載せた時点で **202** と `taskId` を返し、
-キャプチャは非同期に走ります。waggle は受理されたかどうかを記録して終了します。
+`SubmitCapture` はリクエストをキューに載せた時点で `taskId` を返し、キャプチャは
+非同期に走ります。
 
-waggle 自身に結末を返すエンドポイントはありませんが、BrowserHive にはあります。
-`GET /v1/captures/{taskId}` は処理中なら `202`、完了していれば `200` を返し、
-成否と全成果物の場所が入っています。同じ内容は
-`{taskId}_..._{labels}.result.json` としてバケットにも書かれ、こちらは
-BrowserHive の再起動にも耐えます。
-キャプチャ結果を参照。
-
-現在の waggle はこれをポーリングしません ― 受理されたかどうかを記録して終了します。
+結末は後から `GetCapture` で回収します。`state` が処理中なら `PENDING` /
+`PROCESSING`、完了していれば `DONE` で、成否と全成果物の場所が入っています。
+同じ内容は `{taskId}_..._{labels}.result.json` としてバケットにも書かれ、
+こちらは BrowserHive の再起動にも耐えます —— メモリ上の結果が既に追い出されて
+いたとき `waitForCapture` が落ちる先がこれです。
 
 知っておくべき帰結:
 
 - `Request summary` の `accepted: 3` は 3 件が**キューに入った**という意味で、
   3 件のキャプチャが成功したという意味ではありません。
-- 受理後の失敗は waggle からは見えません。ライフサイクル追跡はロードマップの
-  Stage 1 です。
+- 受理されたリクエストでも、キャプチャ自体は失敗しえます。その結末は
+  `GetCapture` か、後から reconciler 経由で台帳に届きます —— サマリ行では
+  ありません。
 - `correlationId` (送信ごとに採番される 16 進 8 桁) が、waggle のログ行と
   成果物のファイル名を結ぶ糸です。
 
 ## モジュール構成
 
-| モジュール                  | 責務                                                                          |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `src/cli.ts`                | エントリポイント。パースして実行し、致命的エラーで非ゼロ終了。                |
-| `src/config/cli-options.ts` | フラグ定義、`ClientOptions`、リクエストボディに展開される `CaptureSettings`。 |
-| `src/data/url-source.ts`    | 唯一の SQL クエリ。`{ url, labels }[]` を返す。                               |
-| `src/client/run.ts`         | オーケストレーション: 読み込み → 設定 → 全件送信 → サマリ。                   |
-| `src/client/submit.ts`      | 1 リクエスト。例外を投げず、失敗は `accepted: false` で返す。                 |
-| `src/http/generated/`       | vendored の OpenAPI spec からの生成物。手で編集しない。                       |
-| `src/db/`                   | プール、Kysely の配線、マイグレーション、seed。                               |
+| モジュール                  | 責務                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/cli.ts`                | エントリポイント。パースして実行し、致命的エラーで非ゼロ終了。                                     |
+| `src/config/cli-options.ts` | フラグ定義、`ClientOptions`、リクエストボディに展開される `CaptureSettings`。                      |
+| `src/data/url-source.ts`    | 唯一の SQL クエリ。`{ url, labels }[]` を返す。                                                    |
+| `src/client/run.ts`         | オーケストレーション: 読み込み → 設定 → 全件送信 → サマリ。                                        |
+| `src/client/submit.ts`      | 1 リクエスト。例外を投げず、失敗は `accepted: false` で返す。                                      |
+| `src/rpc/`                  | gRPC チャンネル、Promise ラッパ、`generated/`。vendored の `.proto` からの生成物で手で編集しない。 |
+| `src/db/`                   | プール、Kysely の配線、マイグレーション、seed。                                                    |
 
 ## エラーの扱い
 
-HTTP の失敗 (RFC 7807 の problem レスポンス) も転送の失敗も、メッセージ付きの
+拒否されたリクエストも、繋がらないサーバも、メッセージ付きの
 `accepted: false` として返ります — `submitRequest` は呼び出し側に例外を投げません。
-メッセージは `title` より `detail` を優先するので、拒否されたリクエストは
-ステータスコードではなく**問題のフィールド**を報告します。
+メッセージは `ServiceError` の `message` より `details` を優先します。前者は後者に
+status を前置きしたもので、`"3 INVALID_ARGUMENT: url is empty"` に対して detail は
+`url is empty` だけだからです。
+
+`GetCapture` の側は**この規則に従いません**。扱うのは `NOT_FOUND` だけで、これは
+「知らない task、または結果キャッシュから追い出された」を意味するので、耐久性の
+あるマニフェストを読んで答えます。それ以外の失敗はそのまま投げます —— 障害が
+「成果物が 1 つもできなかった実行」と区別できなくなるのを防ぐためです。
 
 ## ネットワーク構成
 
@@ -82,7 +85,7 @@ HTTP の失敗 (RFC 7807 の problem レスポンス) も転送の失敗も、�
 | seaweedfs   | `seaweedfs.waggle`   | 8333 / 8888 / 9333 | — (内部のみ) |
 | chromium-1  | `chromium-1.waggle`  | 9222 (CDP)         | 9222         |
 | chromium-2  | `chromium-2.waggle`  | 9222 (CDP)         | 9223         |
-| browserhive | `browserhive.waggle` | 8080               | 8080         |
+| browserhive | `browserhive.waggle` | 50051 (gRPC)       | 50051        |
 | waggle      | —（ホストで動く）    | —                  | —            |
 
 compose ファイルは 1 つです。migrate / seed / キャプチャの一発ジョブはサービス

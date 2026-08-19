@@ -11,7 +11,7 @@ current pin is **{browserhivePin()}**.
 That comes from the `.upstream/browserhive` submodule — read at build time with
 `git describe --tags`, so this page cannot go stale. The submodule is the _only_
 upstream pin: it carries BrowserHive, the `chromium-server-docker` BrowserHive
-was tested against, the SeaweedFS config the stack mounts, and the OpenAPI spec
+was tested against, the SeaweedFS config the stack mounts, and the `.proto`
 the client is generated from.
 
 :::note[It used to be four places]
@@ -29,10 +29,10 @@ git -C .upstream/browserhive checkout <new-tag>
 git -C .upstream/browserhive submodule update --init --recursive
 git add .upstream/browserhive
 
-# 2. Re-vendor the spec and regenerate the client (a local copy — no network).
-npm run openapi:sync
-npm run openapi:generate
-npm run openapi:check     # must exit 0 once committed
+# 2. Re-vendor the contract and regenerate the stubs (a local copy — no network).
+npm run proto:sync
+npm run proto:generate
+npm run proto:check       # must exit 0 once committed
 
 # 3. Rebuild from a clean state. Old volumes hold the previous bucket and
 #    database, which hides ordering bugs introduced by the upgrade.
@@ -70,10 +70,12 @@ container build -f Dockerfile.prod -t bh-probe .upstream/browserhive
 
 An additive API change — new optional request fields — needs nothing beyond
 step 2: the regenerated types still compile and the tests pass untouched. That
-was the case for 1.6.0.
+was the case for 1.6.0. Upstream runs `buf breaking` on every change, so a bump
+that only adds fields cannot have moved a field number out from under the
+generated code.
 
 Infrastructure changes are the ones that bite, because they do not show up in
-the OpenAPI diff at all. Two examples from the 1.5.2 → 1.6.0 move:
+the `.proto` diff at all. Two examples from the 1.5.2 → 1.6.0 move:
 
 - BrowserHive's SeaweedFS entrypoint started creating the bucket itself, which
   made waggle's own one-shot init container redundant (and its `depends_on`

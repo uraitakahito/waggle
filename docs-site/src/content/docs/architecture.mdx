@@ -12,9 +12,9 @@ flowchart LR
     direction TB
     US[url-source<br/>pg query] --> CO[cli-options<br/>flags → CaptureSettings]
     CO --> RUN[run.ts → submit.ts<br/>parallel]
-    RUN --> SDK[generated SDK<br/>hey-api / fetch]
+    RUN --> SDK[generated stubs<br/>buf / ts-proto / grpc-js]
   end
-  SDK -->|POST /v1/captures| BH
+  SDK -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]
   end
@@ -25,52 +25,55 @@ flowchart LR
 ```
 
 waggle's half of that picture is small on purpose. Everything to the right of
-`POST /v1/captures` is BrowserHive's, and is documented in that project's own
-docs.
+`SubmitCapture` is BrowserHive's, and is documented in that project's own docs.
 
 ## Fire-and-forget
 
-BrowserHive answers **202** with a `taskId` as soon as the request is queued, and
-runs the capture asynchronously. waggle records which submissions were accepted
-and exits.
+`SubmitCapture` returns a `taskId` as soon as the request is queued, and the
+capture runs asynchronously.
 
-waggle itself exposes no endpoint for the outcome, but BrowserHive does:
-`GET /v1/captures/{taskId}` answers `202` while a task is still in flight and
-`200` once it finished, with the status and every artifact location. The same
-body is also written to the bucket as `{taskId}_..._{labels}.result.json`,
-which survives a BrowserHive restart. See
-Capture results.
-
-waggle does not poll it today — it records which submissions were accepted and
-exits.
+The outcome is collected afterwards through `GetCapture`, whose `state` says
+`PENDING` / `PROCESSING` while a task is in flight and `DONE` once it finished,
+carrying the status and every artifact location. The same report is also written
+to the bucket as `{taskId}_..._{labels}.result.json`, which survives a
+BrowserHive restart — and is what `waitForCapture` falls back to when the
+in-memory result has already been evicted.
 
 Consequences worth knowing:
 
 - A `Request summary` of `accepted: 3` means three tasks were **queued**, not
   that three captures succeeded.
-- Failures after acceptance are invisible to waggle. Lifecycle tracking is
-  Stage 1 of the roadmap.
+- A submission that is accepted can still fail its capture. That outcome
+  reaches the ledger through `GetCapture`, or later through the reconciler —
+  never through the summary line.
 - `correlationId` (8 hex characters, generated per submission) is the thread
   between a waggle log line and the artifact filename.
 
 ## Module layout
 
-| Module                      | Responsibility                                                                         |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| `src/cli.ts`                | Entry point. Parses, runs, exits non-zero on a fatal error.                            |
-| `src/config/cli-options.ts` | Flag definitions, `ClientOptions`, and the `CaptureSettings` the request body spreads. |
-| `src/data/url-source.ts`    | The one SQL query. Returns `{ url, labels }[]`.                                        |
-| `src/client/run.ts`         | Orchestration: load, configure, submit all, summarise.                                 |
-| `src/client/submit.ts`      | One request. Never throws — failures come back as `accepted: false`.                   |
-| `src/http/generated/`       | Generated from the vendored OpenAPI spec. Never edited by hand.                        |
-| `src/db/`                   | Pool, Kysely wiring, migrations, seeds.                                                |
+| Module                      | Responsibility                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `src/cli.ts`                | Entry point. Parses, runs, exits non-zero on a fatal error.                                                  |
+| `src/config/cli-options.ts` | Flag definitions, `ClientOptions`, and the `CaptureSettings` the request body spreads.                       |
+| `src/data/url-source.ts`    | The one SQL query. Returns `{ url, labels }[]`.                                                              |
+| `src/client/run.ts`         | Orchestration: load, configure, submit all, summarise.                                                       |
+| `src/client/submit.ts`      | One request. Never throws — failures come back as `accepted: false`.                                         |
+| `src/rpc/`                  | The gRPC channel, the promise wrappers, and `generated/` — from the vendored `.proto`, never edited by hand. |
+| `src/db/`                   | Pool, Kysely wiring, migrations, seeds.                                                                      |
 
 ## Error handling
 
-Both HTTP failures (RFC 7807 problem responses) and transport failures surface
-as `accepted: false` with a message — `submitRequest` never throws at the caller.
-The message prefers `detail` over `title`, so a rejected request reports the
-field that was wrong rather than a bare status code.
+Rejected requests and unreachable servers alike surface as `accepted: false`
+with a message — `submitRequest` never throws at the caller. The message prefers
+the `ServiceError`'s `details` over its `message`, because the latter is the
+status glued onto the front of the former: `"3 INVALID_ARGUMENT: url is empty"`
+where the detail alone says `url is empty`.
+
+`GetCapture` is the other half, and it does **not** follow that rule. Only
+`NOT_FOUND` is handled — that one means "unknown task, or evicted from the
+result cache", which is answered by reading the durable manifest. Every other
+failure propagates, so an outage cannot be mistaken for a run in which no
+capture produced anything.
 
 ## Network layout
 
@@ -84,7 +87,7 @@ host**, which is why waggle itself needs no container.
 | seaweedfs   | `seaweedfs.waggle`   | 8333 / 8888 / 9333 | — (internal only) |
 | chromium-1  | `chromium-1.waggle`  | 9222 (CDP)         | 9222              |
 | chromium-2  | `chromium-2.waggle`  | 9222 (CDP)         | 9223              |
-| browserhive | `browserhive.waggle` | 8080               | 8080              |
+| browserhive | `browserhive.waggle` | 50051 (gRPC)       | 50051             |
 | waggle      | — (runs on the host) | —                  | —                 |
 
 There is one compose file. The one-shot migrate/seed/capture jobs are not

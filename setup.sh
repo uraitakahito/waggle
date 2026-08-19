@@ -65,7 +65,7 @@ git submodule status --recursive | sed 's/^/  /'
 # docker-compose.yml.
 cat > .env <<EOF
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=http://browserhive.waggle:8080
+BROWSERHIVE_SERVER=browserhive.waggle:50051
 LOG_LEVEL=info
 EOF
 echo "Created .env"
@@ -75,7 +75,8 @@ cat <<'EOF'
 Setup complete.
 
   container-compose up -d -b                  # build and start the stack
-  until curl -sf http://localhost:8080/v1/status >/dev/null; do sleep 1; done
+  until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+    localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
 
 Then work on the host — there is no dev container; the stack is reachable by
 name:

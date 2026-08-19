@@ -17,9 +17,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DATABASE_URL="postgres://waggle:waggle@postgres.waggle:5432/waggle"
-BROWSERHIVE_SERVER="http://browserhive.waggle:8080"
-HEALTH_URL="http://localhost:8080/v1/status"
+BROWSERHIVE_SERVER="browserhive.waggle:50051"
+HEALTH_TARGET="localhost:50051"
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
+
+# The capture does not stop at "accepted": it polls GetCapture, reads the
+# durable `.result.json` manifest when a result has aged out of BrowserHive's
+# cache, and registers the archive in the ledger. All of that needs the bucket,
+# so the S3 settings belong to the capture run and not just to BrowserHive.
+# They match docker-compose.yml's seaweedfs service; path-style because the
+# bundled SeaweedFS has no wildcard DNS for the bucket subdomain.
+S3_ENV=(
+  -e "WAGGLE_S3_ENDPOINT=http://seaweedfs.waggle:8333"
+  -e "WAGGLE_S3_REGION=us-east-1"
+  -e "WAGGLE_S3_BUCKET=browserhive"
+  -e "WAGGLE_S3_ACCESS_KEY_ID=browserhive"
+  -e "WAGGLE_S3_SECRET_ACCESS_KEY=browserhive"
+  -e "WAGGLE_S3_FORCE_PATH_STYLE=true"
+)
 TEAR_DOWN_ON_EXIT="${TEAR_DOWN_ON_EXIT:-1}"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -38,11 +53,22 @@ log "Starting the stack..."
 container-compose up -d -b
 
 # container-compose has no healthcheck support, so readiness is ours to check.
+# BrowserHive serves no HTTP and no gRPC health service, so the probe is a real
+# GetStatus call over the vendored contract — which is also the strongest
+# readiness signal available: it only answers once the coordinator is up.
+if ! command -v grpcurl >/dev/null 2>&1; then
+  log "ERROR: grpcurl is required to probe BrowserHive (brew install grpcurl)"
+  exit 1
+fi
+probe() {
+  grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+    "${HEALTH_TARGET}" browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1
+}
 log "Waiting for BrowserHive (up to ${HEALTH_TIMEOUT_S}s)..."
 deadline=$((SECONDS + HEALTH_TIMEOUT_S))
-until curl -sf "${HEALTH_URL}" >/dev/null; do
+until probe; do
   if (( SECONDS >= deadline )); then
-    log "ERROR: BrowserHive never answered at ${HEALTH_URL}"
+    log "ERROR: BrowserHive never answered at ${HEALTH_TARGET}"
     exit 1
   fi
   sleep 1
@@ -73,7 +99,8 @@ container run --rm \
   -e "DATABASE_URL=${DATABASE_URL}" \
   -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
   -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
-  waggle:latest --webp --limit 3
+  "${S3_ENV[@]}" \
+  waggle:latest --wacz --limit 3
 WAGGLE_EXIT=$?
 set -e
 
