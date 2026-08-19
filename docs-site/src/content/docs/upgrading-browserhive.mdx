@@ -61,7 +61,10 @@ BrowserHive's whitelist dockerignore, and everything in that range fails with
 Verify before committing the submodule bump:
 
 ```sh
-container build -f Dockerfile.prod -t bh-probe .upstream/browserhive
+# -f resolves from where you stand, not from the context, so it needs the
+# path including the context. Plain `-f Dockerfile.prod` fails with
+# "dockerfile does not exist".
+container build -f .upstream/browserhive/Dockerfile.prod -t bh-probe .upstream/browserhive
 ```
 
 :::

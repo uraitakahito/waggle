@@ -61,7 +61,9 @@ dockerignore に COPY 対象が 1 つ足りず、その区間はすべて
 submodule の更新をコミットする前に確かめてください。
 
 ```sh
-container build -f Dockerfile.prod -t bh-probe .upstream/browserhive
+# -f は context ではなく今いる場所からの相対で解決されるので、context を含む
+# パスで書くこと。`-f Dockerfile.prod` だと "dockerfile does not exist" になる。
+container build -f .upstream/browserhive/Dockerfile.prod -t bh-probe .upstream/browserhive
 ```
 
 :::
