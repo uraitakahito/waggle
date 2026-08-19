@@ -89,6 +89,11 @@ jobs:
           repositories: |
             waggle
             browserhive
+          # Narrow the minted token to exactly what a clone needs. This matters
+          # if the App is one that also does something else — reusing the
+          # reviewdog App, say, would otherwise hand this job its
+          # pull-requests: write as well.
+          permission-contents: read
       - uses: actions/checkout@v7
         with:
           # The BrowserHive pin shown in the docs is read from the
