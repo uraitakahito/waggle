@@ -40,5 +40,30 @@ export default tseslint.config(
       "@typescript-eslint/no-non-null-assertion": "off",
     },
   },
+  {
+    // Forbid the two-step cast (`x as unknown as T`).
+    //
+    // Routing through `unknown` lets a value claim any type at all, which is
+    // the same as telling the type checker to be quiet. Against a *generated*
+    // type that is worse than it sounds: the generated type is the copy of the
+    // contract, so casting to it discards the only thing that checks the
+    // contract is being kept. BrowserHive's e2e suite sent OpenAPI-era bodies
+    // over a protobuf wire for exactly this reason.
+    //
+    // Scoped to src/rpc/**: the two casts elsewhere are mocks (`{ query } as
+    // unknown as Pool`), and building a fake is not the dangerous case —
+    // disguising a real value is.
+    files: ["src/rpc/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: 'TSAsExpression > TSAsExpression[typeAnnotation.type="TSUnknownKeyword"]',
+          message:
+            "`as unknown as T` bypasses the type checker. Build the right type, or if this is a mock, disable the rule here with a reason.",
+        },
+      ],
+    },
+  },
   prettier,
 );
