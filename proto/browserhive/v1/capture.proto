@@ -1,0 +1,367 @@
+syntax = "proto3";
+
+package browserhive.v1;
+
+// BrowserHive の capture API。
+//
+// HTTP/OpenAPI から戻した契約で、operation は当時の 2 本から 3 本に増えている
+// (GetCapture は HTTP 時代に足されたもの)。
+//
+// HTTP との対応で決めたことが 2 つある:
+//
+//   1. 202 を state に移した。HTTP では「受理 = 202」「取得は処理中なら 202、
+//      完了で 200」とステータスコードで進行を表していた。gRPC に 202 は無いので、
+//      GetCaptureResponse.state に持たせる。呼ぶ側は code ではなく state を見る。
+//   2. 失敗は gRPC の status code で返す。RFC 7807 の Problem は落とした。
+//      対応は request-mapper / handlers 側のコメントに書いてある。
+service CaptureService {
+  // capture を投入する。fire-and-forget —— 受理した時点で返り、実際の capture は
+  // worker pool が非同期に進める。結果は GetCapture で取る。
+  rpc SubmitCapture(SubmitCaptureRequest) returns (SubmitCaptureResponse);
+
+  // 投入した capture の現在。まだ終わっていなければ state が PENDING か PROCESSING で
+  // report は空。
+  rpc GetCapture(GetCaptureRequest) returns (GetCaptureResponse);
+
+  // キューと coordinator の現在。
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
+
+// -- enum ------------------------------------------------------------------
+
+// capture の結末。
+enum CaptureStatus {
+  CAPTURE_STATUS_UNSPECIFIED = 0;
+  CAPTURE_STATUS_SUCCESS = 1;
+  CAPTURE_STATUS_FAILED = 2;
+  CAPTURE_STATUS_TIMEOUT = 3;
+  CAPTURE_STATUS_HTTP_ERROR = 4;
+}
+
+// GetCapture の進行。HTTP の 202/200 の代わり。
+enum CaptureState {
+  CAPTURE_STATE_UNSPECIFIED = 0;
+  CAPTURE_STATE_PENDING = 1;
+  CAPTURE_STATE_PROCESSING = 2;
+  CAPTURE_STATE_DONE = 3;
+}
+
+// 署名の検査 1 つぶんの結果。
+enum CheckOutcome {
+  CHECK_OUTCOME_UNSPECIFIED = 0;
+  CHECK_OUTCOME_OK = 1;
+  CHECK_OUTCOME_FAILED = 2;
+  CHECK_OUTCOME_SKIPPED = 3;
+}
+
+// worker の健康状態。
+enum WorkerHealth {
+  WORKER_HEALTH_UNSPECIFIED = 0;
+  WORKER_HEALTH_READY = 1;
+  WORKER_HEALTH_BUSY = 2;
+  WORKER_HEALTH_ERROR = 3;
+  WORKER_HEALTH_DISCONNECTED = 4;
+}
+
+// 失敗の分類。
+enum ErrorType {
+  ERROR_TYPE_UNSPECIFIED = 0;
+  ERROR_TYPE_HTTP = 1;
+  ERROR_TYPE_TIMEOUT = 2;
+  ERROR_TYPE_CONNECTION = 3;
+  ERROR_TYPE_SIGNING = 4;
+  ERROR_TYPE_INTERNAL = 5;
+}
+
+// ブラウザ HTTP キャッシュの扱い。
+enum CacheMode {
+  CACHE_MODE_UNSPECIFIED = 0;
+  CACHE_MODE_DEFAULT = 1;
+  CACHE_MODE_BYPASS = 2;
+  CACHE_MODE_CLEAR = 3;
+}
+
+// 1 回のロードで済ますか、DPR ごとに読み直すか。
+enum ArchiveMode {
+  ARCHIVE_MODE_UNSPECIFIED = 0;
+  ARCHIVE_MODE_SINGLE_PASS = 1;
+  ARCHIVE_MODE_MULTIPASS = 2;
+}
+
+// -- リクエスト側 ----------------------------------------------------------
+
+// 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。
+message CaptureFormats {
+  bool png = 1;
+  bool webp = 2;
+  bool html = 3;
+  bool links = 4;
+  bool mhtml = 5;
+  bool wacz = 6;
+}
+
+// 大きな固定オーバーレイを消す第 2 パスの閾値。省略時はサーバ既定。
+message DismissHeuristicSpec {
+  optional bool enabled = 1;
+  optional double min_viewport_coverage_ratio = 2;
+  optional int32 min_z_index = 3;
+}
+
+// banner / modal の除去を 1 回の capture だけ調整する。
+message DismissSpec {
+  optional bool use_defaults = 1;
+  repeated string extra_selectors = 2;
+  repeated string exclude_frameworks = 3;
+  optional DismissHeuristicSpec heuristic = 4;
+  optional bool fail_on_error = 5;
+}
+
+// task 間の初期化を軸ごとに制御する。省略時はサーバ既定。
+message ResetStateSpec {
+  optional bool cookies = 1;
+  optional bool page_context = 2;
+}
+
+// viewport の指定。
+message Viewport {
+  int32 width = 1;
+  int32 height = 2;
+}
+
+// 1 つの behavior に渡す値。OpenAPI では自由形式の object だったので、
+// JSON 文字列として運ぶ (proto に写しても中身を型で守れないため)。
+message BehaviorOptions {
+  string options_json = 1;
+}
+
+// client が持ち込む behavior。サーバが --allow-custom-behaviors で起動している
+// ときだけ効き、そうでなければ黙って無視される。
+message CustomBehavior {
+  // behavior report に出る識別子。
+  string id = 1;
+  // { static id, static isMatch, run(ctx) } を実装した JS のクラス式。
+  string source = 2;
+}
+
+// capture ごとの behavior の指定。
+message BehaviorSpec {
+  repeated string builtins = 1;
+  optional BehaviorOptions options = 2;
+  optional bool site_behaviors = 3;
+  repeated CustomBehavior custom = 4;
+}
+
+message SubmitCaptureRequest {
+  string url = 1;
+  repeated string labels = 2;
+  optional string correlation_id = 3;
+  CaptureFormats capture_formats = 4;
+  optional string accept_language = 5;
+  optional bool signing = 6;
+
+  // HTTP では boolean か object の oneOf だった。true/false だけの指定と、
+  // 細かい指定を区別する必要があるので oneof で写す。
+  oneof dismiss_banners {
+    bool dismiss_banners_enabled = 7;
+    DismissSpec dismiss_banners_spec = 8;
+  }
+
+  optional Viewport viewport = 9;
+  optional int32 operation_delay_ms = 10;
+  optional bool trace = 11;
+  CacheMode cache = 12;
+  ArchiveMode archive_mode = 13;
+  optional int32 device_scale_factor = 14;
+  optional bool full_page = 15;
+  optional BehaviorSpec behaviors = 16;
+
+  // dismiss_banners と同じ理由の oneof。
+  oneof reset_state {
+    bool reset_state_enabled = 17;
+    ResetStateSpec reset_state_spec = 18;
+  }
+}
+
+message GetCaptureRequest {
+  string task_id = 1;
+}
+
+message GetStatusRequest {
+  // 返す pending task の上限。省略時は 50 (handler が当てる)。OpenAPI では
+  // query parameter で minimum: 0 / maximum: 200 / default: 50 と書けていたが、
+  // proto は値域を持てないので範囲の検査は handler へ移る。
+  optional int32 pending_limit = 1;
+}
+
+// -- 結果 ------------------------------------------------------------------
+
+message SubmitCaptureResponse {
+  // HTTP 時代の 202 body と同じ。失敗は status code で返るので、ここに来るのは
+  // 受理されたときだけ。
+  bool accepted = 1;
+  string task_id = 2;
+  optional string correlation_id = 3;
+}
+
+// 成果物の置き場所 (s3://…)。取得しなかった形式は空のまま。
+message CaptureArtifacts {
+  optional string png = 1;
+  optional string webp = 2;
+  optional string html = 3;
+  optional string links = 4;
+  optional string mhtml = 5;
+  optional string wacz = 6;
+}
+
+message WaczStats {
+  int32 total_recorded = 1;
+  int32 total_blocked = 2;
+  int32 total_skipped_content_type = 3;
+  int32 total_truncated_too_large = 4;
+  int32 total_truncated_task_cap = 5;
+  int32 total_failed = 6;
+  int32 total_incomplete = 7;
+  int64 total_body_bytes = 8;
+}
+
+message WaczSignatureChecks {
+  CheckOutcome signature = 1;
+  CheckOutcome chain = 2;
+  CheckOutcome domain = 3;
+  CheckOutcome timestamp = 4;
+}
+
+message WaczSignature {
+  bool signed = 1;
+  optional string reason = 2;
+  optional string domain = 3;
+  optional WaczSignatureChecks checks = 4;
+}
+
+message WaczCompleteness {
+  repeated string bodyless_urls = 1;
+  repeated string truncated_urls = 2;
+  bool complete = 3;
+}
+
+message CaptureErrorDetails {
+  ErrorType type = 1;
+  string message = 2;
+  optional int32 http_status_code = 3;
+  optional string http_status_text = 4;
+  optional int32 timeout_ms = 5;
+}
+
+message CaptureResultReport {
+  string task_id = 1;
+  optional string correlation_id = 2;
+  string url = 3;
+  repeated string labels = 4;
+  CaptureStatus status = 5;
+  optional int32 http_status_code = 6;
+  string timestamp = 7;
+  int32 capture_processing_time_ms = 8;
+  int32 retry_count = 9;
+  int32 worker_index = 10;
+  CaptureArtifacts artifacts = 11;
+  optional WaczStats wacz_stats = 12;
+  optional WaczCompleteness completeness = 13;
+  optional WaczSignature signature = 14;
+  optional CaptureErrorDetails error_details = 15;
+}
+
+message GetCaptureResponse {
+  // HTTP の 202/200 の代わり。DONE 以外では report を見ないこと。
+  CaptureState state = 1;
+  optional CaptureResultReport report = 2;
+}
+
+// -- status ----------------------------------------------------------------
+
+message ErrorTaskInfo {
+  string task_id = 1;
+  string url = 2;
+  repeated string labels = 3;
+}
+
+message ErrorRecord {
+  ErrorType type = 1;
+  string message = 2;
+  optional int32 http_status_code = 3;
+  optional string http_status_text = 4;
+  optional int32 timeout_ms = 5;
+  string timestamp = 6;
+  optional ErrorTaskInfo task = 7;
+}
+
+message BrowserOptions {
+  string browser_url = 1;
+}
+
+message CurrentTask {
+  string task_id = 1;
+  string url = 2;
+  repeated string labels = 3;
+  optional string correlation_id = 4;
+  string started_at = 5;
+  int32 elapsed_ms = 6;
+  int32 retry_count = 7;
+}
+
+message WorkerInfo {
+  int32 index = 1;
+  BrowserOptions browser_options = 2;
+  WorkerHealth health = 3;
+  int32 processed_count = 4;
+  int32 error_count = 5;
+  repeated ErrorRecord error_history = 6;
+  optional CurrentTask current_task = 7;
+}
+
+message PendingTask {
+  string task_id = 1;
+  string url = 2;
+  repeated string labels = 3;
+  optional string correlation_id = 4;
+  string enqueued_at = 5;
+  int32 queued_ms = 6;
+  int32 retry_count = 7;
+}
+
+message ProcessingTask {
+  string task_id = 1;
+  string url = 2;
+  repeated string labels = 3;
+  optional string correlation_id = 4;
+  string enqueued_at = 5;
+  int32 queued_ms = 6;
+  int32 retry_count = 7;
+  int32 worker_index = 8;
+  string started_at = 9;
+  int32 elapsed_ms = 10;
+}
+
+message QueueSnapshot {
+  repeated PendingTask pending_tasks = 1;
+  repeated ProcessingTask processing_tasks = 2;
+}
+
+message BuildInfo {
+  string version = 1;
+  string revision = 2;
+  string build_time = 3;
+}
+
+message GetStatusResponse {
+  int32 pending = 1;
+  int32 processing = 2;
+  int32 succeeded = 3;
+  int32 failed = 4;
+  int32 operational_workers = 5;
+  int32 total_workers = 6;
+  bool is_running = 7;
+  bool is_degraded = 8;
+  repeated WorkerInfo workers = 9;
+  QueueSnapshot queue = 10;
+  BuildInfo build = 11;
+}

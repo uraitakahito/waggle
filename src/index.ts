@@ -17,6 +17,6 @@ export {
 } from "./config/cli-options.js";
 export type { CaptureFormats } from "./types/capture.js";
 export { logger, createChildLogger, type Logger, type LoggerBindings } from "./logger.js";
-export { configureClient } from "./client/openapi-client.js";
+export { closeClient, configureClient, DEFAULT_TARGET } from "./rpc/client.js";
 export { submitRequest, type SubmitResult } from "./client/submit.js";
 export { runClient, submitAll } from "./client/run.js";

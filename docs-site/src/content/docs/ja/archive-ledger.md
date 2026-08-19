@@ -40,7 +40,7 @@ Outbox 行として記録します。両方入るか、どちらも入らない�
 ## 台帳を埋める 2 つの経路
 
 **ポーリング** ― `waggle` は投げた capture の完了を待ち
-（`GET /v1/captures/{taskId}`、完了するまで 202）、成果物ができたものを
+（`GetCapture`、完了するまで `PENDING` / `PROCESSING`）、成果物ができたものを
 登録します。速いですが、waggle が動いている間しか効きません。
 `--no-collect` で省略できます。
 

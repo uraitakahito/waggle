@@ -13,7 +13,11 @@
  * delivers it afterwards, retrying until OpenFGA accepts it.
  */
 import type { Kysely } from "kysely";
-import type { CaptureResultReport } from "../http/generated/index.js";
+import {
+  CaptureStatus,
+  captureStatusToJSON,
+  type CaptureResultReport,
+} from "../rpc/generated/browserhive/v1/capture.js";
 import type { Database } from "../db/database.js";
 import { parseS3Uri } from "./s3-uri.js";
 import { createChildLogger } from "../logger.js";
@@ -34,11 +38,18 @@ export const registerArchive = async (
   // A failed capture uploaded nothing. Recording it would let the signing
   // endpoint hand out a URL for an object that does not exist — authorization
   // working perfectly on a 404, which is the hardest kind of broken to notice.
-  if (report.status !== "success" || report.artifacts.wacz === undefined) {
+  // Compared against the enum, never against a string. The report is protobuf
+  // now — over the wire and in the `.result.json` manifest alike — so `status`
+  // is a number, and `report.status !== "success"` would have compiled fine
+  // and been true for every capture ever taken.
+  if (
+    report.status !== CaptureStatus.CAPTURE_STATUS_SUCCESS ||
+    report.artifacts?.wacz === undefined
+  ) {
     log.warn(
       {
         taskId: report.taskId,
-        status: report.status,
+        status: captureStatusToJSON(report.status),
         error: report.errorDetails?.message,
         url: report.url,
       },

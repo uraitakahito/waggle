@@ -1,0 +1,23 @@
+# Mirror of upstream BrowserHive's buf.gen.yaml, with one deliberate
+# difference: `outputServices=grpc-js` emits *both* the server interface and
+# the client stub, and waggle only ever calls. Keeping the option identical to
+# upstream's is still the right trade — a divergent generator config is how the
+# two ends drift apart, and the unused server half costs nothing but bytes.
+version: v2
+clean: true
+plugins:
+  - local: protoc-gen-ts_proto
+    out: src/rpc/generated
+    opt:
+      - outputServices=grpc-js
+      - esModuleInterop=true
+      - env=node
+      - useOptionals=messages
+      - exportCommonSymbols=false
+      # TS 側だけ camelCase。wire の名前は .proto の snake_case のまま。
+      # upstream と揃えてある —— 揃えないと、同じ契約から出た型の名前が
+      # 両端で違うことになる。
+      - snakeToCamel=true
+    strategy: all
+inputs:
+  - directory: proto

@@ -12,7 +12,7 @@ waggle は `main` ではなく **特定の BrowserHive の版**に固定され�
 `git describe --tags` で読んでいるので、このページが古くなることはありません。
 submodule が**唯一のピン**で、BrowserHive 本体・BrowserHive が検証済みの
 `chromium-server-docker`・スタックがマウントする SeaweedFS 設定・クライアントの
-生成元 OpenAPI spec が、すべてこの中に入っています。
+生成元の `.proto` が、すべてこの中に入っています。
 
 :::note[以前は 4 箇所ありました]
 かつては `package.json`・`setup.sh`・compose 2 枚にバージョン文字列が書かれ、
@@ -29,10 +29,10 @@ git -C .upstream/browserhive checkout <new-tag>
 git -C .upstream/browserhive submodule update --init --recursive
 git add .upstream/browserhive
 
-# 2. spec を取り直してクライアントを再生成する（ローカルコピー。ネットワーク不要）。
-npm run openapi:sync
-npm run openapi:generate
-npm run openapi:check     # コミット後に exit 0 になること
+# 2. 契約を取り直してスタブを再生成する（ローカルコピー。ネットワーク不要）。
+npm run proto:sync
+npm run proto:generate
+npm run proto:check       # コミット後に exit 0 になること
 
 # 3. まっさらな状態から作り直す。古いボリュームには前のバケットと DB が残っており、
 #    更新で入り込んだ順序の不具合を隠してしまう。
@@ -70,9 +70,11 @@ container build -f Dockerfile.prod -t bh-probe .upstream/browserhive
 
 API の追加だけの変更 (オプショナルなリクエストフィールドが増える等) なら、手順 2
 以外は何も要りません。再生成した型はそのままコンパイルが通り、テストも無修正で
-通ります。1.6.0 はまさにこれでした。
+通ります。1.6.0 はまさにこれでした。upstream は変更のたびに `buf breaking` を
+回しているので、フィールドが増えただけの更新でフィールド番号が生成物の下から
+入れ替わることはありません。
 
-厄介なのは**インフラの変更**です。OpenAPI の差分にはまったく現れません。
+厄介なのは**インフラの変更**です。`.proto` の差分にはまったく現れません。
 1.5.2 → 1.6.0 の移行で実際にあった 2 例:
 
 - BrowserHive の SeaweedFS entrypoint がバケットを自分で作るようになり、waggle

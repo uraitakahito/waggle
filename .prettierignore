@@ -1,7 +1,7 @@
 dist
 node_modules
 package-lock.json
-src/http/generated
+src/rpc/generated
 .upstream
 docs-site/.astro
 docs-site/dist

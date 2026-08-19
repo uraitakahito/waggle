@@ -44,11 +44,46 @@ jobs:
     permissions:
       contents: read
     steps:
+      # BrowserHive is a private repository, so the default GITHUB_TOKEN cannot
+      # clone the .upstream/browserhive submodule ("Repository not found" —
+      # GitHub does not distinguish absent from unreadable). A GitHub App token
+      # scoped to both repositories does.
+      #
+      # The token has to cover waggle as well as browserhive: actions/checkout
+      # uses the same credential for the superproject and its submodules.
+      #
+      # Setup (one time, outside this repo):
+      #   1. A GitHub App with Contents: Read — uraitakahito-submodule-reader
+      #      — installed with access to waggle AND browserhive.
+      #   2. Its Client ID as the repository variable SUBMODULE_CLIENT_ID and
+      #      its private key as the secret SUBMODULE_APP_KEY. The numeric App
+      #      ID also works, but the action calls that input legacy and GitHub
+      #      recommends the client ID for the JWT it signs.
+      #
+      # The App is named for the job rather than for a repository because it
+      # is meant to be shared: any other repo of this account that grows a
+      # private submodule reuses the same App, key, and variable names, and
+      # changes only the `repositories` list below.
+      - uses: actions/create-github-app-token@v3
+        id: submodule-token
+        with:
+          client-id: ${{ vars.SUBMODULE_CLIENT_ID }}
+          private-key: ${{ secrets.SUBMODULE_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            waggle
+            browserhive
+          # Narrow the minted token to exactly what a clone needs. This matters
+          # if the App is one that also does something else — reusing the
+          # reviewdog App, say, would otherwise hand this job its
+          # pull-requests: write as well.
+          permission-contents: read
       - uses: actions/checkout@v7
         with:
           # The BrowserHive pin shown in the docs is read from the
           # .upstream/browserhive submodule via `git describe`.
           submodules: recursive
+          token: ${{ steps.submodule-token.outputs.token }}
       # actions/checkout clones submodules shallow and without tag refs, so
       # `git describe --tags` — how the docs read the BrowserHive pin — finds
       # nothing ("No names found"). The commit is already checked out; this

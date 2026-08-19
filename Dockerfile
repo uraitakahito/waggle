@@ -3,15 +3,17 @@
 # Production image for the waggle CLI.
 #
 # Build:
-#   docker build -f Dockerfile.prod -t waggle:prod .
+#   container build -t waggle:latest .
 #
-# Run (one-shot capture against an existing BrowserHive):
-#   docker run --rm -v "$(pwd)/data:/app/data" \
-#     -e BROWSERHIVE_SERVER=http://browserhive:8080 \
-#     waggle:prod --data data/sample.yaml --jpeg --limit 3
+# Run (one-shot capture against an existing BrowserHive). The URLs come from
+# Postgres, so both addresses have to be given:
+#   container run --rm \
+#     -e DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle \
+#     -e BROWSERHIVE_SERVER=browserhive.waggle:50051 \
+#     waggle:latest --wacz --limit 1
 #
-# Or use compose.prod.yaml (which adds the BrowserHive + chromium-server
-# stack and wires `BROWSERHIVE_SERVER` for you).
+# The migration and seed jobs share this image but not its ENTRYPOINT — see
+# `run_job` in scripts/prod-smoke.sh, which drives the whole stack end to end.
 
 ARG NODE_VERSION=24.15.0
 
@@ -24,7 +26,6 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY tsconfig.json tsconfig.build.json ./
-COPY openapi/ ./openapi/
 COPY src/ ./src/
 
 RUN npm run build \
@@ -39,7 +40,6 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/openapi ./openapi
 COPY package.json ./
 
 USER node

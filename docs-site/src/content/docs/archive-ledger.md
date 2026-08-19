@@ -45,7 +45,7 @@ in that case, or the new tuples would be lost silently.
 Two paths, on purpose.
 
 **Polling** — `waggle` waits for each capture it submitted
-(`GET /v1/captures/{taskId}`, 202 until it finishes) and registers the ones
+(`GetCapture`, `PENDING` / `PROCESSING` until it finishes) and registers the ones
 that produced an archive. Fast, but only works while waggle is running.
 `--no-collect` skips it.
 
