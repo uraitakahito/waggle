@@ -7,14 +7,14 @@
  */
 import { status, type ServiceError } from "@grpc/grpc-js";
 import { getClient } from "./client.js";
+import type { WireSubmitCapture } from "./wire.js";
 import type {
   GetCaptureRequest,
   GetCaptureResponse,
-  SubmitCaptureRequest,
   SubmitCaptureResponse,
 } from "./generated/browserhive/v1/capture.js";
 
-export const submitCapture = (request: SubmitCaptureRequest): Promise<SubmitCaptureResponse> =>
+export const submitCapture = (request: WireSubmitCapture): Promise<SubmitCaptureResponse> =>
   new Promise((resolve, reject) => {
     getClient().submitCapture(request, (error, response) => {
       if (error) reject(error);

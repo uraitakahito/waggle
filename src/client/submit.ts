@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture } from "../rpc/calls.js";
-import {
-  ArchiveMode,
-  CacheMode,
-  type SubmitCaptureRequest,
-} from "../rpc/generated/browserhive/v1/capture.js";
+import { ArchiveMode, CacheMode } from "../rpc/generated/browserhive/v1/capture.js";
+import { sealWire, type WireSubmitCapture } from "../rpc/wire.js";
 import type { DataEntry } from "../data/url-source.js";
 import type { CaptureSettings } from "../types/capture.js";
 
@@ -70,9 +67,9 @@ const buildRequest = (
   entry: DataEntry,
   settings: CaptureSettings,
   correlationId: string,
-): SubmitCaptureRequest => {
+): WireSubmitCapture => {
   const behaviors = settings.behaviors;
-  return {
+  return sealWire({
     url: entry.url,
     labels: entry.labels,
     correlationId,
@@ -97,7 +94,7 @@ const buildRequest = (
         ...(behaviors.siteBehaviors !== undefined && { siteBehaviors: behaviors.siteBehaviors }),
       },
     }),
-  };
+  });
 };
 
 /**
