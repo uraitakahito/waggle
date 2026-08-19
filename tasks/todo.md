@@ -90,3 +90,28 @@ browserhive v3.0.0 で transport が gRPC になった。waggle は生成 SDK
 ### 持ち越し
 
 - browserhive の `@grpc/reflection` が未使用のまま dependencies に残っている
+
+### end-to-end 検証 (2026-08-19)
+
+`./scripts/prod-smoke.sh` が **exit 0**。Apple Container 上に Postgres /
+SeaweedFS / OpenFGA / chromium x2 / BrowserHive v3.0.2 を立てて実際に 1 件
+キャプチャした。
+
+  msg="Request accepted"   taskId=e1cd3689-… labels=["ledger"]
+  msg="archive registered" archiveId=e344a736-…
+  msg="Request summary"    accepted=1 rejected=0 durationMs=6122
+
+2 行目が register.ts の修正 (protobuf JSON のマニフェストを enum で読む) が
+効いている証拠。直す前はここが「capture produced no archive」になる。
+
+3 回走らせて 3 回とも別の欠陥を出した:
+
+  1 回目 — browserhive のイメージがビルドできない (-> v3.0.2)
+  2 回目 — @bufbuild/protobuf が production 依存に無い (-> 検査を追加)
+  3 回目 — 通った
+
+### 残っているもの
+
+**waggle のリリースは CI 待ち。** `Docs sync guard` が GitHub App の設定待ちで
+赤い (browserhive の private 化の副作用。この PR とは無関係に develop / main も
+落ちる)。App を作って UPSTREAM_APP_ID / UPSTREAM_APP_KEY を登録すれば緑になる。
