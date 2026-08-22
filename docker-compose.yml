@@ -14,11 +14,6 @@
 # 方式に落ちる。そしてその方式は、ここに居る非 root のコンテナ (browserhive, chromium)
 # では黙って失敗する。
 #
-# 起動の待ち合わせは、意図的にここで扱っていない (container-compose に healthcheck が
-# 無く、depends_on は起動順序でしかないため): S3 の bucket 作成は seaweedfs の
-# entrypoint の中で走り、browserhive は WAIT_FOR_S3 を待ち、人間は docs にある
-# curl の待ちループを使う。
-#
 # 上流のソースは git URL からではなく .upstream/browserhive の submodule から来る ——
 # `container build` は context のディレクトリしか受け取らないため。submodule には
 # browserhive 本体、それが動作確認された版の chromium-server-docker、そして SeaweedFS の
