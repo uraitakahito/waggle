@@ -27,7 +27,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:comments": "node scripts/check-comment-language.mjs scripts/check-comment-language.mjs src",
+    "lint:comments": "node scripts/check-comment-language.mjs scripts/check-comment-language.mjs src test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "proto:generate": "buf generate",
