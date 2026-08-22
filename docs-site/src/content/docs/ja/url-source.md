@@ -59,8 +59,8 @@ ON CONFLICT (url_hash) DO NOTHING;
 
 マイグレーションは `src/db/migrations/<NNN>-<説明>.ts` に置き、`up(db)` /
 `down(db)` を export します。ランナーは Kysely の `Migrator` +
-`FileMigrationProvider` の薄いラッパで、適用済み ID を `kysely_migration` 台帳で
-管理します (同時実行は `kysely_migration_lock` が守ります)。最新の状態で
+`FileMigrationProvider` の薄いラッパで、適用済み ID を `kysely_migration`
+テーブルで管理します (同時実行は `kysely_migration_lock` が守ります)。最新の状態で
 `pnpm run db:migrate` を再実行しても何も起きません。
 
 ```sh
@@ -78,5 +78,5 @@ pnpm run db:migrate:down  # 直前の 1 つを巻き戻す
    CI も同じ往復を実行します。
 4. マイグレーションと、それに依存するコードは同じ PR でコミットする。
 
-seed も `src/db/seeds/` に同じ形で置きますが、台帳は `kysely_seed` と別なので、
+seed も `src/db/seeds/` に同じ形で置きますが、記録は `kysely_seed` と別なので、
 マイグレーションとは独立に適用・巻き戻しできます。

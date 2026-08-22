@@ -70,6 +70,12 @@ DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
 BROWSERHIVE_SERVER=browserhive.waggle:50051
 ```
 
+The `pnpm run` scripts read that `.env` themselves
+(`node --env-file-if-exists=.env`) — no shell `export` needed. **Variables
+already in the environment win**, so `DATABASE_URL=... pnpm run db:migrate`
+points one run at a different database. Invoking `node dist/...` directly does
+not load it; pass what you need yourself there.
+
 Postgres is also published on `127.0.0.1:5432`, so `localhost` works too.
 
 Coming from Docker Compose, the everyday commands map like this:
