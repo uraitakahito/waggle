@@ -7,7 +7,7 @@
  * 広がっていく。
  */
 export { loadUrls, type DataEntry, type UrlSourceQuery } from "./data/url-source.js";
-export { createPool, redactDatabaseUrl } from "./db/pool.js";
+export { createPool, maskPassword } from "./db/pool.js";
 export {
   parseClientOptions,
   getCaptureFormats,
