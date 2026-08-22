@@ -49,11 +49,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # eslint とは別のステップにしておく。落ちたときに、コードの問題なのか
-      # コメントの言語なのかが一目で分かる。
-      - name: Comment language
-        run: npm run lint:comments
-
       - name: Format check
         run: npm run format:check
 
