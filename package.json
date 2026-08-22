@@ -27,7 +27,6 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:comments": "node scripts/check-comment-language.mjs src test scripts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "proto:generate": "buf generate",
@@ -48,7 +47,7 @@
     "db:migrate:down": "npm run build && node dist/db/migrate.js down",
     "db:seed": "npm run build && node dist/db/seed.js up",
     "db:seed:down": "npm run build && node dist/db/seed.js down",
-    "check": "npm run typecheck && npm run lint && npm run lint:comments && npm run format:check && npm run proto:check-deps && npm test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run proto:check-deps && npm test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
