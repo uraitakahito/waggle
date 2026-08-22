@@ -14,8 +14,8 @@ import { closeClient, configureClient } from "../rpc/client.js";
 import { submitRequest, type SubmitResult } from "./submit.js";
 
 /**
- * Submit every entry in parallel, logging each result as it arrives.
- * Returns once all submissions have settled.
+ * 全エントリを並列に投げ、結果が届いた順にログへ出す。
+ * すべての投稿が決着したら返る。
  */
 export const submitAll = async (
   entries: DataEntry[],
@@ -73,12 +73,11 @@ const logSummary = (results: SubmitResult[], totalDuration: number): void => {
 };
 
 /**
- * Record which organization each accepted task belongs to.
+ * 受理された各タスクが、どの組織のものかを記録する。
  *
- * Written before anything waits on the capture, because this is the only
- * place that knows. BrowserHive has no concept of an organization, so a
- * result recovered later from a manifest carries nothing that identifies one —
- * without this row the reconciler could not attribute the archive.
+ * 取り込みを待ち始める前に書く。それを知っているのがここだけだから。BrowserHive に
+ * 組織という概念は無く、後から manifest から復元した結果は組織を特定するものを
+ * 何も運ばない —— この行が無いと、reconciler はアーカイブの帰属を言えない。
  */
 const recordSubmissions = async (db: Kysely<Database>, results: SubmitResult[]): Promise<void> => {
   const accepted = results.filter((r) => r.accepted);
@@ -95,20 +94,19 @@ const recordSubmissions = async (db: Kysely<Database>, results: SubmitResult[]):
         sourceUrl: r.sourceUrl,
       })),
     )
-    // A resubmitted taskId cannot happen (the server generates it), but a
-    // retried run of this function can.
+    // taskId が再投稿されることは無い (server が生成するので) が、この関数自体が
+    // 再実行されることはある。
     .onConflict((oc) => oc.column("taskId").doNothing())
     .execute();
 };
 
 /**
- * Wait for every accepted task and add the ones that produced an archive to
- * the ledger.
+ * 受理された全タスクを待ち、アーカイブを生んだものを台帳に足す。
  *
- * Failures here are deliberately not fatal to the run: a capture that never
- * reports, or a ledger write that loses a race, is picked up later by
- * `waggle fga:reconcile` from the durable manifests. The point of this pass is
- * latency, not correctness — correctness is the reconciler's job.
+ * ここでの失敗は意図して実行全体の致命傷にしない: 報告が来ない取り込みも、競合に
+ * 負けた台帳への書き込みも、後から `waggle fga:reconcile` が永続化された manifest
+ * から拾う。この段の目的は待ち時間であって正しさではない —— 正しさは reconciler の
+ * 仕事。
  */
 const collectResults = async (
   db: Kysely<Database>,
@@ -138,8 +136,8 @@ const collectResults = async (
 };
 
 /**
- * Top-level orchestration: load URLs from Postgres, configure the
- * client, submit every entry, and log the summary.
+ * 最上位の段取り: Postgres から URL を読み、client を設定し、全エントリを投げ、
+ * まとめをログに出す。
  */
 export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
@@ -147,9 +145,8 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
   logClientConfig(options);
   configureClient(options.server, options.tlsCaCert);
 
-  // The gRPC channel keeps the event loop alive on its own, unlike the
-  // fetch client this replaced. Without this the process finishes its work
-  // and then hangs.
+  // gRPC の channel は、置き換えた fetch の client と違って、それ自体が event loop を
+  // 生かし続ける。これが無いとプロセスは仕事を終えたあとぶら下がったままになる。
   try {
     const pool = createPool(options.databaseUrl);
     let entries: DataEntry[];
