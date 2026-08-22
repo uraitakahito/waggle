@@ -49,8 +49,10 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 ```
 
 `-import-path proto -proto …` points grpcurl at the contract vendored in this
-repo. BrowserHive does not serve reflection, so the `.proto` is how a caller
-learns the service — the same file the client is generated from.
+repo. BrowserHive does not serve reflection — a deliberate choice, not a gap:
+enabling it would mean shipping a descriptor set and reading it at runtime,
+making the `.proto` a runtime asset. So the `.proto` is how a caller learns the
+service — the same file the client is generated from.
 
 The workers are headless. To watch one render, open `chrome://inspect` in a
 local Chrome and add `localhost:9222` and `localhost:9223` under _Configure…_.
