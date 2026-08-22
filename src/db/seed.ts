@@ -1,7 +1,7 @@
 /**
  * seed の CLI の入口。
  *
- * `migrate.ts` と同じ Kysely Migrator runner を、台帳テーブルだけ
+ * `migrate.ts` と同じ Kysely Migrator runner を、記録用のテーブルだけ
  * `kysely_seed` / `kysely_seed_lock` に変えて使い回す。こうすると seed ファイルは
  * 環境ごとに高々 1 度しか当たらない。方向は位置引数 (`up` | `down`)。
  *

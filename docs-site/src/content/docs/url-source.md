@@ -62,7 +62,7 @@ rather than deleting the row.
 Migration files live under `src/db/migrations/<NNN>-<description>.ts` and export
 `up(db)` / `down(db)`. The runner is a thin wrapper around Kysely's `Migrator`
 with `FileMigrationProvider`; applied IDs are tracked in the `kysely_migration`
-ledger (`kysely_migration_lock` guards concurrent runs), so re-running
+table (`kysely_migration_lock` guards concurrent runs), so re-running
 `pnpm run db:migrate` is a no-op once current.
 
 ```sh
@@ -81,4 +81,4 @@ To add one:
 4. Commit the migration and the code that depends on it together.
 
 Seeds have the same shape under `src/db/seeds/` but use a separate `kysely_seed`
-ledger, so they can be applied and reverted independently.
+table, so they can be applied and reverted independently.
