@@ -1,16 +1,15 @@
 /**
- * Put a finished capture into the ledger, and queue the tuples that make it
- * reachable — in one transaction.
+ * 終わった取り込みを台帳に入れ、それを到達可能にする tuple を queue に積む ——
+ * 1 つのトランザクションで。
  *
- * The two writes cannot be one atomic operation on their own: the archive row
- * goes to Postgres, the relationship tuples go over OpenFGA's HTTP API, and no
- * transaction spans both. Doing them independently means one can land without
- * the other, and both halves of that are bad — an archive nobody can reach, or
- * a permission pointing at a row that was rolled back.
+ * この 2 つの書き込みは、それだけでは 1 つの原子的な操作にできない: アーカイブの
+ * 行は Postgres へ、関係の tuple は OpenFGA の HTTP API へ行き、両方に跨がる
+ * トランザクションは無い。独立にやると片方だけ入りうるし、その両側とも悪い ——
+ * 誰も辿り着けないアーカイブか、巻き戻された行を指す権限か。
  *
- * So the tuple write is *recorded* here as an outbox row inside the same
- * transaction as the archive. Either both land or neither does. A worker
- * delivers it afterwards, retrying until OpenFGA accepts it.
+ * そこで tuple の書き込みは、アーカイブと同じトランザクションの中で outbox の
+ * 行として **記録** する。両方入るか、どちらも入らないか。あとは worker が
+ * OpenFGA に受け入れられるまで再送しながら配送する。
  */
 import type { Kysely } from "kysely";
 import {
@@ -25,7 +24,7 @@ import { createChildLogger } from "../logger.js";
 const log = createChildLogger({ module: "archive-register" });
 
 export interface RegisterResult {
-  /** `undefined` when nothing was inserted — not an error, see below. */
+  /** 何も挿入しなかったときは `undefined` —— エラーではない。下を見ること。 */
   archiveId?: string;
   reason?: "no-archive" | "already-known";
 }
@@ -35,13 +34,13 @@ export const registerArchive = async (
   report: CaptureResultReport,
   orgId: string,
 ): Promise<RegisterResult> => {
-  // A failed capture uploaded nothing. Recording it would let the signing
-  // endpoint hand out a URL for an object that does not exist — authorization
-  // working perfectly on a 404, which is the hardest kind of broken to notice.
-  // Compared against the enum, never against a string. The report is protobuf
-  // now — over the wire and in the `.result.json` manifest alike — so `status`
-  // is a number, and `report.status !== "success"` would have compiled fine
-  // and been true for every capture ever taken.
+  // 失敗した取り込みは何もアップロードしていない。それを記録すると、署名の
+  // エンドポイントが存在しないオブジェクトの URL を配ることになる —— 404 に対して
+  // 認可が完璧に働いている状態で、最も気づきにくい壊れ方。
+  // 比べる相手は必ず enum で、文字列ではない。report はいま protobuf —— wire でも
+  // `.result.json` の manifest でも同じ —— なので `status` は数値であり、
+  // `report.status !== "success"` はコンパイルは通ったうえで、これまでのすべての
+  // 取り込みについて真になっていた。
   if (
     report.status !== CaptureStatus.CAPTURE_STATUS_SUCCESS ||
     report.artifacts?.wacz === undefined
@@ -58,7 +57,7 @@ export const registerArchive = async (
     return { reason: "no-archive" };
   }
 
-  // From the server's own report, not from rebuilding a filename.
+  // ファイル名を組み直したものではなく、server 自身の報告から取る。
   const { bucket, key } = parseS3Uri(report.artifacts.wacz);
 
   return db.transaction().execute(async (trx) => {
@@ -74,15 +73,14 @@ export const registerArchive = async (
         waczComplete: report.completeness?.complete ?? null,
         capturedAt: report.timestamp,
       })
-      // The poller and the reconciler can both reach the same capture, and
-      // either can be retried. The unique index makes that a no-op rather
-      // than a duplicate.
+      // poller と reconciler の両方が同じ取り込みに辿り着けるし、どちらも
+      // 再実行されうる。unique index があるので、それは重複ではなく無操作になる。
       .onConflict((oc) => oc.columns(["bucket", "objectKey"]).doNothing())
       .returning("id")
       .executeTakeFirst();
 
-    // Already in the ledger, so its tuples were queued the first time. Writing
-    // them again would be harmless but pointless.
+    // 既に台帳に在るということは、tuple も最初のときに queue へ積まれている。
+    // もう一度書いても害は無いが、意味も無い。
     if (!inserted) return { reason: "already-known" as const };
 
     await trx

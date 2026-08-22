@@ -1,11 +1,10 @@
 /**
- * Parse the `s3://bucket/key` URIs BrowserHive reports as artifact locations.
+ * BrowserHive が成果物の在り処として報告する `s3://bucket/key` の URI を解析する。
  *
- * These come from the server, not from reconstructing a filename, so this is
- * the only place waggle needs to know anything about the shape of a key.
- * Keeping the parse in one function means a future artifact store that returns
- * a different scheme fails loudly here rather than producing a plausible-but-
- * wrong bucket somewhere downstream.
+ * これらは server から来るもので、ファイル名を組み直したものではない。だから
+ * waggle が鍵の形について何かを知る必要があるのは、ここだけ。解析を 1 つの関数に
+ * 閉じておくと、別の scheme を返す成果物ストアが将来現れたとき、下流のどこかで
+ * もっともらしいが違う bucket を作るのではなく、ここで大きな音を立てて失敗する。
  */
 
 export interface S3Location {
@@ -13,15 +12,15 @@ export interface S3Location {
   key: string;
 }
 
-/** @throws when `uri` is not an `s3://bucket/key` with both parts present. */
+/** @throws `uri` が両方の部分を備えた `s3://bucket/key` でないとき。 */
 export const parseS3Uri = (uri: string): S3Location => {
   const withoutScheme = uri.startsWith("s3://") ? uri.slice("s3://".length) : null;
   if (withoutScheme === null) {
     throw new Error(`not an s3:// URI: ${uri}`);
   }
   const slash = withoutScheme.indexOf("/");
-  // A key may contain slashes (BrowserHive's `--s3-key-prefix` adds one), so
-  // split on the first only.
+  // 鍵には `/` が含まれうる (BrowserHive の `--s3-key-prefix` が足す) ので、
+  // 最初の 1 つだけで分ける。
   if (slash <= 0 || slash === withoutScheme.length - 1) {
     throw new Error(`s3:// URI has no bucket or no key: ${uri}`);
   }
