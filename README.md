@@ -1,58 +1,31 @@
 # waggle
 
-Higher-level capture client and orchestrator built on top of [BrowserHive](https://github.com/uraitakahito/browserhive). Reads URLs from a Postgres `urls` table, submits them to a BrowserHive instance, and (in later stages) tracks lifecycle and persists artefacts.
+A capture orchestrator built on [BrowserHive](https://github.com/uraitakahito/browserhive).
+It answers one question — **which URLs get captured** — by reading the enabled rows
+of a Postgres `urls` table and submitting one capture per row. What comes back goes
+into an archive ledger, and callers allowed to read an archive get a short-lived
+signed URL for it.
 
-> The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance) bees use to direct hive-mates to nectar — fitting for a client that tells the BrowserHive what to capture.
+The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance)
+bees use to point hive-mates at nectar.
 
-## 📚 Documentation
+## Documentation
 
-**<https://uraitakahito.github.io/waggle/>** — English and [日本語](https://uraitakahito.github.io/waggle/ja/).
+Everything — quickstart, and guides (development environment, URL source, capture
+options, archive ledger, architecture) — lives on the docs site:
 
-|                                                                                           |                                                |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [Quickstart](https://uraitakahito.github.io/waggle/quickstart/)                           | Compose stack up, seed, first capture          |
-| [Development environment](https://uraitakahito.github.io/waggle/development-environment/) | Prerequisites, daily commands, troubleshooting |
-| [URL source](https://uraitakahito.github.io/waggle/url-source/)                           | The `urls` table and its migrations            |
-| [Capture options](https://uraitakahito.github.io/waggle/capture-options/)                 | Which flag maps to which request field         |
-| [Upgrading BrowserHive](https://uraitakahito.github.io/waggle/upgrading-browserhive/)     | The pinned tag and how to move it              |
-| [Architecture](https://uraitakahito.github.io/waggle/architecture/)                       | How the pieces fit together                    |
+- **English** — <https://uraitakahito.github.io/waggle/>
+- **日本語** — <https://uraitakahito.github.io/waggle/ja/>
 
-Anything about _how_ a page is captured — behaviors, WACZ, storage, workers — belongs to BrowserHive. Its docs are not published on the web — build them from
-the BrowserHive checkout with `pnpm run docs:local`.
+Anything about _how_ a page is captured — behaviors, WACZ, storage, workers —
+belongs to BrowserHive. Its docs are not published on the web; build them from the
+BrowserHive checkout with `pnpm run docs:local`.
 
-## Quickstart
+## Related Projects
 
-Runs on [Apple Container](https://github.com/apple/container) (macOS).
+- [BrowserHive](https://github.com/uraitakahito/browserhive) — the capture server waggle drives.
+- [OpenFGA](https://openfga.dev/) — the authorization store behind the archive ledger.
 
-```sh
-sudo container system dns create waggle   # once per machine
-./setup.sh                                # submodules + .env
-container-compose up -d -b
+## License
 
-# waggle itself runs on the host — the stack is reachable by name
-pnpm install         # first time only
-pnpm run db:migrate  # first time only
-pnpm run db:seed     # load src/db/seeds/001-sample-urls.ts
-pnpm run dev --webp --html --limit 3
-```
-
-You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`). The workers are headless; watch one render from `chrome://inspect` against `localhost:9222` / `:9223`.
-
-The full walkthrough, including how to read the results of an asynchronous capture, is in the [Quickstart](https://uraitakahito.github.io/waggle/quickstart/).
-
-To smoke-test the production image end-to-end (builds `Dockerfile`, applies migrations, seeds the sample fixture, runs one capture, exits):
-
-```sh
-./scripts/prod-smoke.sh
-```
-
-## Develop
-
-```sh
-pnpm install
-pnpm run check     # typecheck + lint + format:check + tests
-pnpm run site:dev  # documentation site on localhost
-DATABASE_URL=postgres://... pnpm run dev --webp --limit 1 --server http://...
-```
-
-The documentation site lives in `docs-site/` and is part of the repository: `pnpm run site:check` fails when the docs have drifted from the code, and an English page without its Japanese counterpart is rejected.
+[Unlicense](./LICENSE).
