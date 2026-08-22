@@ -49,6 +49,51 @@ Consequences worth knowing:
 - `correlationId` (8 hex characters, generated per submission) is the thread
   between a waggle log line and the artifact filename.
 
+## The ledger and authorization
+
+The diagram above stops at **submitting**. Once a capture finishes, waggle puts
+the result in the ledger and hands out signed URLs only to those allowed to read
+it. That is where OpenFGA comes in.
+
+```mermaid
+flowchart LR
+  S3[(SeaweedFS<br/>bucket: browserhive)]
+  subgraph W["waggle"]
+    direction TB
+    REG["watch.ts → register.ts<br/>wait for the result, register it"]
+    RC["reconcile.ts<br/>sweep the bucket, fill the gaps"]
+    OW["outbox-worker.ts<br/>deliver tuples"]
+    API["api/routes.ts<br/>signing endpoint"]
+  end
+  S3 -.->|.result.json| REG
+  S3 -.->|.result.json| RC
+  REG --> PG
+  RC --> PG
+  PG[("Postgres<br/>archives + fga_outbox")]
+  PG -->|FOR UPDATE SKIP LOCKED| OW
+  OW -->|Write tuples| FGA[("OpenFGA<br/>its own Postgres")]
+  U((caller)) -->|"POST /api/archives/:id/url"| API
+  API -->|"Check can_view<br/>+ contextual tuple"| FGA
+  FGA -->|allowed| API
+  API -->|"signed URL (300s)"| U
+  U -.->|GET| S3
+```
+
+How to read it:
+
+- **`archives` and `fga_outbox` are written in one transaction.** No transaction
+  spans Postgres and OpenFGA, so the tuple goes into the same box as an intent to
+  send, and `outbox-worker` retries until OpenFGA accepts it.
+- **OpenFGA has a Postgres of its own.** Not sharing waggle's makes the boundary
+  visible: a tuple write cannot join the application transaction — which is
+  exactly why the outbox exists.
+- **Membership is not stored.** Which organizations a caller belongs to arrives
+  from their token and is passed as a contextual tuple on every Check.
+- Two paths lead into the ledger: `waggle` waiting for the result (fast), and
+  `reconcile` sweeping the bucket (picks up whatever landed while waggle was down).
+
+See [Archive ledger](/waggle/archive-ledger/) for the details.
+
 ## Module layout
 
 | Module                      | Responsibility                                                                                               |
