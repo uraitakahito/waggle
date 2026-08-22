@@ -48,6 +48,51 @@ BrowserHive のもので、あちらのドキュメントに書かれていま�
 - `correlationId` (送信ごとに採番される 16 進 8 桁) が、waggle のログ行と
   成果物のファイル名を結ぶ糸です。
 
+## 台帳と認可
+
+上の図は**投げるところまで**です。取り込みが終わったあと、waggle は結果を台帳に
+入れ、それを読んでよい相手だけに署名付き URL を配ります。ここが OpenFGA の
+出番です。
+
+```mermaid
+flowchart LR
+  S3[(SeaweedFS<br/>bucket: browserhive)]
+  subgraph W["waggle"]
+    direction TB
+    REG["watch.ts → register.ts<br/>結果を待って登録"]
+    RC["reconcile.ts<br/>bucket を走査して穴を埋める"]
+    OW["outbox-worker.ts<br/>タプルを配送"]
+    API["api/routes.ts<br/>署名エンドポイント"]
+  end
+  S3 -.->|.result.json| REG
+  S3 -.->|.result.json| RC
+  REG --> PG
+  RC --> PG
+  PG[("Postgres<br/>archives + fga_outbox")]
+  PG -->|FOR UPDATE SKIP LOCKED| OW
+  OW -->|Write tuples| FGA[("OpenFGA<br/>専用の Postgres")]
+  U((利用者)) -->|"POST /api/archives/:id/url"| API
+  API -->|"Check can_view<br/>+ contextual tuple"| FGA
+  FGA -->|allowed| API
+  API -->|"署名付き URL (300 秒)"| U
+  U -.->|GET| S3
+```
+
+読み方の要点:
+
+- **`archives` と `fga_outbox` は 1 つのトランザクションで書かれます。**
+  Postgres と OpenFGA に跨がるトランザクションが無いので、タプルは「送る予定」として
+  同じ箱に入れ、`outbox-worker` が受理されるまで再送します。
+- **OpenFGA は別の Postgres を持ちます。** waggle のものと共用しないのは、
+  タプルの書き込みがアプリのトランザクションに入れられないこと ——
+  だから outbox が要ること —— を目に見えるようにするためです。
+- **所属は保存しません。** 「この人はどの組織か」はトークンから来て、Check のたびに
+  contextual tuple として渡されます。
+- 台帳へ入る道は 2 本あります。`waggle` が結果を待つ経路（速い）と、
+  `reconcile` が bucket を走査する経路（waggle が止まっていた間の取りこぼしを拾う）。
+
+詳しくは[アーカイブ台帳](/waggle/ja/archive-ledger/)を参照してください。
+
 ## モジュール構成
 
 | モジュール                  | 責務                                                                                               |
