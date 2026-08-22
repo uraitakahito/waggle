@@ -2,16 +2,10 @@
 #
 # setup.sh —— waggle のローカル開発環境を用意する。
 #
-# 上流のものはすべて `.upstream/browserhive` の submodule から届く: BrowserHive
-# 本体、それが動作確認された chromium-server-docker、スタックが mount する
-# SeaweedFS の設定。ダウンロードするものは無い —— `container build` は context の
-# ディレクトリしか受け取らないので、どのみちソースはディスク上に無ければならず、
-# submodule のポインタ 1 つが上流を固定する唯一の場所になる。
-#
 # ここでやること:
 #   1. Apple Container の道具が入っているかを見る。
 #   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
-#   3. submodule を初期化する (全員が忘れる手順)。
+#   3. submodule を初期化する。
 #   4. host 側の接続文字列を .env に書く。
 #
 
@@ -20,7 +14,7 @@ set -e
 cd "$(dirname "$0")"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
