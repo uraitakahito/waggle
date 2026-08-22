@@ -1,0 +1,28 @@
+# pnpm 11 は依存の lifecycle script を既定で実行しない。走らせてよいものだけを
+# 明示する。この 2 つは node_modules を走査した実測値で、増やす前には「なぜ
+# ビルドが要るのか」を確かめること。
+#
+#   @bufbuild/buf — postinstall がプラットフォーム別の buf バイナリを取ってくる。
+#                   これを止めると `buf generate` が動かない (= proto の生成が
+#                   まるごと落ちる) ので true。
+#
+# protobufjs は false。@grpc/grpc-js が引いてくるが、あれの postinstall は
+# package.json の versionScheme を見て警告を出すだけで、無ければ即 return する。
+# 機能には関与しないので走らせる理由が無い。
+allowBuilds:
+  "@bufbuild/buf": true
+  protobufjs: false
+
+# npm の `overrides` の移設先。pnpm 11 は package.json の `overrides` を読まず、
+# 書いても無視する (= 脆弱性修正が黙って失われる)。
+#
+# **脆弱性対応の下限は「修正版そのもの」に置くこと。** override は範囲を狭める
+# だけで lockfile を進める力は無いので、下限が脆弱な版を許していると、override が
+# あるのに古い版が居座り続ける。brace-expansion の勧告の修正版は >=5.0.9 で、
+# 移行前の指定 (^5.0.8) は脆弱な版そのものを許していた。
+#
+# js-yaml (旧 ^4.3.0) は移していない。依存グラフに 1 箇所も無く、何もしていな
+# かったため。
+overrides:
+  brace-expansion: "^5.0.9"
+  axios: "^1.18.1"
