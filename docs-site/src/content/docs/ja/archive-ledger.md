@@ -127,6 +127,79 @@ contextual tuple として渡すので、入退社や組織変更を認可スト
 
 ## 認可モデル
 
+型は 4 つで、所有は**組織 → ジョブ → アーカイブ**と上から流れます。
+
+| 型             | 関係                                                     |
+| -------------- | -------------------------------------------------------- |
+| `user`         | —                                                        |
+| `organization` | `member` / `admin`                                       |
+| `capture_job`  | `owner` / `parent`（組織）/ `member`                     |
+| `archive`      | `parent`（ジョブ）/ `viewer` / `can_view` / `can_delete` |
+
+署名エンドポイントが聞くのは `can_view` ただ 1 つで、そこに至る道は 3 本です。
+
+```
+define can_view: viewer or owner from parent or member from parent
+```
+
+| 道                   | 誰が                       | どこから来るか                       |
+| -------------------- | -------------------------- | ------------------------------------ |
+| `viewer`             | 組織の外へ直接共有された人 | タプル（**必ず期限つき**）           |
+| `owner from parent`  | そのジョブを頼んだ本人     | タプル                               |
+| `member from parent` | 所有組織の一員             | **contextual tuple**（トークン由来） |
+
+削除は所有者だけです（`can_delete: owner from parent`）。
+**組織のメンバーは見られますが、消せません。**
+
+:::note[`capture_job.member` は中継のために在る]
+`archive` から `organization#member` へ直接届きそうに見えますが、届きません。
+**`from` は辺をちょうど 1 本しか辿らない**ためです。`archive#parent` が指すのは
+`capture_job` なので、そこから見た「組織のメンバー」は 2 段先にあります。
+
+```
+type capture_job
+  relations
+    define parent: [organization]
+    define member: member from parent   # ← その足りない 1 段
+```
+
+:::
+
+### 共有は自分で期限切れになる
+
+組織の外へ渡すとき、期限なしでは渡せません。`viewer` の型が条件付きだからです。
+
+```
+define viewer: [user with non_expired_grant, organization#member]
+
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}
+```
+
+`current_time` は Check のたびに渡されるので、**期限切れのタプルを掃除する仕組みが
+要りません**。タプルは残ったまま条件が偽になるだけで、掃除役が止まっていても
+穴は開きません。
+
+### アサーションが守っているもの
+
+`fga/model.fga.yaml` の 7 本は、どれも「誰かが不当に見られる」形の壊れ方を
+指しています。
+
+| #   | 問い                                           |
+| --- | ---------------------------------------------- |
+| 1   | ジョブの所有者は、それが生んだものを見られる   |
+| 2   | 所有組織のメンバーは**見られるが、消せない**   |
+| 3   | 無関係な人には何も見えない                     |
+| 4   | **別の組織のメンバーであることは何も与えない** |
+| 5   | 直接の共有は、その窓の中では見える             |
+| 6   | **同じ共有が、窓を過ぎると見えない**           |
+| 7   | 共有された相手でも、削除はできない             |
+
+5 と 6 は**タプルが完全に同一で、`current_time` だけが違います**。
+
+### 検証と投入
+
 `fga/model.fga` が真実で、`fga/model.fga.yaml` のアサーションが CI で走ります:
 
 ```sh

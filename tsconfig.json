@@ -27,7 +27,7 @@
      */
     // Specify what module code is generated. NodeNext (rather than
     // BrowserHive's `ESNext` paired with `moduleResolution: Bundler`)
-    // because waggle is a Node CLI run directly via `node dist/cli.js`,
+    // because waggle is a Node CLI run directly via `node dist/submit-captures.js`,
     // not via a bundler.
     "module": "NodeNext",
     // Match the resolver to `module: NodeNext`

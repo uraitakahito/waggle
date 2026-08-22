@@ -73,4 +73,4 @@ COPY package.json ./
 
 USER node
 
-ENTRYPOINT ["node", "dist/cli.js"]
+ENTRYPOINT ["node", "dist/submit-captures.js"]

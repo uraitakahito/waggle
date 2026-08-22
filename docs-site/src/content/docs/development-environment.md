@@ -33,22 +33,22 @@ points at, and refuses to continue if the `waggle` DNS domain is missing.
 
 ## Daily commands
 
-| Command                                   | What it does                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| `pnpm run dev <args>`                     | Build, then run the CLI (`tsc` then `node dist/cli.js`).            |
-| `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                  |
-| `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                  |
-| `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).      |
-| `pnpm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`. |
-| `pnpm test` / `test:watch`                | Vitest unit tests under `test/`.                                    |
-| `pnpm run check`                          | typecheck + lint + format:check + test. Run before pushing.         |
-| `pnpm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                           |
-| `pnpm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                  |
-| `pnpm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).   |
-| `pnpm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).              |
-| `pnpm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                     |
-| `pnpm run site:dev` / `site:build`        | This documentation site.                                            |
-| `pnpm run site:check`                     | Build the site and verify its references.                           |
+| Command                                   | What it does                                                         |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `pnpm run dev <args>`                     | Build, then run the CLI (`tsc` then `node dist/submit-captures.js`). |
+| `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                   |
+| `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                   |
+| `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).       |
+| `pnpm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`.  |
+| `pnpm test` / `test:watch`                | Vitest unit tests under `test/`.                                     |
+| `pnpm run check`                          | typecheck + lint + format:check + test. Run before pushing.          |
+| `pnpm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                            |
+| `pnpm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                   |
+| `pnpm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).    |
+| `pnpm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).               |
+| `pnpm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                      |
+| `pnpm run site:dev` / `site:build`        | This documentation site.                                             |
+| `pnpm run site:check`                     | Build the site and verify its references.                            |
 
 ## Working against the stack
 

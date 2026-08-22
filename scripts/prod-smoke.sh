@@ -78,7 +78,7 @@ log "BrowserHive is ready."
 log "Building the waggle image..."
 container build -t waggle:latest .
 
-# The image's ENTRYPOINT is `node dist/cli.js`, so the db jobs have to override
+# The image's ENTRYPOINT is `node dist/submit-captures.js`, so the db jobs have to override
 # it; the capture just passes flags straight through.
 run_job() {
   local label="$1"; shift
