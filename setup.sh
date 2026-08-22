@@ -1,19 +1,18 @@
 #!/bin/bash
 #
-# setup.sh — bootstrap waggle's local development environment.
+# setup.sh —— waggle のローカル開発環境を用意する。
 #
-# Everything upstream now arrives through the `.upstream/browserhive`
-# submodule: BrowserHive itself, the chromium-server-docker it was tested
-# against, and the SeaweedFS config the stack mounts. There is nothing to
-# download — `container build` only accepts a context directory, so the source
-# has to be on disk anyway, and one submodule pointer is the single upstream
-# pin.
+# 上流のものはすべて `.upstream/browserhive` の submodule から届く: BrowserHive
+# 本体、それが動作確認された chromium-server-docker、スタックが mount する
+# SeaweedFS の設定。ダウンロードするものは無い —— `container build` は context の
+# ディレクトリしか受け取らないので、どのみちソースはディスク上に無ければならず、
+# submodule のポインタ 1 つが上流を固定する唯一の場所になる。
 #
-# What this does:
-#   1. Checks the Apple Container toolchain is present.
-#   2. Refuses to continue if the `waggle` DNS domain is not registered.
-#   3. Initialises the submodules (the step everyone forgets).
-#   4. Writes .env with the host-side connection strings.
+# ここでやること:
+#   1. Apple Container の道具が入っているかを見る。
+#   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
+#   3. submodule を初期化する (全員が忘れる手順)。
+#   4. host 側の接続文字列を .env に書く。
 #
 
 set -e
@@ -21,7 +20,7 @@ set -e
 cd "$(dirname "$0")"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
@@ -31,7 +30,7 @@ if [[ $# -gt 0 ]]; then
   exit 1
 fi
 
-# --- Toolchain ------------------------------------------------------------
+# --- 道具立て -------------------------------------------------------------
 for cmd in container container-compose git; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "ERROR: \`$cmd\` is required but not on PATH." >&2
@@ -40,11 +39,11 @@ for cmd in container container-compose git; do
   fi
 done
 
-# --- DNS domain -----------------------------------------------------------
-# The project name in docker-compose.yml IS the DNS domain. Without it,
-# container-compose falls back to patching /etc/hosts, which silently fails for
-# the non-root containers in this stack (browserhive, chromium) — the failure
-# mode is "names mysteriously do not resolve", so fail loudly here instead.
+# --- DNS ドメイン ---------------------------------------------------------
+# docker-compose.yml の project 名が、そのまま DNS ドメインになる。登録されて
+# いないと container-compose は /etc/hosts を書き換える方式に落ちるが、これは
+# このスタックの非 root コンテナ (browserhive、chromium) では黙って失敗する ——
+# 症状が「名前がなぜか解決しない」になるので、ここで大きな音を立てて止める。
 if ! container system dns ls 2>/dev/null | grep -qx "waggle"; then
   echo "ERROR: the 'waggle' DNS domain is not registered." >&2
   echo "" >&2
@@ -54,15 +53,14 @@ if ! container system dns ls 2>/dev/null | grep -qx "waggle"; then
   exit 1
 fi
 
-# --- Upstream submodule ---------------------------------------------------
+# --- 上流の submodule -----------------------------------------------------
 echo "Initialising upstream submodule..."
 git submodule update --init --recursive
 git submodule status --recursive | sed 's/^/  /'
 
-# --- Generate .env --------------------------------------------------------
-# Only what the host side needs: waggle runs on the host and reaches the stack
-# through the platform DNS. Service-to-service wiring lives in
-# docker-compose.yml.
+# --- .env を書く ----------------------------------------------------------
+# host 側が必要とするものだけ: waggle は host で動き、スタックへはプラット
+# フォームの DNS を通って届く。サービス間の配線は docker-compose.yml に在る。
 cat > .env <<EOF
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
 BROWSERHIVE_SERVER=browserhive.waggle:50051
