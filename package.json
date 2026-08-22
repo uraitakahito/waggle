@@ -50,13 +50,13 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run proto:check-deps && npm test"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1107.0",
-    "@aws-sdk/s3-request-presigner": "^3.1107.0",
+    "@aws-sdk/client-s3": "^3.1113.0",
+    "@aws-sdk/s3-request-presigner": "^3.1113.0",
     "@bufbuild/protobuf": "^2.14.0",
     "@grpc/grpc-js": "^1.14.4",
-    "@openfga/sdk": "^0.9.6",
+    "@openfga/sdk": "^0.9.7",
     "commander": "^15.0.0",
-    "fastify": "^5.11.3",
+    "fastify": "^5.12.1",
     "kysely": "^0.29.5",
     "pg": "^8.23.0",
     "pino": "^10.3.1"
