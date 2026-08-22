@@ -319,46 +319,6 @@ export function cacheModeToJSON(object: CacheMode): string {
   }
 }
 
-/** 1 回のロードで済ますか、DPR ごとに読み直すか。 */
-export enum ArchiveMode {
-  ARCHIVE_MODE_UNSPECIFIED = 0,
-  ARCHIVE_MODE_SINGLE_PASS = 1,
-  ARCHIVE_MODE_MULTIPASS = 2,
-  UNRECOGNIZED = -1,
-}
-
-export function archiveModeFromJSON(object: any): ArchiveMode {
-  switch (object) {
-    case 0:
-    case "ARCHIVE_MODE_UNSPECIFIED":
-      return ArchiveMode.ARCHIVE_MODE_UNSPECIFIED;
-    case 1:
-    case "ARCHIVE_MODE_SINGLE_PASS":
-      return ArchiveMode.ARCHIVE_MODE_SINGLE_PASS;
-    case 2:
-    case "ARCHIVE_MODE_MULTIPASS":
-      return ArchiveMode.ARCHIVE_MODE_MULTIPASS;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return ArchiveMode.UNRECOGNIZED;
-  }
-}
-
-export function archiveModeToJSON(object: ArchiveMode): string {
-  switch (object) {
-    case ArchiveMode.ARCHIVE_MODE_UNSPECIFIED:
-      return "ARCHIVE_MODE_UNSPECIFIED";
-    case ArchiveMode.ARCHIVE_MODE_SINGLE_PASS:
-      return "ARCHIVE_MODE_SINGLE_PASS";
-    case ArchiveMode.ARCHIVE_MODE_MULTIPASS:
-      return "ARCHIVE_MODE_MULTIPASS";
-    case ArchiveMode.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 /** 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。 */
 export interface CaptureFormats {
   png: boolean;
@@ -391,9 +351,16 @@ export interface ResetStateSpec {
   pageContext?: boolean | undefined;
 }
 
-/** viewport の指定。 */
+/**
+ * viewport の指定。
+ *
+ * proto は値域を書けないので、範囲は server 側の境界 (request-limits.ts) が
+ * 強制する。外れると INVALID_ARGUMENT。
+ */
 export interface Viewport {
+  /** 1–7680 (8K の幅)。 */
   width: number;
+  /** 1–4320 (8K の高さ)。 */
   height: number;
 }
 
@@ -428,21 +395,58 @@ export interface SubmitCaptureRequest {
   url: string;
   labels: string[];
   correlationId?: string | undefined;
-  captureFormats?: CaptureFormats | undefined;
+  captureFormats?:
+    | CaptureFormats
+    | undefined;
+  /**
+   * 上流へ送る Accept-Language。印字可能な ASCII のみ、200 文字以下。
+   * 制御文字 (CR/LF/NUL) は header への注入になるので境界が拒む。
+   */
   acceptLanguage?: string | undefined;
   signing?: boolean | undefined;
   dismissBannersEnabled?: boolean | undefined;
   dismissBannersSpec?: DismissSpec | undefined;
-  viewport?: Viewport | undefined;
+  viewport?:
+    | Viewport
+    | undefined;
+  /**
+   * 0–5000。ページ操作 1 つごとに挟む遅延で、headless の描画を眺めるためのもの。
+   * 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
+   */
   operationDelayMs?: number | undefined;
   trace?: boolean | undefined;
   cache: CacheMode;
-  archiveMode: ArchiveMode;
-  deviceScaleFactor?: number | undefined;
+  /**
+   * 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で
+   * (2 が Retina、3 が現行の携帯端末の上)、同じ値を 2 度置くことはできない。
+   *
+   * 要素数がそのまま読み込みの回数になる。読み込むたびにバナー除去も behaviors も
+   * 走るので、所要時間も WARC のバイト数も要素数に比例して増える。
+   *
+   * 順序に意味がある: PNG / WebP は読み込みが全部終わってから 1 度だけ撮るので、
+   * **最後の要素**の倍率になる。[2, 1] と書けば画像は 1x で残る。
+   *
+   * 空ならサーバ既定 (--device-pixel-ratios)。proto3 の repeated は「空」と
+   * 「未指定」を区別できないので、空は「指定なし」として扱うほかない。
+   */
+  devicePixelRatios: number[];
   fullPage?: boolean | undefined;
   behaviors?: BehaviorSpec | undefined;
   resetStateEnabled?: boolean | undefined;
-  resetStateSpec?: ResetStateSpec | undefined;
+  resetStateSpec?:
+    | ResetStateSpec
+    | undefined;
+  /**
+   * この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetStatus の
+   * limits.max_response_bytes)。
+   *
+   * 動くのは締める方向だけで、既定より大きい値は既定に丸める。上限は資源を守る
+   * ために運用者が置くもので、呼ぶ側が上げられるならそれは上限ではない。拒否では
+   * なく丸めにしているのは、呼ぶ側が配備の既定を知らずに要求できるようにするため
+   * —— 効いた値は archive の settings.limits.max_response_bytes に残るので、
+   * 何が起きたかは後から読める。
+   */
+  maxResponseBytes?: number | undefined;
 }
 
 export interface GetCaptureRequest {
@@ -615,6 +619,26 @@ export interface BuildInfo {
   buildTime: string;
 }
 
+/**
+ * サーバが強いる境界。リクエストでは変えられないもの。
+ *
+ * 投げる前に「この大きさは切り詰められる」と分かるために在る。archive 側の
+ * settings.limits と同じ値だが、答える問いが違う —— あちらは「何が起きたか」、
+ * こちらは「これから何が起きるか」。
+ *
+ * 載せるのは境界だけ。viewport や devicePixelRatios はリクエストで上書きできるので
+ * 境界ではなく、ここには来ない。設定の置き場にし始めたら、それは status とは
+ * 別の RPC に切る合図。
+ */
+export interface ServerLimits {
+  /** 1 レスポンスの本文の上限。超えた本文は落とし、切り詰めとして記録する。 */
+  maxResponseBytes: number;
+  /** 1 タスクが記録する本文の合計の上限。 */
+  maxTaskBytes: number;
+  /** 1 タスクが同時に抱える保留リクエストの上限。 */
+  maxPendingRequests: number;
+}
+
 export interface GetStatusResponse {
   pending: number;
   processing: number;
@@ -627,6 +651,7 @@ export interface GetStatusResponse {
   workers: WorkerInfo[];
   queue?: QueueSnapshot | undefined;
   build?: BuildInfo | undefined;
+  limits?: ServerLimits | undefined;
 }
 
 function createBaseCaptureFormats(): CaptureFormats {
@@ -1441,12 +1466,12 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
     operationDelayMs: undefined,
     trace: undefined,
     cache: 0,
-    archiveMode: 0,
-    deviceScaleFactor: undefined,
+    devicePixelRatios: [],
     fullPage: undefined,
     behaviors: undefined,
     resetStateEnabled: undefined,
     resetStateSpec: undefined,
+    maxResponseBytes: undefined,
   };
 }
 
@@ -1488,12 +1513,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.cache !== 0) {
       writer.uint32(96).int32(message.cache);
     }
-    if (message.archiveMode !== 0) {
-      writer.uint32(104).int32(message.archiveMode);
+    writer.uint32(162).fork();
+    for (const v of message.devicePixelRatios) {
+      writer.int32(v);
     }
-    if (message.deviceScaleFactor !== undefined) {
-      writer.uint32(112).int32(message.deviceScaleFactor);
-    }
+    writer.join();
     if (message.fullPage !== undefined) {
       writer.uint32(120).bool(message.fullPage);
     }
@@ -1505,6 +1529,9 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     }
     if (message.resetStateSpec !== undefined) {
       ResetStateSpec.encode(message.resetStateSpec, writer.uint32(146).fork()).join();
+    }
+    if (message.maxResponseBytes !== undefined) {
+      writer.uint32(152).int64(message.maxResponseBytes);
     }
     return writer;
   },
@@ -1612,21 +1639,23 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
           message.cache = reader.int32() as any;
           continue;
         }
-        case 13: {
-          if (tag !== 104) {
-            break;
+        case 20: {
+          if (tag === 160) {
+            message.devicePixelRatios.push(reader.int32());
+
+            continue;
           }
 
-          message.archiveMode = reader.int32() as any;
-          continue;
-        }
-        case 14: {
-          if (tag !== 112) {
-            break;
+          if (tag === 162) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.devicePixelRatios.push(reader.int32());
+            }
+
+            continue;
           }
 
-          message.deviceScaleFactor = reader.int32();
-          continue;
+          break;
         }
         case 15: {
           if (tag !== 120) {
@@ -1658,6 +1687,14 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
           }
 
           message.resetStateSpec = ResetStateSpec.decode(reader, reader.uint32());
+          continue;
+        }
+        case 19: {
+          if (tag !== 152) {
+            break;
+          }
+
+          message.maxResponseBytes = longToNumber(reader.int64());
           continue;
         }
       }
@@ -1707,16 +1744,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         : undefined,
       trace: isSet(object.trace) ? globalThis.Boolean(object.trace) : undefined,
       cache: isSet(object.cache) ? cacheModeFromJSON(object.cache) : 0,
-      archiveMode: isSet(object.archiveMode)
-        ? archiveModeFromJSON(object.archiveMode)
-        : isSet(object.archive_mode)
-        ? archiveModeFromJSON(object.archive_mode)
-        : 0,
-      deviceScaleFactor: isSet(object.deviceScaleFactor)
-        ? globalThis.Number(object.deviceScaleFactor)
-        : isSet(object.device_scale_factor)
-        ? globalThis.Number(object.device_scale_factor)
-        : undefined,
+      devicePixelRatios: globalThis.Array.isArray(object?.devicePixelRatios)
+        ? object.devicePixelRatios.map((e: any) => globalThis.Number(e))
+        : globalThis.Array.isArray(object?.device_pixel_ratios)
+        ? object.device_pixel_ratios.map((e: any) => globalThis.Number(e))
+        : [],
       fullPage: isSet(object.fullPage)
         ? globalThis.Boolean(object.fullPage)
         : isSet(object.full_page)
@@ -1732,6 +1764,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         ? ResetStateSpec.fromJSON(object.resetStateSpec)
         : isSet(object.reset_state_spec)
         ? ResetStateSpec.fromJSON(object.reset_state_spec)
+        : undefined,
+      maxResponseBytes: isSet(object.maxResponseBytes)
+        ? globalThis.Number(object.maxResponseBytes)
+        : isSet(object.max_response_bytes)
+        ? globalThis.Number(object.max_response_bytes)
         : undefined,
     };
   },
@@ -1774,11 +1811,8 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.cache !== 0) {
       obj.cache = cacheModeToJSON(message.cache);
     }
-    if (message.archiveMode !== 0) {
-      obj.archiveMode = archiveModeToJSON(message.archiveMode);
-    }
-    if (message.deviceScaleFactor !== undefined) {
-      obj.deviceScaleFactor = Math.round(message.deviceScaleFactor);
+    if (message.devicePixelRatios?.length) {
+      obj.devicePixelRatios = message.devicePixelRatios.map((e) => Math.round(e));
     }
     if (message.fullPage !== undefined) {
       obj.fullPage = message.fullPage;
@@ -1791,6 +1825,9 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     }
     if (message.resetStateSpec !== undefined) {
       obj.resetStateSpec = ResetStateSpec.toJSON(message.resetStateSpec);
+    }
+    if (message.maxResponseBytes !== undefined) {
+      obj.maxResponseBytes = Math.round(message.maxResponseBytes);
     }
     return obj;
   },
@@ -1818,8 +1855,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     message.operationDelayMs = object.operationDelayMs ?? undefined;
     message.trace = object.trace ?? undefined;
     message.cache = object.cache ?? 0;
-    message.archiveMode = object.archiveMode ?? 0;
-    message.deviceScaleFactor = object.deviceScaleFactor ?? undefined;
+    message.devicePixelRatios = object.devicePixelRatios?.map((e) => e) || [];
     message.fullPage = object.fullPage ?? undefined;
     message.behaviors = (object.behaviors !== undefined && object.behaviors !== null)
       ? BehaviorSpec.fromPartial(object.behaviors)
@@ -1828,6 +1864,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     message.resetStateSpec = (object.resetStateSpec !== undefined && object.resetStateSpec !== null)
       ? ResetStateSpec.fromPartial(object.resetStateSpec)
       : undefined;
+    message.maxResponseBytes = object.maxResponseBytes ?? undefined;
     return message;
   },
 };
@@ -4592,6 +4629,110 @@ export const BuildInfo: MessageFns<BuildInfo> = {
   },
 };
 
+function createBaseServerLimits(): ServerLimits {
+  return { maxResponseBytes: 0, maxTaskBytes: 0, maxPendingRequests: 0 };
+}
+
+export const ServerLimits: MessageFns<ServerLimits> = {
+  encode(message: ServerLimits, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.maxResponseBytes !== 0) {
+      writer.uint32(8).int64(message.maxResponseBytes);
+    }
+    if (message.maxTaskBytes !== 0) {
+      writer.uint32(16).int64(message.maxTaskBytes);
+    }
+    if (message.maxPendingRequests !== 0) {
+      writer.uint32(24).int32(message.maxPendingRequests);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ServerLimits {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseServerLimits();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.maxResponseBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.maxTaskBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.maxPendingRequests = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ServerLimits {
+    return {
+      maxResponseBytes: isSet(object.maxResponseBytes)
+        ? globalThis.Number(object.maxResponseBytes)
+        : isSet(object.max_response_bytes)
+        ? globalThis.Number(object.max_response_bytes)
+        : 0,
+      maxTaskBytes: isSet(object.maxTaskBytes)
+        ? globalThis.Number(object.maxTaskBytes)
+        : isSet(object.max_task_bytes)
+        ? globalThis.Number(object.max_task_bytes)
+        : 0,
+      maxPendingRequests: isSet(object.maxPendingRequests)
+        ? globalThis.Number(object.maxPendingRequests)
+        : isSet(object.max_pending_requests)
+        ? globalThis.Number(object.max_pending_requests)
+        : 0,
+    };
+  },
+
+  toJSON(message: ServerLimits): unknown {
+    const obj: any = {};
+    if (message.maxResponseBytes !== 0) {
+      obj.maxResponseBytes = Math.round(message.maxResponseBytes);
+    }
+    if (message.maxTaskBytes !== 0) {
+      obj.maxTaskBytes = Math.round(message.maxTaskBytes);
+    }
+    if (message.maxPendingRequests !== 0) {
+      obj.maxPendingRequests = Math.round(message.maxPendingRequests);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ServerLimits>, I>>(base?: I): ServerLimits {
+    return ServerLimits.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ServerLimits>, I>>(object: I): ServerLimits {
+    const message = createBaseServerLimits();
+    message.maxResponseBytes = object.maxResponseBytes ?? 0;
+    message.maxTaskBytes = object.maxTaskBytes ?? 0;
+    message.maxPendingRequests = object.maxPendingRequests ?? 0;
+    return message;
+  },
+};
+
 function createBaseGetStatusResponse(): GetStatusResponse {
   return {
     pending: 0,
@@ -4605,6 +4746,7 @@ function createBaseGetStatusResponse(): GetStatusResponse {
     workers: [],
     queue: undefined,
     build: undefined,
+    limits: undefined,
   };
 }
 
@@ -4642,6 +4784,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     }
     if (message.build !== undefined) {
       BuildInfo.encode(message.build, writer.uint32(90).fork()).join();
+    }
+    if (message.limits !== undefined) {
+      ServerLimits.encode(message.limits, writer.uint32(98).fork()).join();
     }
     return writer;
   },
@@ -4741,6 +4886,14 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
           message.build = BuildInfo.decode(reader, reader.uint32());
           continue;
         }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.limits = ServerLimits.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4781,6 +4934,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
         : [],
       queue: isSet(object.queue) ? QueueSnapshot.fromJSON(object.queue) : undefined,
       build: isSet(object.build) ? BuildInfo.fromJSON(object.build) : undefined,
+      limits: isSet(object.limits) ? ServerLimits.fromJSON(object.limits) : undefined,
     };
   },
 
@@ -4819,6 +4973,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     if (message.build !== undefined) {
       obj.build = BuildInfo.toJSON(message.build);
     }
+    if (message.limits !== undefined) {
+      obj.limits = ServerLimits.toJSON(message.limits);
+    }
     return obj;
   },
 
@@ -4841,6 +4998,9 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
       : undefined;
     message.build = (object.build !== undefined && object.build !== null)
       ? BuildInfo.fromPartial(object.build)
+      : undefined;
+    message.limits = (object.limits !== undefined && object.limits !== null)
+      ? ServerLimits.fromPartial(object.limits)
       : undefined;
     return message;
   },

@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 import { submitCapture } from "../src/rpc/calls.js";
 import { sealWire, type WireSubmitCapture } from "../src/rpc/wire.js";
 import {
-  ArchiveMode,
   CacheMode,
   type SubmitCaptureRequest,
 } from "../src/rpc/generated/browserhive/v1/capture.js";
@@ -26,7 +25,7 @@ const valid: SubmitCaptureRequest = {
   url: "https://example.com/",
   labels: [],
   cache: CacheMode.CACHE_MODE_UNSPECIFIED,
-  archiveMode: ArchiveMode.ARCHIVE_MODE_UNSPECIFIED,
+  devicePixelRatios: [],
 };
 
 /**

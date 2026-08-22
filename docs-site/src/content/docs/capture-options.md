@@ -26,15 +26,14 @@ At least one must be true, or BrowserHive rejects the request.
 
 ## Capture behaviour
 
-| Flag                                      | `CaptureRequest` field    | What it means                      |
-| ----------------------------------------- | ------------------------- | ---------------------------------- |
-| `--device-scale-factor <n>`               | `deviceScaleFactor`       | BrowserHive: Behaviors             |
-| `--archive-mode <single-pass\|multipass>` | `archiveMode`             | BrowserHive: Behaviors             |
-| `--operation-delay-ms <ms>`               | `operationDelayMs`        | BrowserHive: Environment variables |
-| `--behaviors <ids>`                       | `behaviors.builtins`      | BrowserHive: Behaviors             |
-| `--no-site-behaviors`                     | `behaviors.siteBehaviors` | BrowserHive: Behaviors             |
-| `--dismiss-banners`                       | `dismissBanners`          | BrowserHive: Behaviors             |
-| `--accept-language <bcp47>`               | `acceptLanguage`          | BrowserHive: Quickstart            |
+| Flag                           | `CaptureRequest` field    | What it means                      |
+| ------------------------------ | ------------------------- | ---------------------------------- |
+| `--device-pixel-ratios <list>` | `devicePixelRatios`       | BrowserHive: Behaviors             |
+| `--operation-delay-ms <ms>`    | `operationDelayMs`        | BrowserHive: Environment variables |
+| `--behaviors <ids>`            | `behaviors.builtins`      | BrowserHive: Behaviors             |
+| `--no-site-behaviors`          | `behaviors.siteBehaviors` | BrowserHive: Behaviors             |
+| `--dismiss-banners`            | `dismissBanners`          | BrowserHive: Behaviors             |
+| `--accept-language <bcp47>`    | `acceptLanguage`          | BrowserHive: Quickstart            |
 
 ## Omitted means "server default"
 
@@ -62,8 +61,9 @@ the environment.
 ## Examples
 
 ```sh
-# Retina-faithful, fully archived, slow enough to watch over chrome://inspect
-npm run dev -- --wacz --limit 1 --archive-mode multipass --operation-delay-ms 250
+# Loaded twice (1x then 2x), slow enough to watch over chrome://inspect.
+# Order matters: PNG/WebP come out at the last ratio, so this leaves them 2x.
+npm run dev -- --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
 
 # No behaviors at all — "" is not the same as omitting the flag
 npm run dev -- --png --limit 1 --behaviors "" --no-site-behaviors

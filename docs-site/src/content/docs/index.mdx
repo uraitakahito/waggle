@@ -23,11 +23,9 @@ bees use to point hive-mates at nectar.
 ## What is not waggle's responsibility
 
 Driving a browser, taking screenshots, building a WACZ, writing to S3 — every
-one of those is **BrowserHive's responsibility**. Not a gap waggle has yet to
-fill: a division of labour. This site therefore does not document them, and
-anything about _how_ a page is captured lives in
-BrowserHive's documentation. Those docs are not published on the web — build
-them from the BrowserHive checkout with `pnpm run docs:local`.
+one of those is **BrowserHive's responsibility**. BrowserHive's docs are not
+published on the web — build them from the BrowserHive checkout with
+`pnpm run docs:local`.
 
 The interaction is **fire-and-forget**: BrowserHive answers `202` with a
 `taskId` and runs the capture asynchronously on its worker pool. waggle records

@@ -2,7 +2,6 @@ import { status } from "@grpc/grpc-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { submitRequest } from "../src/client/submit.js";
 import {
-  ArchiveMode,
   CacheMode,
   type SubmitCaptureRequest,
   type SubmitCaptureResponse,
@@ -156,16 +155,16 @@ describe("submitRequest", () => {
     await submitRequest(
       { url: "https://example.com/", labels: [], orgId: "acme" },
       settings({
-        deviceScaleFactor: 2,
-        archiveMode: "multipass",
+        devicePixelRatios: [1, 2],
         operationDelayMs: 250,
         behaviors: { builtins: ["autoscroll"], siteBehaviors: false },
       }),
     );
 
     const request = sentRequest();
-    expect(request.deviceScaleFactor).toBe(2);
-    expect(request.archiveMode).toBe(ArchiveMode.ARCHIVE_MODE_MULTIPASS);
+    // 順序まで見る: PNG / WebP は最後の要素の倍率で出るので、[1, 2] と [2, 1] は
+    // 別の指示。集合として比べると、その違いを取り落とす。
+    expect(request.devicePixelRatios).toEqual([1, 2]);
     expect(request.operationDelayMs).toBe(250);
     expect(request.behaviors).toEqual({
       builtins: ["autoscroll"],
@@ -182,14 +181,15 @@ describe("submitRequest", () => {
     await submitRequest({ url: "https://example.com/", labels: [], orgId: "acme" }, settings());
 
     const request = sentRequest();
-    for (const key of ["deviceScaleFactor", "operationDelayMs", "behaviors"]) {
+    for (const key of ["operationDelayMs", "behaviors"]) {
       expect(request).not.toHaveProperty(key);
     }
-    // `cache` and `archiveMode` are the exception, and not by choice: a proto3
-    // enum field cannot be absent. UNSPECIFIED (0) is the encoding of "the
-    // caller did not say", which BrowserHive maps back to its own default —
-    // so this asserts the value rather than the absence.
-    expect(request.archiveMode).toBe(ArchiveMode.ARCHIVE_MODE_UNSPECIFIED);
+    // `cache` and `devicePixelRatios` are the exception, and not by choice:
+    // a proto3 enum field cannot be absent, and neither can a repeated one.
+    // UNSPECIFIED (0) and `[]` are how "the caller did not say" is spelled,
+    // and BrowserHive maps both back to its own defaults — so this asserts the
+    // value rather than the absence.
     expect(request.cache).toBe(CacheMode.CACHE_MODE_UNSPECIFIED);
+    expect(request.devicePixelRatios).toEqual([]);
   });
 });

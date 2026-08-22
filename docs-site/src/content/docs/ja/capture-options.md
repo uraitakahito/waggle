@@ -26,15 +26,14 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 
 ## キャプチャの挙動
 
-| フラグ                                    | `CaptureRequest` のフィールド | 意味                          |
-| ----------------------------------------- | ----------------------------- | ----------------------------- |
-| `--device-scale-factor <n>`               | `deviceScaleFactor`           | BrowserHive: Behaviors        |
-| `--archive-mode <single-pass\|multipass>` | `archiveMode`                 | BrowserHive: Behaviors        |
-| `--operation-delay-ms <ms>`               | `operationDelayMs`            | BrowserHive: 環境変数         |
-| `--behaviors <ids>`                       | `behaviors.builtins`          | BrowserHive: Behaviors        |
-| `--no-site-behaviors`                     | `behaviors.siteBehaviors`     | BrowserHive: Behaviors        |
-| `--dismiss-banners`                       | `dismissBanners`              | BrowserHive: Behaviors        |
-| `--accept-language <bcp47>`               | `acceptLanguage`              | BrowserHive: クイックスタート |
+| フラグ                         | `CaptureRequest` のフィールド | 意味                          |
+| ------------------------------ | ----------------------------- | ----------------------------- |
+| `--device-pixel-ratios <list>` | `devicePixelRatios`           | BrowserHive: Behaviors        |
+| `--operation-delay-ms <ms>`    | `operationDelayMs`            | BrowserHive: 環境変数         |
+| `--behaviors <ids>`            | `behaviors.builtins`          | BrowserHive: Behaviors        |
+| `--no-site-behaviors`          | `behaviors.siteBehaviors`     | BrowserHive: Behaviors        |
+| `--dismiss-banners`            | `dismissBanners`              | BrowserHive: Behaviors        |
+| `--accept-language <bcp47>`    | `acceptLanguage`              | BrowserHive: クイックスタート |
 
 ## 指定しなければ「サーバ既定」
 
@@ -61,8 +60,9 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 ## 例
 
 ```sh
-# Retina 忠実・完全アーカイブ・chrome://inspect で観察できる速度
-npm run dev -- --wacz --limit 1 --archive-mode multipass --operation-delay-ms 250
+# 1x と 2x で 2 回読み込み、chrome://inspect で観察できる速度で。
+# 順序に意味がある: PNG / WebP は最後の倍率で出るので、これだと 2x になる。
+npm run dev -- --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
 
 # behavior を一切走らせない — "" は「省略」とは違う
 npm run dev -- --png --limit 1 --behaviors "" --no-site-behaviors
