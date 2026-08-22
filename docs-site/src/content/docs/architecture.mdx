@@ -53,7 +53,7 @@ Consequences worth knowing:
 
 | Module                      | Responsibility                                                                                               |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/cli.ts`                | Entry point. Parses, runs, exits non-zero on a fatal error.                                                  |
+| `src/submit-captures.ts`    | The `waggle` entry point. Parses flags, submits captures, exits non-zero on a fatal error.                   |
 | `src/config/cli-options.ts` | Flag definitions, `ClientOptions`, and the `CaptureSettings` the request body spreads.                       |
 | `src/data/url-source.ts`    | The one SQL query. Returns `{ url, labels }[]`.                                                              |
 | `src/client/run.ts`         | Orchestration: load, configure, submit all, summarise.                                                       |
