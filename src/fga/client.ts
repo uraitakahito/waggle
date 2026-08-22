@@ -1,5 +1,5 @@
 /**
- * OpenFGA client factory and the error predicate the outbox worker depends on.
+ * OpenFGA の client を作る。outbox の worker が頼っているエラー判定もここに置く。
  */
 import { CredentialsMethod, OpenFgaClient } from "@openfga/sdk";
 import type { FgaConfig } from "../config/env.js";
@@ -8,7 +8,7 @@ export const createFgaClient = (config: FgaConfig): OpenFgaClient =>
   new OpenFgaClient({
     apiUrl: config.apiUrl,
     storeId: config.storeId,
-    // Pinned on purpose — see `FgaConfig.modelId`.
+    // 意図して固定している —— `FgaConfig.modelId` を見ること。
     authorizationModelId: config.modelId,
     credentials: {
       method: CredentialsMethod.ApiToken,
@@ -17,24 +17,22 @@ export const createFgaClient = (config: FgaConfig): OpenFgaClient =>
   });
 
 /**
- * Whether a failed write only means "the store is already in that state".
+ * 失敗した書き込みが「ストアが既にその状態である」だけを意味するかどうか。
  *
- * Delivery is at-least-once, so the worker re-sends rows it is not sure about
- * and must not treat a redundant write as a failure — otherwise one row wedges
- * and blocks everything behind it.
+ * 配送は at-least-once なので、worker は確信の持てない行を送り直す。そのとき
+ * 重複した書き込みを失敗として扱ってはならない —— さもないと 1 行が詰まり、その
+ * 後ろが全部止まる。
  *
- * Measured against OpenFGA v1.10.2, all with code
- * `write_failed_due_to_invalid_input`:
+ * OpenFGA v1.10.2 で実測。code はいずれも `write_failed_due_to_invalid_input`:
  *
- *   writing an existing tuple  → "cannot write a tuple which already exists"
- *   deleting an absent tuple   → "cannot delete a tuple which does not exist"
+ *   既存の tuple を書く   → "cannot write a tuple which already exists"
+ *   無い tuple を消す     → "cannot delete a tuple which does not exist"
  *
- * and, for contrast, an unknown relation reports `validation_error` instead —
- * so the code alone does distinguish real modelling mistakes. The message is
- * still checked because `write_failed_due_to_invalid_input` is not documented
- * as covering only these two. Being too strict costs a retry; being too loose
- * would discard a tuple that never landed, and a missing tuple is invisible
- * until someone is wrongly denied access.
+ * 対照として、未知の relation は `validation_error` を返す —— つまり code だけでも
+ * 本当のモデルの誤りとは区別が付く。それでも message まで見ているのは、
+ * `write_failed_due_to_invalid_input` がこの 2 つだけを覆うとは文書化されていない
+ * から。厳しすぎれば再試行 1 回で済むが、緩すぎると入らなかった tuple を捨てる
+ * ことになり、欠けた tuple は誰かが不当に拒まれるまで目に見えない。
  */
 export const isAlreadyInDesiredState = (cause: unknown): boolean => {
   if (typeof cause !== "object" || cause === null) return false;

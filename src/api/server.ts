@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * The archive API: the only thing that hands out signed URLs.
+ * アーカイブの API。署名付き URL を配る唯一のもの。
  *
- * Also drains the outbox on a timer. Running it in-process rather than as a
- * separate service is safe because `drainOutbox` takes `FOR UPDATE SKIP
- * LOCKED` — several API instances, plus a manual `waggle-ledger drain`, can
- * all run without stepping on each other.
+ * ついでにタイマーで outbox を掃き出す。別サービスにせずプロセス内で走らせても
+ * 安全なのは、`drainOutbox` が `FOR UPDATE SKIP LOCKED` を取るから —— API の
+ * インスタンスが複数あっても、手で叩く `waggle-ledger drain` が加わっても、
+ * 互いを踏まない。
  */
 import Fastify from "fastify";
 import { Command, Option } from "commander";
@@ -56,7 +56,7 @@ const start = async (options: ServerOptions): Promise<void> => {
       logger.error({ err }, "Scheduled outbox drain failed");
     });
   }, options.drainIntervalMs);
-  // Do not hold the event loop open just for the timer.
+  // タイマーのためだけに event loop を開いたままにしない。
   drainTimer.unref();
 
   const shutdown = async (): Promise<void> => {

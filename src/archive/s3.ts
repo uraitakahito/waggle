@@ -1,8 +1,8 @@
 /**
- * S3 access for the ledger: reading result manifests and listing the bucket.
+ * 台帳のための S3 アクセス: 結果 manifest を読むことと、bucket を列挙すること。
  *
- * Presigning lives in `api/presign.ts` — it shares this client but is a
- * different concern (it never reads an object, it only signs).
+ * 署名付き URL は `api/presign.ts` に在る —— この client は共有するが、関心は別
+ * (あちらはオブジェクトを一度も読まず、署名するだけ)。
  */
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import type { StorageConfig } from "../config/env.js";
@@ -19,11 +19,11 @@ export const createS3Client = (config: StorageConfig): S3Client =>
   });
 
 /**
- * Fetch and parse a JSON object, or `undefined` when it is not there.
+ * JSON のオブジェクトを取って解析する。無ければ `undefined`。
  *
- * A missing object is an expected outcome (the manifest fallback asks for one
- * that may never have been written), so it is not an error. Anything else —
- * credentials, network, malformed JSON — still throws.
+ * オブジェクトが無いのは想定内の結果 (manifest の代替経路は、そもそも書かれて
+ * いないかもしれないものを求める) なので、エラーではない。それ以外 —— 資格情報、
+ * ネットワーク、壊れた JSON —— は今までどおり throw する。
  */
 export const getJsonObject = async <T>(
   s3: S3Client,
@@ -48,13 +48,12 @@ const isNotFound = (cause: unknown): boolean => {
 };
 
 /**
- * Every key in the bucket, following pagination.
+ * bucket 内のすべての鍵。ページ送りも辿る。
  *
- * S3 list can only narrow by prefix — there is no suffix filter and no
- * "modified since" — so the reconciler pulls the whole listing and selects
- * `.result.json` itself. That is fine at the current scale (tens of objects)
- * and is the part that would have to change first if the bucket grew into the
- * tens of thousands; the fix then is a date prefix on the BrowserHive side.
+ * S3 の list は prefix でしか絞れない —— 拡張子での絞り込みも「いつ以降」も無い ——
+ * ので、reconciler は listing を全部引いてから `.result.json` を自分で選ぶ。今の
+ * 規模 (数十オブジェクト) なら問題なく、bucket が数万に育ったとき最初に変える
+ * べきなのがここ。そのときの直し方は、BrowserHive 側の鍵に日付の prefix を入れること。
  */
 export const listAllKeys = async (s3: S3Client, bucket: string): Promise<string[]> => {
   const keys: string[] = [];

@@ -1,15 +1,14 @@
 /**
- * Seed CLI entry point.
+ * seed の CLI の入口。
  *
- * Reuses the same Kysely Migrator runner as `migrate.ts`, with
- * `kysely_seed` / `kysely_seed_lock` ledger tables so seed files are
- * applied at most once per environment. Direction is a positional
- * argument (`up` | `down`).
+ * `migrate.ts` と同じ Kysely Migrator runner を、台帳テーブルだけ
+ * `kysely_seed` / `kysely_seed_lock` に変えて使い回す。こうすると seed ファイルは
+ * 環境ごとに高々 1 度しか当たらない。方向は位置引数 (`up` | `down`)。
  *
- * Real deployments populate `urls` through their own pipeline; this
- * runner exists for local development and the prod-stack smoke test.
+ * 実際の配備では `urls` を各自のパイプラインが埋める。この runner が在るのは
+ * ローカルの開発と、本番構成の smoke test のため。
  *
- * Invoked as `node dist/db/seed.js <up|down>`.
+ * `node dist/db/seed.js <up|down>` として起動する。
  */
 import { Argument, Command, Option } from "commander";
 import { parsePath } from "./cli-parsers.js";

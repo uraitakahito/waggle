@@ -1,36 +1,35 @@
 /**
- * Kysely database type definitions.
+ * Kysely のデータベース型定義。
  *
- * Single source of truth for the columns of every table the Kysely
- * client touches. Migrations and seeds reference this through
- * `Kysely<Database>` so that `insertInto` / `selectFrom` get full
- * type-checking and the `CamelCasePlugin` can map TS-side camelCase
- * (`urlHash`) to DB-side snake_case (`url_hash`) automatically.
+ * Kysely の client が触るすべてのテーブルの列について、唯一の出どころ。
+ * migration と seed は `Kysely<Database>` を通してこれを参照するので、
+ * `insertInto` / `selectFrom` に型検査が効き、`CamelCasePlugin` が TS 側の
+ * camelCase (`urlHash`) を DB 側の snake_case (`url_hash`) へ自動で写せる。
  *
- * `loadUrls` (`src/data/url-source.ts`) intentionally still uses raw
- * `pg.Pool` and is not coupled to this type — only the Kysely-driven
- * bin scripts (migrate / seed) consume it today.
+ * `loadUrls` (`src/data/url-source.ts`) は意図して素の `pg.Pool` のままで、
+ * この型に結びついていない —— 今日これを使うのは Kysely で動く bin スクリプト
+ * (migrate / seed) だけ。
  */
 import type { ColumnType, Generated, GeneratedAlways } from "kysely";
 
 export interface UrlsTable {
-  // BIGSERIAL — node-pg returns int8 as `string` to avoid precision loss.
+  // BIGSERIAL —— node-pg は精度を落とさないために int8 を `string` で返す。
   id: Generated<string>;
   url: string;
-  // GENERATED ALWAYS AS (digest(url, 'sha256')) STORED — never written.
+  // GENERATED ALWAYS AS (digest(url, 'sha256')) STORED —— 書き込むことはない。
   urlHash: GeneratedAlways<Buffer>;
   labels: ColumnType<string[], string[] | undefined, string[]>;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
-  // Which organization this URL is captured for. Agrees with the
-  // `organization:<id>` identifiers used in OpenFGA tuples. See `004`.
+  // この URL がどの組織のために撮られるか。OpenFGA の tuple で使う
+  // `organization:<id>` という識別子と一致する。`004` を見ること。
   orgId: ColumnType<string, string | undefined, string>;
   createdAt: ColumnType<Date, string | undefined, never>;
   updatedAt: ColumnType<Date, string | undefined, string>;
 }
 
 /**
- * One WACZ that BrowserHive actually produced. Location and provenance only —
- * who may read it is a relationship, and relationships live in OpenFGA.
+ * BrowserHive が実際に生んだ WACZ 1 本。運ぶのは在り処と来歴だけ ——
+ * 誰が読めるかは関係であり、関係は OpenFGA に在る。
  */
 export interface ArchivesTable {
   id: Generated<string>;
@@ -46,13 +45,13 @@ export interface ArchivesTable {
 }
 
 /**
- * Pending OpenFGA writes, recorded in the same transaction as the archive row
- * they belong to. See `003-create-fga-outbox`.
+ * 未処理の OpenFGA への書き込み。属するアーカイブの行と同じトランザクションで
+ * 記録される。`003-create-fga-outbox` を見ること。
  */
 export interface FgaOutboxTable {
-  // BIGSERIAL — node-pg returns int8 as `string` to avoid precision loss.
+  // BIGSERIAL —— node-pg は精度を落とさないために int8 を `string` で返す。
   id: Generated<string>;
-  // A whole OpenFGA write request: `{ writes: [...] }`.
+  // OpenFGA への書き込みリクエスト 1 つ分そのまま: `{ writes: [...] }`。
   payload: ColumnType<unknown, string, string>;
   createdAt: ColumnType<Date, string | undefined, never>;
   processedAt: ColumnType<Date | null, string | null | undefined, string | null>;
@@ -60,7 +59,7 @@ export interface FgaOutboxTable {
   lastError: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
-/** Which organization a capture was submitted for. See `004`. */
+/** その取り込みがどの組織のために投げられたか。`004` を見ること。 */
 export interface CaptureSubmissionsTable {
   taskId: string;
   correlationId: string | null;

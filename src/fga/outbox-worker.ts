@@ -1,14 +1,14 @@
 /**
- * Deliver queued relationship tuples from `fga_outbox` to OpenFGA.
+ * `fga_outbox` に積まれた関係の tuple を OpenFGA へ配送する。
  *
- * At-least-once: a row stays until OpenFGA has accepted it, and duplicate
- * writes are treated as success. The alternative — deleting on send — would
- * lose tuples whenever the process died between the write and the update, and
- * a missing tuple is invisible until someone is wrongly denied access.
+ * at-least-once: 行は OpenFGA が受け入れるまで残り、重複した書き込みは成功として
+ * 扱う。もう一方の道 —— 送信時に消す —— では、書き込みと更新の間にプロセスが
+ * 死ぬたびに tuple を落とすことになる。そして欠けた tuple は、誰かが不当に
+ * 拒まれるまで目に見えない。
  *
- * `FOR UPDATE SKIP LOCKED` means several drains can run at once (the API
- * process on a timer, plus a manual `waggle fga:drain`) without processing the
- * same row twice and without blocking each other.
+ * `FOR UPDATE SKIP LOCKED` のおかげで、掃き出しは同時に何本走ってもよい (タイマーで
+ * 動く API プロセスと、手で叩く `waggle fga:drain`)。同じ行を 2 度処理することも、
+ * 互いを待たせることもない。
  */
 import { sql, type Kysely } from "kysely";
 import type { OpenFgaClient } from "@openfga/sdk";
@@ -18,7 +18,7 @@ import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "fga-outbox" });
 
-/** OpenFGA caps a single write at 100 tuples; batches here are far smaller. */
+/** OpenFGA は 1 回の書き込みを 100 tuple までに制限する。ここの batch はずっと小さい。 */
 const DEFAULT_BATCH_SIZE = 100;
 
 export interface DrainResult {
@@ -38,22 +38,21 @@ interface WritePayload {
 }
 
 /**
- * Deliver one outbox row's tuples, tolerating ones that are already there.
+ * outbox の 1 行分の tuple を配送する。既に在るものは許容する。
  *
- * The subtlety that makes this more than `fga.write(payload)`: **an OpenFGA
- * write is transactional across the whole batch**. If any tuple in it already
- * exists the entire request is rejected, and nothing is written — including
- * the tuples that were new. Treating that rejection as "already delivered"
- * therefore silently drops the new ones, and the loss is invisible until
- * someone is wrongly denied access.
+ * これが `fga.write(payload)` 以上のものになっている理由: **OpenFGA の書き込みは
+ * batch 全体でトランザクショナル**。中の tuple が 1 つでも既に存在すると
+ * リクエスト全体が拒まれ、何も書かれない —— 新しかった tuple も含めて。だから
+ * その拒否を「配送済み」と扱うと、新しいほうを黙って落とすことになり、その損失は
+ * 誰かが不当に拒まれるまで目に見えない。
  *
- * That is not hypothetical: a row containing a fresh `archive` tuple beside an
- * `organization → capture_job` tuple from an earlier row hits it every time,
- * which is exactly what a re-registered archive produces.
+ * これは机上の話ではない: 新しい `archive` の tuple の隣に、以前の行から来た
+ * `organization → capture_job` の tuple が並んだ行は毎回これに当たる。再登録された
+ * アーカイブがまさにその形を作る。
  *
- * So: try the batch first (one request, atomic, the common case), and only if
- * it fails *because* something already exists, retry tuple by tuple so the new
- * ones still land. Any other failure propagates and the row is retried whole.
+ * なので: まず batch を試し (1 リクエスト・原子的・これが普通の場合)、既に在る
+ * ことが **原因で** 失敗したときに限り、1 tuple ずつ再試行して新しいほうを入れる。
+ * それ以外の失敗は伝播させ、その行は丸ごと再試行になる。
  */
 const writePayload = async (fga: OpenFgaClient, payload: WritePayload): Promise<void> => {
   try {
@@ -75,8 +74,8 @@ const writePayload = async (fga: OpenFgaClient, payload: WritePayload): Promise<
     try {
       await fga.write({ deletes: [tuple] });
     } catch (cause) {
-      // Deleting an absent tuple reports the same class of error and is
-      // equally already-in-the-desired-state.
+      // 存在しない tuple を消そうとしたときも同じ種類のエラーになり、
+      // 同じく「既に望む状態」である。
       if (!isAlreadyInDesiredState(cause)) throw cause;
       log.debug({ tuple }, "Tuple already absent; skipping");
     }
@@ -91,8 +90,8 @@ export const drainOutbox = async (
   let delivered = 0;
   let failed = 0;
 
-  // The whole batch runs inside one transaction so the row locks taken by
-  // SKIP LOCKED are held for as long as we are working on those rows.
+  // batch 全体を 1 つのトランザクションの中で走らせる。SKIP LOCKED が取った行の
+  // ロックを、その行を扱っている間ずっと保つため。
   await db.transaction().execute(async (trx) => {
     const rows = await trx
       .selectFrom("fgaOutbox")
@@ -122,7 +121,7 @@ export const drainOutbox = async (
           { outboxId: row.id, attempts: row.attempts + 1, err: cause },
           "Outbox delivery failed; will retry",
         );
-        // Leave processedAt null: the row is picked up again next drain.
+        // processedAt は null のままにする: その行は次の掃き出しでまた拾われる。
         continue;
       }
 

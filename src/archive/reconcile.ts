@@ -1,23 +1,21 @@
 /**
- * Fill gaps in the ledger from the durable result manifests in the bucket.
+ * 台帳の穴を、bucket に永続化された結果 manifest から埋める。
  *
- * The polling pass in `run.ts` only works while waggle is running. If it was
- * down, restarted, or the result aged out of BrowserHive's bounded cache
- * before it looked, that capture never reaches the ledger — and nothing
- * afterwards would reveal that it is missing. A ledger with unnoticed holes is
- * worse than no ledger, because the holes only surface as "why can't I see
- * this archive?" much later.
+ * `run.ts` の polling は waggle が動いている間しか働かない。落ちていた、再起動した、
+ * あるいは見に行く前に結果が BrowserHive の有界キャッシュから溢れた —— そのとき
+ * その取り込みは台帳に届かず、しかも後から「欠けている」と教えてくれるものが何も
+ * 無い。気づかれない穴のある台帳は、台帳が無いより悪い。穴は「なぜこのアーカイブが
+ * 見えないのか」という形で、ずっと後になって表に出るから。
  *
- * BrowserHive writes a `.result.json` next to every capture's artifacts, for
- * failures as well as successes, with the same lifetime as the artifacts. So
- * the bucket is a complete record, and this walks it.
+ * BrowserHive は取り込みごとに、成果物の隣へ `.result.json` を書く。成功にも失敗にも
+ * 書き、寿命は成果物と同じ。つまり bucket は完全な記録で、これはそこを歩く。
  *
- * ## Scale
+ * ## 規模
  *
- * S3 list narrows by prefix only — no suffix filter, no "modified since" — so
- * this pulls the full listing and selects manifests here. Fine at the current
- * scale (tens of objects). At tens of thousands the fix is a date prefix on
- * BrowserHive's keys, not a cleverer listing.
+ * S3 の list は prefix でしか絞れない —— 拡張子での絞り込みも「いつ以降」も無い ——
+ * ので、listing を全部引いてから manifest をここで選ぶ。今の規模 (数十オブジェクト)
+ * なら問題ない。数万になったときの直し方は、賢い listing ではなく BrowserHive の鍵に
+ * 日付の prefix を入れること。
  */
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
@@ -39,10 +37,10 @@ export interface ReconcileResult {
 }
 
 /**
- * The task id is the first `_`-delimited part of a manifest key (BrowserHive
- * builds names as `{taskId}[_{correlationId}][_{labels}].{ext}`), so it can be
- * read without fetching the object. That keeps the common case — a manifest
- * already in the ledger — to zero GETs.
+ * タスク id は manifest の鍵を `_` で区切った最初の部分 (BrowserHive は名前を
+ * `{taskId}[_{correlationId}][_{labels}].{ext}` として組む) なので、オブジェクトを
+ * 取りに行かずに読める。おかげで最も多い場合 —— 既に台帳に在る manifest ——
+ * の GET が 0 回で済む。
  */
 const taskIdFromKey = (key: string): string =>
   key.slice(0, -MANIFEST_SUFFIX.length).split("_")[0] ?? "";
@@ -55,7 +53,7 @@ export const reconcile = async (
   const keys = await listAllKeys(s3, bucket);
   const manifests = keys.filter((key) => key.endsWith(MANIFEST_SUFFIX));
 
-  // One query rather than one per manifest.
+  // manifest ごとに 1 回ではなく、まとめて 1 回のクエリ。
   const knownRows = await db.selectFrom("archives").select("taskId").execute();
   const known = new Set(knownRows.map((row) => row.taskId));
 
@@ -73,10 +71,10 @@ export const reconcile = async (
       continue;
     }
 
-    // Which organization this was for is not in the manifest — BrowserHive has
-    // no such concept. `capture_submissions` is the record waggle wrote when it
-    // submitted the job; without it the archive cannot be attributed, and
-    // guessing would be worse than leaving it out.
+    // これがどの組織のためのものだったかは manifest に無い —— BrowserHive に
+    // そういう概念が無いので。`capture_submissions` は waggle がジョブを投げた
+    // ときに書いた記録で、それが無ければアーカイブの帰属は言えない。推測するのは
+    // 空けておくより悪い。
     const submission = await db
       .selectFrom("captureSubmissions")
       .select("orgId")
@@ -93,13 +91,13 @@ export const reconcile = async (
 
     const raw = await getJsonObject<unknown>(s3, bucket, key);
     if (raw === undefined) {
-      // Listed a moment ago, gone now. Nothing to do but note it.
+      // さっき listing に在ったものが、もう無い。書き留める以外にできることは無い。
       log.warn({ key }, "Manifest disappeared between listing and read");
       result.skipped += 1;
       continue;
     }
 
-    // Idempotent: the unique index absorbs a race with the polling path.
+    // 冪等: polling 側との競合は unique index が吸収する。
     const registered = await registerArchive(db, readManifest(raw), submission.orgId);
     if (registered.archiveId !== undefined) result.registered += 1;
     else result.skipped += 1;

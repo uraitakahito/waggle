@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { isAlreadyInDesiredState } from "../src/fga/client.js";
 
 /**
- * Shapes measured against OpenFGA v1.10.2. Getting this predicate wrong is
- * expensive in both directions: too strict wedges the outbox on a row that
- * will never succeed, too loose marks a row delivered whose tuples never
- * landed — and a missing tuple only surfaces as someone being wrongly denied.
+ * OpenFGA v1.10.2 で実測した形。この判定を誤ると、どちらの向きにも高くつく:
+ * 厳しすぎれば決して成功しない行で outbox が詰まり、緩すぎれば tuple が入って
+ * いない行を配送済みにする —— そして欠けた tuple は、誰かが不当に拒まれるという
+ * 形でしか表に出ない。
  */
 const fgaError = (code: string, message: string): unknown => ({
   name: "FgaApiValidationError",
@@ -36,8 +36,8 @@ describe("isAlreadyInDesiredState", () => {
     ).toBe(true);
   });
 
-  // An unknown relation is a modelling mistake. Swallowing it would mark the
-  // row delivered and lose the tuple for good.
+  // 未知の relation はモデルの誤り。飲み込むと、その行を配送済みにして tuple を
+  // 完全に失う。
   it("rejects a validation error from a bad relation", () => {
     expect(
       isAlreadyInDesiredState(
@@ -46,7 +46,7 @@ describe("isAlreadyInDesiredState", () => {
     ).toBe(false);
   });
 
-  // Same code, different cause — the message is what separates them.
+  // code は同じで原因が違う —— それを分けているのは message のほう。
   it("rejects another invalid-input failure that is not about existence", () => {
     expect(
       isAlreadyInDesiredState(

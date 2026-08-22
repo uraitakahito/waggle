@@ -1,18 +1,18 @@
 /**
- * Kysely client factory.
+ * Kysely の client を作る。
  *
- * Wraps `pg.Pool` (built from a `DATABASE_URL` connection string) with
- * Kysely's `PostgresDialect` and the `CamelCasePlugin`, which maps TS
- * camelCase identifiers (`urlHash`, `createdAt`) to DB snake_case
- * (`url_hash`, `created_at`).
+ * `DATABASE_URL` の接続文字列から作った `pg.Pool` を、Kysely の
+ * `PostgresDialect` と `CamelCasePlugin` で包む。plugin が TS 側の camelCase の
+ * 識別子 (`urlHash`、`createdAt`) を DB 側の snake_case (`url_hash`、
+ * `created_at`) へ写す。
  *
- * Query logging is bridged into the project's pino logger as a child
- * logger bound to `module: "kysely"`. Errors always log; successful
- * queries log only when the root logger is at `debug` or below.
+ * クエリのログは、`module: "kysely"` を binding した child logger として
+ * このプロジェクトの pino に橋渡しする。エラーは常に出し、成功したクエリは
+ * root logger が `debug` 以下のときだけ出す。
  *
- * The returned client owns its underlying pool — call `.destroy()` on
- * the client (the migrator-runner does this) to end the pool. Callers
- * should not invoke `pool.end()` separately.
+ * 返す client は下にある pool を所有する —— pool を終わらせるには client の
+ * `.destroy()` を呼ぶこと (migrator-runner がそうしている)。呼ぶ側が別途
+ * `pool.end()` を呼んではいけない。
  */
 import pg from "pg";
 import type { LogEvent } from "kysely";

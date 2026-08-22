@@ -1,18 +1,16 @@
 /**
  * 002-create-archives
  *
- * The ledger: one row per WACZ that BrowserHive actually produced.
+ * 台帳。BrowserHive が実際に生んだ WACZ 1 本につき 1 行。
  *
- * Every column here is *location and provenance* — where the object is and
- * what produced it. There is deliberately no `org_id` or `owner_id`: who may
- * read an archive is a relationship, and relationships live in OpenFGA as
- * tuples. Putting an owner column here would create a second, competing
- * answer to the same question.
+ * ここの列はどれも **在り処と来歴** —— そのオブジェクトがどこに在り、何が生んだか。
+ * `org_id` も `owner_id` も意図して置いていない: 誰がアーカイブを読めるかは関係で
+ * あり、関係は tuple として OpenFGA に在る。所有者の列をここに置くと、同じ問いに
+ * 対する 2 つ目の、競合する答えを作ることになる。
  *
- * `(bucket, object_key)` is unique because the same capture can be reported
- * more than once — the poller and the manifest reconciler can both arrive at
- * it, and either can be retried. The constraint is what makes those paths
- * safely idempotent rather than a source of duplicates.
+ * `(bucket, object_key)` を一意にしているのは、同じ取り込みが 2 度以上報告され
+ * うるから —— poller と manifest の reconciler の両方が辿り着けるし、どちらも
+ * 再実行されうる。この制約が、その経路を重複の源ではなく安全に冪等にしている。
  */
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -30,21 +28,21 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn("object_key", "text", (col) => col.notNull())
     .addColumn("source_url", "text", (col) => col.notNull())
     .addColumn("labels", sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'::text[]`))
-    // CaptureResultReport.completeness.complete. `false` means the archive is
-    // missing at least one body — either a URL only ever seen as a 304, or one
-    // BrowserHive dropped for exceeding a size cap (v1.11.0 added the second
-    // case; before it, capped captures reported `true`). Worth knowing before
-    // handing the archive to waxlens. NULL when the capture predates the field
-    // or did not record one.
+    // CaptureResultReport.completeness.complete。`false` は、そのアーカイブに
+    // 本文が 1 つ以上欠けているという意味 —— 304 としてしか見なかった URL か、
+    // 容量の上限を超えて BrowserHive が落としたもの (後者は v1.11.0 で加わった。
+    // それ以前、上限に当たった取り込みは `true` と報告していた)。アーカイブを
+    // waxlens に渡す前に知っておく価値がある。この field より前の取り込みや、
+    // 記録しなかった取り込みでは NULL。
     .addColumn("wacz_complete", "boolean")
-    // BrowserHive's own timestamp for the capture, not waggle's receive time:
-    // the reconciler may register a row hours later and must not reorder history.
+    // waggle が受け取った時刻ではなく、BrowserHive 自身が付けた取り込みの時刻。
+    // reconciler は何時間も後に行を登録しうるので、履歴を並べ替えてはならない。
     .addColumn("captured_at", "timestamptz", (col) => col.notNull())
     .addColumn("created_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))
     // #endregion archives-columns
     .execute();
 
-  // The idempotency guarantee both write paths rely on.
+  // 2 つの書き込み経路が揃って頼っている、冪等性の保証。
   await db.schema
     .createIndex("archives_bucket_object_key_key")
     .on("archives")
@@ -52,8 +50,8 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .unique()
     .execute();
 
-  // The reconciler asks "do I already know this task?" for every manifest it
-  // finds, and the API lists newest-first.
+  // reconciler は見つけた manifest ごとに「このタスクは既に知っているか」と訊き、
+  // API は新しい順に並べる。
   await db.schema.createIndex("archives_task_id_idx").on("archives").column("task_id").execute();
   await db.schema
     .createIndex("archives_captured_at_idx")
@@ -64,5 +62,5 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema.dropTable("archives").execute();
-  // pgcrypto is left in place — 001 depends on it too.
+  // pgcrypto はそのまま残す —— 001 も依存している。
 };

@@ -1,15 +1,14 @@
 /**
- * Generic Kysely Migrator runner.
+ * 汎用の Kysely Migrator runner。
  *
- * Same shape as contact-api's `migrator-runner.ts`: a thin wrapper
- * around `Migrator` + `FileMigrationProvider` that the `migrate` and
- * `seed` CLIs reuse with different `migrationTableName` /
- * `migrationLockTableName` / `migrationFolder` triples.
+ * contact-api の `migrator-runner.ts` と同じ形: `Migrator` と
+ * `FileMigrationProvider` を薄く包んだもので、`migrate` と `seed` の CLI が
+ * `migrationTableName` / `migrationLockTableName` / `migrationFolder` の
+ * 3 つ組を変えて使い回す。
  *
- * Side-effect-free apart from logging and `process.exitCode` — the
- * Kysely client and logger are passed in. `runMigratorCli` always
- * `.destroy()`s the client at the end so the underlying pg.Pool ends
- * and the process exits cleanly.
+ * ログと `process.exitCode` 以外に副作用は無い —— Kysely の client も logger も
+ * 渡してもらう。`runMigratorCli` は最後に必ず client を `.destroy()` するので、
+ * 下にある pg.Pool が終わり、プロセスがきれいに終了する。
  */
 import { promises as fs } from "node:fs";
 import * as path from "node:path";

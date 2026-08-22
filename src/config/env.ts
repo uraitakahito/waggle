@@ -1,14 +1,13 @@
 /**
- * Environment-derived configuration for the pieces that talk to OpenFGA and
- * the artifact store.
+ * OpenFGA と成果物ストアに話しかける部分の、環境変数から来る設定。
  *
- * These are deployment facts, not caller intent, so they live in env vars
- * rather than CLI flags — the same split `cli-options.ts` already draws.
+ * これらは配備の事実であって呼ぶ側の意図ではないので、CLI の旗ではなく環境変数に
+ * 置く —— `cli-options.ts` が既に引いているのと同じ線。
  *
- * Every getter throws on a missing value instead of defaulting. A silently
- * defaulted store id would evaluate authorization against the wrong data, and
- * a silently defaulted bucket would sign URLs for objects that are not there;
- * both are much worse than failing at startup.
+ * どの getter も、値が無ければ既定値に落とさず throw する。store id が黙って既定値に
+ * なると、認可を別のデータに対して評価することになる。bucket が黙って既定値になると、
+ * 存在しないオブジェクトに対して URL を署名することになる。どちらも、起動時に失敗する
+ * よりはるかに悪い。
  */
 
 const required = (name: string): string => {
@@ -28,10 +27,10 @@ export interface FgaConfig {
   apiUrl: string;
   storeId: string;
   /**
-   * Pinned deliberately. Authorization models are immutable and every write
-   * mints a new id; omitting it evaluates against whatever is newest, so
-   * editing the model would change every decision the moment it lands.
-   * Bumping this variable is what makes that switch a separate, deliberate act.
+   * 意図して固定している。認可モデルは不変で、書き込むたびに新しい id が生まれる。
+   * 省くと「そのとき最も新しいもの」に対して評価するので、モデルを編集した瞬間に
+   * すべての判断が変わってしまう。この変数を上げることが、その切り替えを別個の
+   * 意図的な行為にしている。
    */
   modelId: string;
   apiToken: string;
@@ -51,9 +50,9 @@ export interface StorageConfig {
   accessKeyId: string;
   secretAccessKey: string;
   /**
-   * The bundled SeaweedFS has no wildcard DNS for bucket subdomains, so
-   * virtual-hosted-style addressing fails against it. Mirrors BrowserHive's
-   * own `BROWSERHIVE_S3_FORCE_PATH_STYLE`.
+   * 同梱の SeaweedFS は bucket の subdomain 用のワイルドカード DNS を持たないので、
+   * virtual-hosted 形式の宛先は当たらない。BrowserHive 自身の
+   * `BROWSERHIVE_S3_FORCE_PATH_STYLE` と対になっている。
    */
   forcePathStyle: boolean;
 }
