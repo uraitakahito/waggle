@@ -135,6 +135,81 @@ should be short-lived.
 
 ## The authorization model
 
+Four types, with ownership flowing downwards: **organization → job → archive**.
+
+| Type           | Relations                                             |
+| -------------- | ----------------------------------------------------- |
+| `user`         | —                                                     |
+| `organization` | `member` / `admin`                                    |
+| `capture_job`  | `owner` / `parent` (organization) / `member`          |
+| `archive`      | `parent` (job) / `viewer` / `can_view` / `can_delete` |
+
+The signing endpoint asks exactly one question — `can_view` — and there are
+three ways to reach it.
+
+```
+define can_view: viewer or owner from parent or member from parent
+```
+
+| Path                 | Who                               | Where it comes from                   |
+| -------------------- | --------------------------------- | ------------------------------------- |
+| `viewer`             | someone outside the organization  | a tuple (**always with an expiry**)   |
+| `owner from parent`  | whoever asked for the job         | a tuple                               |
+| `member from parent` | anyone in the owning organization | a **contextual tuple** from the token |
+
+Deleting belongs to the owner alone (`can_delete: owner from parent`). **A
+member of the organization can look but not destroy.**
+
+:::note[`capture_job.member` is the missing hop]
+It looks as though `archive` could reach `organization#member` directly. It
+cannot: **`from` traverses exactly one edge**, and `archive#parent` points at a
+`capture_job`, which puts organization membership two hops away.
+
+```
+type capture_job
+  relations
+    define parent: [organization]
+    define member: member from parent   # ← the hop that closes the gap
+```
+
+:::
+
+### A share lapses on its own
+
+Nothing outside the organization can be shared without an expiry, because the
+type of `viewer` is conditioned.
+
+```
+define viewer: [user with non_expired_grant, organization#member]
+
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}
+```
+
+`current_time` is supplied on every Check, so **nothing has to sweep expired
+tuples**. The tuple stays; the condition simply stops holding. A sweeper falling
+behind cannot leave a hole open.
+
+### What the assertions hold down
+
+Each of the seven in `fga/model.fga.yaml` names a way someone could be let in
+who should not be.
+
+| #   | Question                                                        |
+| --- | --------------------------------------------------------------- |
+| 1   | the owner of the job can view what it produced                  |
+| 2   | a member of the owning organization **can view but not delete** |
+| 3   | an unrelated user sees nothing                                  |
+| 4   | **membership in another organization grants nothing**           |
+| 5   | a direct share is visible inside its window                     |
+| 6   | **the same share has lapsed after its window**                  |
+| 7   | a shared archive still cannot be deleted by the recipient       |
+
+5 and 6 use **the identical tuple** and differ only in `current_time`.
+
+### Verifying and deploying
+
 `fga/model.fga` is the source of truth, with assertions in
 `fga/model.fga.yaml` that run in CI:
 
