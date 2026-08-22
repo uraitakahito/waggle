@@ -1,28 +1,28 @@
 /**
  * 004-create-capture-submissions
  *
- * Remembers, at submit time, which organization a capture was run for.
+ * 投げた時点で、その取り込みがどの組織のためのものだったかを覚えておく。
  *
- * ## Why this table has to exist
+ * ## このテーブルが要る理由
  *
- * The ledger is filled from two directions. The poller knows the organization
- * because it just submitted the job. The manifest reconciler does not: it
- * reads `.result.json` out of the bucket, and BrowserHive has no concept of an
- * organization, so nothing in that document says who the capture was for.
+ * 台帳は 2 方向から埋まる。poller は自分でジョブを投げたばかりなので組織を知って
+ * いる。manifest の reconciler は知らない: bucket から `.result.json` を読むだけで、
+ * BrowserHive に組織という概念が無い以上、その文書には誰のための取り込みだったかを
+ * 言うものが何も無い。
  *
- * The alternative — encoding the organization inside `correlationId` and
- * parsing it back out — was rejected. A convention held only by agreement gets
- * broken by the first caller that submits a capture by hand; a table does not.
+ * もう一方の道 —— 組織を `correlationId` に埋め込んで、読むときに解析し直す ——
+ * は採らなかった。合意でしか保たれていない約束事は、手で取り込みを投げた最初の
+ * 呼び出しに破られる。テーブルは破られない。
  *
- * Written before the request is sent, so a capture that BrowserHive accepts
- * can always be attributed even if waggle dies immediately after.
+ * リクエストを送る前に書くので、直後に waggle が死んでも、BrowserHive が受理した
+ * 取り込みの帰属は必ず言える。
  *
  * ## `urls.org_id`
  *
- * Which organization a URL is captured for is an input to the capture, not a
- * property of the artifact, so it belongs next to the URL. Existing rows get
- * `default` — there is no organization directory yet, and the identifier is
- * just a string that has to agree with the `organization:<id>` tuples.
+ * ある URL がどの組織のために撮られるかは、成果物の性質ではなく取り込みへの入力
+ * なので、URL の隣に属する。既存の行には `default` が入る —— 組織のディレクトリは
+ * まだ無く、この識別子は `organization:<id>` の tuple と一致していればよい
+ * 単なる文字列。
  */
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -36,12 +36,11 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema
     .createTable("capture_submissions")
     // #region capture-submissions-columns
-    // BrowserHive's task id is the join key back to a result report.
+    // BrowserHive のタスク id が、結果の報告へ戻る join の鍵になる。
     .addColumn("task_id", "uuid", (col) => col.primaryKey())
     .addColumn("correlation_id", "text")
     .addColumn("org_id", "text", (col) => col.notNull())
-    // The user who asked for it, when there was one. NULL for scheduled runs
-    // that belong to the organization rather than a person.
+    // それを求めた利用者。居た場合に限る。人ではなく組織に属する定期実行では NULL。
     .addColumn("submitted_by", "text")
     .addColumn("source_url", "text", (col) => col.notNull())
     .addColumn("submitted_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))

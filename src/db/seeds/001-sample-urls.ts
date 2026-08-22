@@ -1,16 +1,15 @@
 /**
  * 001-sample-urls
  *
- * Sample URLs used by local development and the prod-stack smoke test.
+ * ローカルの開発と本番構成の smoke test が使うサンプルの URL。
  *
- * Idempotency is provided by the `kysely_seed` ledger — the migrator
- * skips this file once it has been applied — so the original
- * `ON CONFLICT (url_hash) DO NOTHING` from the SQL seed is no longer
- * needed.
+ * 冪等性は `kysely_seed` の台帳が与える —— 一度当たったファイルを migrator が
+ * 飛ばす —— ので、SQL の seed に在った `ON CONFLICT (url_hash) DO NOTHING` は
+ * もう要らない。
  *
- * `down` truncates with `RESTART IDENTITY` so the BIGSERIAL `id`
- * counter rewinds, leaving the table indistinguishable from a fresh
- * `CREATE TABLE` for round-trip tests.
+ * `down` は `RESTART IDENTITY` 付きで truncate する。BIGSERIAL の `id` の
+ * カウンタが巻き戻るので、往復のテストにおいて、作りたての `CREATE TABLE` と
+ * 区別が付かない状態に戻る。
  */
 import type { Kysely } from "kysely";
 import { sql } from "kysely";

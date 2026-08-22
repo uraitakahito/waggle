@@ -21,7 +21,8 @@
  *   - `eslint-disable` / `@ts-` などのディレクティブ
  *   - 見出しの下線・区切り、URL 単体、`ラベル : 数式` の行、CSS セレクタ
  *   - 語が 1 つだけの markdown 見出し (`## --wacz` のようなフラグ名やパス)。
- *     語が 2 つ以上あれば訳す対象なので数える
+ *     語が 2 つ以上あれば訳す対象なので数える。browserhive 版から広げて、数字で
+ *     始まる識別子 (`002-create-archives` のような migration 名) も含めている
  *   - 行コメントに現れる製品名などの固有名詞ラベル (`// OpenFGA Playground`)。
  *     JSDoc 冒頭の見出しは訳す対象なので、ここには含めない
  *   - コメント内の ``` フェンスで囲われた中身 (SQL や JSON の実例)。フェンス自体も含む
@@ -45,7 +46,7 @@ const STRUCTURAL =
   /^(@\w+\b[^\s]*\s*$|@(param|returns?|throws|see|example|template|typeParam|glossary|category|module|packageDocumentation|internal|deprecated|remarks)\b|#region\b|#endregion\b|eslint-|@ts-|prettier-|c8 |v8 )/;
 
 const NON_PROSE =
-  /^([-=~*_]{3,}$|https?:\/\/\S+|[A-Za-z0-9_$.]+\s*[:=]\s*\S|[(){}[\]<>|&+*/%!?:;,.=-]+$|`[^`]*`$|[A-Za-z][A-Za-z0-9_-]*$|::?[\w-]+$|[\w /()-]+:\s*[\d(].*$|[-*>]+\s*\S+$|\|.*\|$|#{1,6}\s+\S+$)/;
+  /^([-=~*_]{3,}$|https?:\/\/\S+|[A-Za-z0-9_$.]+\s*[:=]\s*\S|[(){}[\]<>|&+*/%!?:;,.=-]+$|`[^`]*`$|[A-Za-z0-9][A-Za-z0-9_-]*$|::?[\w-]+$|[\w /()-]+:\s*[\d(].*$|[-*>]+\s*\S+$|\|.*\|$|#{1,6}\s+\S+$)/;
 
 // 行コメントに現れる製品名などの固有名詞ラベル。JSDoc 冒頭の見出しは訳す対象なので
 // ここには含めない (`//` で始まる行だけに適用する)。

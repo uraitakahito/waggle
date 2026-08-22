@@ -1,17 +1,14 @@
 /**
- * Migration CLI entry point.
+ * migration の CLI の入口。
  *
- * Runs Kysely migrations from `src/db/migrations/` (compiled to
- * `dist/db/migrations/`). Direction is a positional argument
- * (`up` | `down`); `DATABASE_URL` is required via env.
+ * `src/db/migrations/` (ビルド後は `dist/db/migrations/`) の Kysely migration を
+ * 走らせる。方向は位置引数 (`up` | `down`) で、`DATABASE_URL` は環境変数として必須。
  *
- * Ledger lives in `kysely_migration` / `kysely_migration_lock`. The
- * older self-rolled `migrations` table from the SQL-runner era is
- * unused — clean environments have it absent, and existing dev
- * volumes are expected to be wiped before adopting this runner
- * (per the breaking-change scope).
+ * 台帳は `kysely_migration` / `kysely_migration_lock` に在る。SQL runner 時代の
+ * 自前の `migrations` テーブルは使っていない —— 新しい環境には存在せず、既存の
+ * 開発用ボリュームはこの runner を採用する前に消す前提 (破壊的変更として扱った)。
  *
- * Invoked as `node dist/db/migrate.js <up|down>`.
+ * `node dist/db/migrate.js <up|down>` として起動する。
  */
 import { Argument, Command, Option } from "commander";
 import { parsePath } from "./cli-parsers.js";
