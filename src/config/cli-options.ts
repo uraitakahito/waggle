@@ -5,8 +5,8 @@
  * matching env vars (`BROWSERHIVE_SERVER`, `BROWSERHIVE_TLS_CA_CERT`,
  * `DATABASE_URL`) when omitted on the command line. Per-job flags — the format
  * switches, `--limit`, `--dismiss-banners`, `--accept-language`, and the
- * capture knobs (`--device-scale-factor`, `--archive-mode`,
- * `--operation-delay-ms`, `--behaviors`, `--no-site-behaviors`) —
+ * capture knobs (`--device-pixel-ratios`, `--operation-delay-ms`,
+ * `--behaviors`, `--no-site-behaviors`) —
  * intentionally have no env equivalents: they are caller-side intent, not
  * deployment configuration. BrowserHive has its own env vars for the same
  * knobs, and those are what set the server-wide defaults.
@@ -36,8 +36,7 @@ export interface ClientOptions {
   tlsCaCert?: string;
   dismissBanners?: boolean;
   acceptLanguage?: string;
-  deviceScaleFactor?: number;
-  archiveMode?: "single-pass" | "multipass";
+  devicePixelRatios?: number[];
   operationDelayMs?: number;
   behaviors?: string[];
   siteBehaviors?: boolean;
@@ -68,6 +67,24 @@ const parseNonNegativeInt = (value: string): number => {
 
 // An empty `--behaviors ""` is meaningful: it turns every built-in off while
 // leaving the server's site behaviors alone. Only the ids are trimmed.
+// Ratios arrive as a comma-separated list because order is meaningful: the
+// images come out at the last entry's ratio. A repeated `--device-pixel-ratio`
+// flag would express the same thing, but a single list keeps the order visible
+// in one place. Range (1–3) and the no-duplicates rule are enforced
+// server-side, like every other value constraint since the move to protobuf.
+const parseRatioList = (value: string): number[] =>
+  value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "")
+    .map((part) => {
+      const n = Number(part);
+      if (!Number.isInteger(n)) {
+        throw new InvalidArgumentError(`"${part}" is not an integer`);
+      }
+      return n;
+    });
+
 const parseIdList = (value: string): string[] =>
   value
     .split(",")
@@ -128,15 +145,9 @@ export const createProgram = (): Command => {
     )
     .addOption(
       new Option(
-        "--device-scale-factor <n>",
-        "Device pixel ratio the capture browser reports (1 or 2). 2 gives Retina-faithful WACZ replay.",
-      ).argParser(parsePositiveInt),
-    )
-    .addOption(
-      new Option(
-        "--archive-mode <mode>",
-        "How many passes the capture makes over the page",
-      ).choices(["single-pass", "multipass"]),
+        "--device-pixel-ratios <list>",
+        'Comma-separated device pixel ratios to load at, in load order (e.g. "1,2"). One load per entry; PNG/WebP come out at the last one.',
+      ).argParser(parseRatioList),
     )
     .addOption(
       new Option(
@@ -193,8 +204,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     tlsCaCert?: string;
     dismissBanners?: boolean;
     acceptLanguage?: string;
-    deviceScaleFactor?: number;
-    archiveMode?: "single-pass" | "multipass";
+    devicePixelRatios?: number[];
     operationDelayMs?: number;
     behaviors?: string[];
     siteBehaviors?: boolean;
@@ -217,8 +227,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     ...(opts.tlsCaCert !== undefined && { tlsCaCert: opts.tlsCaCert }),
     ...(opts.dismissBanners !== undefined && { dismissBanners: opts.dismissBanners }),
     ...(opts.acceptLanguage !== undefined && { acceptLanguage: opts.acceptLanguage }),
-    ...(opts.deviceScaleFactor !== undefined && { deviceScaleFactor: opts.deviceScaleFactor }),
-    ...(opts.archiveMode !== undefined && { archiveMode: opts.archiveMode }),
+    ...(opts.devicePixelRatios !== undefined && { devicePixelRatios: opts.devicePixelRatios }),
     ...(opts.operationDelayMs !== undefined && { operationDelayMs: opts.operationDelayMs }),
     ...(opts.behaviors !== undefined && { behaviors: opts.behaviors }),
     // commander sets this to `false` only when --no-site-behaviors was passed;
@@ -258,10 +267,9 @@ export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
     captureFormats: getCaptureFormats(options),
     dismissBanners: options.dismissBanners ?? false,
     ...(options.acceptLanguage !== undefined && { acceptLanguage: options.acceptLanguage }),
-    ...(options.deviceScaleFactor !== undefined && {
-      deviceScaleFactor: options.deviceScaleFactor,
+    ...(options.devicePixelRatios !== undefined && {
+      devicePixelRatios: options.devicePixelRatios,
     }),
-    ...(options.archiveMode !== undefined && { archiveMode: options.archiveMode }),
     ...(options.operationDelayMs !== undefined && { operationDelayMs: options.operationDelayMs }),
     ...(Object.keys(behaviors).length > 0 && { behaviors }),
   };

@@ -81,13 +81,6 @@ enum CacheMode {
   CACHE_MODE_CLEAR = 3;
 }
 
-// 1 回のロードで済ますか、DPR ごとに読み直すか。
-enum ArchiveMode {
-  ARCHIVE_MODE_UNSPECIFIED = 0;
-  ARCHIVE_MODE_SINGLE_PASS = 1;
-  ARCHIVE_MODE_MULTIPASS = 2;
-}
-
 // -- リクエスト側 ----------------------------------------------------------
 
 // 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。
@@ -123,8 +116,13 @@ message ResetStateSpec {
 }
 
 // viewport の指定。
+//
+// proto は値域を書けないので、範囲は server 側の境界 (request-limits.ts) が
+// 強制する。外れると INVALID_ARGUMENT。
 message Viewport {
+  // 1–7680 (8K の幅)。
   int32 width = 1;
+  // 1–4320 (8K の高さ)。
   int32 height = 2;
 }
 
@@ -156,6 +154,8 @@ message SubmitCaptureRequest {
   repeated string labels = 2;
   optional string correlation_id = 3;
   CaptureFormats capture_formats = 4;
+  // 上流へ送る Accept-Language。印字可能な ASCII のみ、200 文字以下。
+  // 制御文字 (CR/LF/NUL) は header への注入になるので境界が拒む。
   optional string accept_language = 5;
   optional bool signing = 6;
 
@@ -167,11 +167,32 @@ message SubmitCaptureRequest {
   }
 
   optional Viewport viewport = 9;
+  // 0–5000。ページ操作 1 つごとに挟む遅延で、headless の描画を眺めるためのもの。
+  // 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
   optional int32 operation_delay_ms = 10;
   optional bool trace = 11;
   CacheMode cache = 12;
-  ArchiveMode archive_mode = 13;
-  optional int32 device_scale_factor = 14;
+  // 13 と 14 は archive_mode (enum) と device_scale_factor が使っていた。番号を
+  // 再利用しない —— 旧 client が送る archive_mode = ARCHIVE_MODE_MULTIPASS は
+  // 13 番の varint 2 で、そのまま repeated int32 として読むと
+  // device_pixel_ratios = [2] に化ける。「1 と 2 で読み込め」が「DPR 2 だけで
+  // 撮れ」になり、しかも誰も気づかない。予約しておけば未知のフィールドとして
+  // 捨てられ、サーバ既定に落ちる。
+  reserved 13, 14;
+  reserved "archive_mode", "device_scale_factor";
+
+  // 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で
+  // (2 が Retina、3 が現行の携帯端末の上)、同じ値を 2 度置くことはできない。
+  //
+  // 要素数がそのまま読み込みの回数になる。読み込むたびにバナー除去も behaviors も
+  // 走るので、所要時間も WARC のバイト数も要素数に比例して増える。
+  //
+  // 順序に意味がある: PNG / WebP は読み込みが全部終わってから 1 度だけ撮るので、
+  // **最後の要素**の倍率になる。[2, 1] と書けば画像は 1x で残る。
+  //
+  // 空ならサーバ既定 (--device-pixel-ratios)。proto3 の repeated は「空」と
+  // 「未指定」を区別できないので、空は「指定なし」として扱うほかない。
+  repeated int32 device_pixel_ratios = 20;
   optional bool full_page = 15;
   optional BehaviorSpec behaviors = 16;
 
@@ -369,7 +390,7 @@ message BuildInfo {
  * settings.limits と同じ値だが、答える問いが違う —— あちらは「何が起きたか」、
  * こちらは「これから何が起きるか」。
  *
- * 載せるのは境界だけ。viewport や archiveMode はリクエストで上書きできるので
+ * 載せるのは境界だけ。viewport や devicePixelRatios はリクエストで上書きできるので
  * 境界ではなく、ここには来ない。設定の置き場にし始めたら、それは status とは
  * 別の RPC に切る合図。
  */
