@@ -113,6 +113,10 @@ jobs:
       # just brings the tag names with it.
       - name: Fetch upstream tags
         run: git -C .upstream/browserhive fetch --tags --force
+      # docs-site はまだ npm プロジェクト (root の workspace に入っていない) ので
+      # 依存の install は npm のまま。pnpm が要るのは root の `site:check` を
+      # 呼ぶためだけ。
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -123,4 +127,4 @@ jobs:
       - name: Install docs-site dependencies
         run: npm ci --prefix docs-site
       - name: Build site and verify doc references
-        run: npm run site:check
+        run: pnpm run site:check

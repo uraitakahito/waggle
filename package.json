@@ -5,6 +5,7 @@
   "license": "Unlicense",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee",
   "engines": {
     "node": ">=24.14.1"
   },
@@ -20,7 +21,7 @@
     "proto"
   ],
   "scripts": {
-    "dev": "npm run build && node dist/cli.js",
+    "dev": "pnpm run build && node dist/cli.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -30,24 +31,24 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "proto:generate": "buf generate",
-    "proto:check": "npm run proto:generate && git diff --exit-code -- src/rpc/generated",
+    "proto:check": "pnpm run proto:generate && git diff --exit-code -- src/rpc/generated",
     "proto:check-deps": "node scripts/check-generated-deps.mjs",
     "proto:sync": "cp .upstream/browserhive/src/rpc/proto/browserhive/v1/capture.proto proto/browserhive/v1/capture.proto",
-    "site:dev": "npm --prefix docs-site run dev",
-    "site:build": "npm --prefix docs-site run build",
-    "site:preview": "npm --prefix docs-site run preview",
-    "site:check": "npm run site:build && node scripts/check-doc-refs.mjs",
+    "site:dev": "pnpm --dir docs-site run dev",
+    "site:build": "pnpm --dir docs-site run build",
+    "site:preview": "pnpm --dir docs-site run preview",
+    "site:check": "pnpm run site:build && node scripts/check-doc-refs.mjs",
     "fga:migrate": "node scripts/fga-migrate.mjs",
     "fga:test": "fga model test --tests fga/model.fga.yaml",
     "fga:deploy": "node scripts/fga-deploy.mjs",
-    "fga:drain": "npm run build && node dist/fga/cli.js drain",
-    "fga:reconcile": "npm run build && node dist/fga/cli.js reconcile",
-    "api": "npm run build && node dist/api/server.js",
-    "db:migrate": "npm run build && node dist/db/migrate.js up",
-    "db:migrate:down": "npm run build && node dist/db/migrate.js down",
-    "db:seed": "npm run build && node dist/db/seed.js up",
-    "db:seed:down": "npm run build && node dist/db/seed.js down",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run proto:check-deps && npm test"
+    "fga:drain": "pnpm run build && node dist/fga/cli.js drain",
+    "fga:reconcile": "pnpm run build && node dist/fga/cli.js reconcile",
+    "api": "pnpm run build && node dist/api/server.js",
+    "db:migrate": "pnpm run build && node dist/db/migrate.js up",
+    "db:migrate:down": "pnpm run build && node dist/db/migrate.js down",
+    "db:seed": "pnpm run build && node dist/db/seed.js up",
+    "db:seed:down": "pnpm run build && node dist/db/seed.js down",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
@@ -73,10 +74,5 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
-  },
-  "overrides": {
-    "js-yaml": "^4.3.0",
-    "brace-expansion": "^5.0.8",
-    "axios": "^1.18.1"
   }
 }
