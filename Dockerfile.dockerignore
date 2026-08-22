@@ -1,12 +1,11 @@
 # Whitelist mode: BuildKit reads `<dockerfile>.dockerignore` in preference
 # to `.dockerignore`. We start by excluding everything, then re-include
-# only what `Dockerfile.prod`'s COPY directives need.
+# only what `Dockerfile`'s COPY directives need.
 *
 
 !package.json
-!package-lock.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
 !tsconfig.json
 !tsconfig.build.json
-!openapi/
 !src/
-!db/
