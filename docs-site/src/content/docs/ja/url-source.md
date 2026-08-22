@@ -61,11 +61,11 @@ ON CONFLICT (url_hash) DO NOTHING;
 `down(db)` を export します。ランナーは Kysely の `Migrator` +
 `FileMigrationProvider` の薄いラッパで、適用済み ID を `kysely_migration` 台帳で
 管理します (同時実行は `kysely_migration_lock` が守ります)。最新の状態で
-`npm run db:migrate` を再実行しても何も起きません。
+`pnpm run db:migrate` を再実行しても何も起きません。
 
 ```sh
-npm run db:migrate        # 適用
-npm run db:migrate:down   # 直前の 1 つを巻き戻す
+pnpm run db:migrate       # 適用
+pnpm run db:migrate:down  # 直前の 1 つを巻き戻す
 ```
 
 追加するときは:
@@ -74,7 +74,7 @@ npm run db:migrate:down   # 直前の 1 つを巻き戻す
 2. スキーマビルダで `up` / `down` を実装する。ビルダで書けないもの (拡張、生成列、
    他カラムを参照する `CHECK`) は ``sql`…`.execute(db)`` を使う。
 3. ローカルで往復させる:
-   `npm run db:migrate && npm run db:migrate:down && npm run db:migrate`。
+   `pnpm run db:migrate && pnpm run db:migrate:down && pnpm run db:migrate`。
    CI も同じ往復を実行します。
 4. マイグレーションと、それに依存するコードは同じ PR でコミットする。
 

@@ -77,7 +77,7 @@ services:
     #
     # `migrate` はここでは走らせていない: この image は distroless で (/bin/sh が無い)、
     # seaweedfs のような entrypoint の再試行ループが書けず、container-compose にも
-    # 使い捨てのサービスが無い。`up` のあとに `npm run fga:migrate` を走らせること ——
+    # 使い捨てのサービスが無い。`up` のあとに `pnpm run fga:migrate` を走らせること ——
     # server は未 migrate のデータベース相手でも問題なく起動し、migrate されるまで
     # 単に 500 を返す (/healthz も含めて)。
     command:

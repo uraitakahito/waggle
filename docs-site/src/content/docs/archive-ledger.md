@@ -139,8 +139,8 @@ should be short-lived.
 `fga/model.fga.yaml` that run in CI:
 
 ```sh
-npm run fga:test     # assertions, no server needed
-npm run fga:deploy   # push the model, print the ids to pin
+pnpm run fga:test    # assertions, no server needed
+pnpm run fga:deploy  # push the model, print the ids to pin
 ```
 
 `fga:deploy` prints `WAGGLE_FGA_STORE_ID` and `WAGGLE_FGA_MODEL_ID`. **Pin the
@@ -153,10 +153,10 @@ that switch deliberate.
 
 ```sh
 container-compose up -d -b
-npm run fga:migrate          # OpenFGA's schema (see below)
-npm run db:migrate
-npm run fga:deploy           # → export the two ids it prints
-npm run api
+pnpm run fga:migrate          # OpenFGA's schema (see below)
+pnpm run db:migrate
+pnpm run fga:deploy           # → export the two ids it prints
+pnpm run api
 ```
 
 :::caution[`fga:migrate` is a separate step]

@@ -62,15 +62,15 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 （接続文字列は `.env` に入っています）。
 
 ```sh
-npm ci                        # 初回のみ
-npm run db:migrate            # urls テーブルを作成
-npm run db:seed               # サンプル 5 件を投入
+pnpm install         # 初回のみ
+pnpm run db:migrate  # urls テーブルを作成
+pnpm run db:seed     # サンプル 5 件を投入
 ```
 
 ## 5. キャプチャを投げる
 
 ```sh
-npm run dev -- --wacz --limit 1
+pnpm run dev --wacz --limit 1
 ```
 
 受理された URL ごとに 1 行、最後にサマリが出ます。

@@ -6,7 +6,7 @@
  * 主張なので、守りが効かなくなった瞬間に、それ自体がエラーへ反転する。防御が
  * 解けたことを、解けたその瞬間に報告してくれるのはこの性質だけ。
  *
- * したがってこのファイルに意味があるのは、CI で `npm run typecheck` が走るから。
+ * したがってこのファイルに意味があるのは、CI で `pnpm run typecheck` が走るから。
  * vitest も eslint も `@ts-expect-error` を見ていない。
  */
 import { describe, expect, it } from "vitest";

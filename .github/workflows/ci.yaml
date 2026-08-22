@@ -89,5 +89,18 @@ jobs:
           curl -fsSL "https://github.com/openfga/cli/releases/download/v0.7.19/fga_0.7.19_linux_amd64.tar.gz" \
             | tar -xz -C /usr/local/bin fga
 
+      # `pnpm run <script> -- --flag` は npm と違って `--` をそのまま引数として
+      # 渡す。waggle の CLI は allowExcessArguments(false) なので、それは
+      # "too many arguments" で即死する。npm から移したときの書き換え漏れは
+      # ドキュメントの中でしか起きず、テストも lint も届かないので、ここで見る。
+      - name: No npm-style `--` before flags
+        run: |
+          if grep -rn 'pnpm run [a-z:]* -- -' \
+               --exclude-dir=node_modules --exclude-dir=.git \
+               --exclude-dir=.upstream --exclude-dir=dist .; then
+            echo "::error::pnpm では -- が literal で渡ります。落としてください。"
+            exit 1
+          fi
+
       - name: Authorization model tests
         run: pnpm run fga:test

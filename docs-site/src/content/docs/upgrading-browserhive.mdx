@@ -30,9 +30,9 @@ git -C .upstream/browserhive submodule update --init --recursive
 git add .upstream/browserhive
 
 # 2. Re-vendor the contract and regenerate the stubs (a local copy — no network).
-npm run proto:sync
-npm run proto:generate
-npm run proto:check       # must exit 0 once committed
+pnpm run proto:sync
+pnpm run proto:generate
+pnpm run proto:check       # must exit 0 once committed
 
 # 3. Rebuild from a clean state. Old volumes hold the previous bucket and
 #    database, which hides ordering bugs introduced by the upgrade.
@@ -40,7 +40,7 @@ container-compose down
 container-compose up -d -b
 
 # 4. Prove it end to end.
-npm run check
+pnpm run check
 ./scripts/prod-smoke.sh
 ```
 

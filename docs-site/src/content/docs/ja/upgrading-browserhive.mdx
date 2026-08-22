@@ -30,9 +30,9 @@ git -C .upstream/browserhive submodule update --init --recursive
 git add .upstream/browserhive
 
 # 2. 契約を取り直してスタブを再生成する（ローカルコピー。ネットワーク不要）。
-npm run proto:sync
-npm run proto:generate
-npm run proto:check       # コミット後に exit 0 になること
+pnpm run proto:sync
+pnpm run proto:generate
+pnpm run proto:check       # コミット後に exit 0 になること
 
 # 3. まっさらな状態から作り直す。古いボリュームには前のバケットと DB が残っており、
 #    更新で入り込んだ順序の不具合を隠してしまう。
@@ -40,7 +40,7 @@ container-compose down
 container-compose up -d -b
 
 # 4. 端から端まで確認する。
-npm run check
+pnpm run check
 ./scripts/prod-smoke.sh
 ```
 
