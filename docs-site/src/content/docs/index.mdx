@@ -27,11 +27,12 @@ one of those is **BrowserHive's responsibility**. BrowserHive's docs are not
 published on the web — build them from the BrowserHive checkout with
 `pnpm run docs:local`.
 
-The interaction is **fire-and-forget**: BrowserHive answers `202` with a
-`taskId` and runs the capture asynchronously on its worker pool. waggle records
-which submissions were accepted and exits. Following a task to completion is not
-implemented (Stage 1 of the roadmap); the outcome shows up in BrowserHive's log
-and in the artifact store.
+The submission itself is asynchronous: `SubmitCapture` returns a `taskId`
+immediately and the capture runs on BrowserHive's worker pool. waggle then waits
+for each accepted capture and records the ones that produced an archive in the
+[archive ledger](/waggle/archive-ledger/). `--no-collect` submits and exits
+instead; whatever is missed is picked up later by `waggle-ledger reconcile`,
+which sweeps the bucket's result manifests.
 
 ## Where things are
 

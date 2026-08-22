@@ -27,11 +27,12 @@ waggle が答えるのは **「どの URL を撮るか」** の一点だけで�
 **すべて BrowserHive の責務**です。BrowserHive の docs は web に公開されていないので、
 BrowserHive のチェックアウトで `pnpm run docs:local` を実行して読んでください。
 
-やり取りは **投げっぱなし (fire-and-forget)** です。BrowserHive は `202` と
-`taskId` を即座に返し、実際のキャプチャはワーカープール上で非同期に走ります。
-waggle は受理されたかどうかだけを記録して終了します。タスクの完了追跡は
-未実装で (ロードマップの Stage 1)、結果は BrowserHive のログと成果物ストアに
-現れます。
+投げること自体は非同期です。`SubmitCapture` は `taskId` を即座に返し、実際の
+キャプチャは BrowserHive のワーカープール上で走ります。waggle はそのあと受理
+された取り込みを 1 件ずつ待ち、アーカイブを生んだものを
+[アーカイブ台帳](/waggle/ja/archive-ledger/)に記録します。`--no-collect` を
+付けると投げて終わりになり、取りこぼしは後から `waggle-ledger reconcile` が
+bucket の結果 manifest を走査して拾います。
 
 ## 目的別の入口
 
