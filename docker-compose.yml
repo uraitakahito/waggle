@@ -1,34 +1,28 @@
-# waggle stack on Apple Container, driven by container-compose
-# (https://github.com/Mcrich23/Container-Compose — installed via Homebrew).
+# Apple Container 上の waggle スタック。動かすのは container-compose
+# (https://github.com/Mcrich23/Container-Compose —— Homebrew で入れる)。
 #
-#   container-compose up -d -b     # build and start everything
-#   container-compose down         # stop; volumes (and their data) survive
+#   container-compose up -d -b     # 全部 build して起動する
+#   container-compose down         # 停止する。volume (とその中身) は残る
 #
-# One-time machine setup:
+# マシンごとに 1 度だけ要る用意:
 #   sudo container system dns create waggle
-# The project-named DNS domain switches container-compose into its real-DNS
-# mode: containers are named <service>.waggle, registered with the platform
-# DNS, and resolvable from other containers AND from the host — which is what
-# lets waggle itself run on the host against this stack.
-# Do NOT add container_name: keys — they suppress the DNS naming and drop the
-# stack back to /etc/hosts patching, which silently fails for the non-root
-# containers here (browserhive, chromium).
+# project 名と同じ DNS ドメインがあると、container-compose は real-DNS モードに
+# 入る: コンテナは <service>.waggle という名前になり、プラットフォームの DNS に
+# 登録され、他のコンテナからも **host からも** 引ける —— waggle 自身を host 側で
+# 動かしてこのスタックに繋げられるのは、これのおかげ。
+# container_name: を足してはならない —— DNS の命名が抑止され、/etc/hosts を書き換える
+# 方式に落ちる。そしてその方式は、ここに居る非 root のコンテナ (browserhive, chromium)
+# では黙って失敗する。
 #
-# Readiness is deliberately NOT handled here (container-compose has no
-# healthcheck support, and depends_on is start order only): the S3 bucket init
-# runs inside seaweedfs's entrypoint, browserhive waits on WAIT_FOR_S3, and
-# humans use the curl wait loop in the docs.
-#
-# Upstream source comes from the .upstream/browserhive submodule, not from a
-# git URL — `container build` only accepts a context directory. The submodule
-# carries browserhive, its chromium-server-docker (at the version browserhive
-# was tested against), and the SeaweedFS config, so there is exactly one
-# upstream pin: the submodule pointer.
+# 上流のソースは git URL からではなく .upstream/browserhive の submodule から来る ——
+# `container build` は context のディレクトリしか受け取らないため。submodule には
+# browserhive 本体、それが動作確認された版の chromium-server-docker、そして SeaweedFS の
+# 設定が入っているので、上流を固定する箇所はちょうど 1 つ —— submodule のポインタだけ。
 
-# Pin the project name. container-compose derives it from the directory name
-# otherwise, and the project name IS the DNS domain here: it must equal the
-# `container system dns create <name>` domain and the `<service>.waggle`
-# hostnames below.
+# project 名を固定する。指定しないと container-compose はディレクトリ名から導くが、
+# ここでは project 名が そのまま DNS ドメインになる: `container system dns create <name>`
+# で作ったドメインと、下に出てくる `<service>.waggle` というホスト名の両方と
+# 一致していなければならない。
 name: waggle
 
 services:
@@ -38,100 +32,99 @@ services:
       - POSTGRES_USER=waggle
       - POSTGRES_PASSWORD=waggle
       - POSTGRES_DB=waggle
-      # A named volume here is a formatted filesystem, so its mount point
-      # already contains lost+found and initdb refuses to use it
-      # ("directory exists but is not empty"). Put the cluster in a
-      # subdirectory of the mount, which is what the image documents for this
-      # case.
+      # ここでの named volume はフォーマット済みのファイルシステムなので、mount 先には
+      # 最初から lost+found が居る。すると initdb が使うことを拒む
+      # ("directory exists but is not empty")。クラスタは mount 先の
+      # サブディレクトリに置く —— この場合の対処として image 自身が案内している方法。
       - PGDATA=/var/lib/postgresql/data/pgdata
-    # Published so host tooling (psql, and waggle itself) can reach it either
-    # by name (postgres.waggle) or on localhost.
+    # host 側の道具 (psql、そして waggle 自身) が名前 (postgres.waggle) でも
+    # localhost でも届くように publish している。
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  # OpenFGA's own store, deliberately NOT the `postgres` service above.
+  # OpenFGA 自身の保存先。上の `postgres` サービスと共用しないのは意図的。
   #
-  # Sharing one instance would invite the assumption that a tuple can be
-  # written inside waggle's application transaction — it cannot: OpenFGA is
-  # written through its HTTP API, never through SQL, so no transaction spans
-  # both. Keeping the databases apart makes that boundary visible, which is
-  # exactly why the fga_outbox table exists. (OpenFGA's own docs also want a
-  # dedicated database.)
+  # 1 つのインスタンスを共用すると、tuple を waggle のアプリケーション
+  # トランザクションの中で書けるかのような思い込みを誘う —— 実際には書けない:
+  # OpenFGA へは HTTP API 経由でしか書かず、SQL では書かないので、両方にまたがる
+  # トランザクションは存在しない。データベースを分けておくとその境界が目に見える。
+  # fga_outbox テーブルが在るのは、まさにそのため。(OpenFGA 自身の docs も専用の
+  # データベースを求めている。)
   openfga-db:
     image: docker.io/library/postgres:17-alpine
     environment:
       - POSTGRES_USER=openfga
       - POSTGRES_PASSWORD=openfga
       - POSTGRES_DB=openfga
-      # Same lost+found problem as the `postgres` service — see above.
+      # `postgres` サービスと同じ lost+found の問題 —— 上を参照。
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - openfga-db-data:/var/lib/postgresql/data
 
   openfga:
     image: docker.io/openfga/openfga:v1.10.2
-    # The datastore is configured with FLAGS, not env vars, on purpose.
+    # datastore を環境変数ではなく **フラグ** で設定しているのは意図的。
     #
-    # container-compose injects Docker-link-style variables for every service
-    # (OPENFGA_DB_PORT_5432_TCP_ADDR and friends, from the `openfga-db` name).
-    # OpenFGA reads its config through viper with an OPENFGA_ prefix, picks
-    # those up, and misreads them: with the datastore set via env the server
-    # panicked with `storage engine '192.168.64.202' is unsupported` — the
-    # database container's IP address. Flags take precedence over env, so they
-    # sidestep the collision entirely. Do not move these back to `environment:`.
+    # container-compose は全サービスについて Docker link 形式の変数を注入する
+    # (`openfga-db` という名前から OPENFGA_DB_PORT_5432_TCP_ADDR とその仲間)。
+    # OpenFGA は設定を viper 経由で OPENFGA_ プレフィックス付きで読むので、それらを
+    # 拾ってしまい、読み違える: datastore を env で与えたとき、server は
+    # `storage engine '192.168.64.202' is unsupported` と言って panic した ——
+    # データベースのコンテナの IP アドレス。フラグは env より優先されるので、
+    # 衝突をまるごと回避できる。これらを `environment:` に戻してはならない。
     #
-    # `migrate` is NOT run here: this image is distroless (no /bin/sh), so an
-    # entrypoint retry loop like seaweedfs's is not possible, and
-    # container-compose has no one-shot service. Run `npm run fga:migrate`
-    # after `up` — the server starts fine against an unmigrated database and
-    # simply answers 500 (including /healthz) until it has been migrated.
+    # `migrate` はここでは走らせていない: この image は distroless で (/bin/sh が無い)、
+    # seaweedfs のような entrypoint の再試行ループが書けず、container-compose にも
+    # 使い捨てのサービスが無い。`up` のあとに `pnpm run fga:migrate` を走らせること ——
+    # server は未 migrate のデータベース相手でも問題なく起動し、migrate されるまで
+    # 単に 500 を返す (/healthz も含めて)。
     command:
       - "run"
       - "--datastore-engine=postgres"
       - "--datastore-uri=postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable"
     environment:
-      # Default is no authentication at all. waggle reaches OpenFGA over the
-      # published loopback port, but anything else on the host could too.
-      # (/healthz stays open — only the API requires the key.)
+      # 既定では認証が一切無い。waggle は publish された loopback のポート越しに
+      # OpenFGA へ届くが、それは host 上の他の何かにとっても同じこと。
+      # (/healthz は開いたまま —— キーを要求するのは API だけ。)
       - OPENFGA_AUTHN_METHOD=preshared
       - OPENFGA_AUTHN_PRESHARED_KEYS=dev-key
       - OPENFGA_LOG_LEVEL=info
     ports:
-      # Published on 8090 rather than 8080 so nothing on the host has to guess
-      # which service owns the conventional port. WAGGLE_FGA_API_URL must use
-      # 8090.
+      # 8080 ではなく 8090 で publish しているのは、慣例のポートをどのサービスが
+      # 持っているかを host 側で推測せずに済ませるため。WAGGLE_FGA_API_URL は
+      # 8090 を使うこと。
       - "127.0.0.1:8090:8080"
     depends_on:
       - openfga-db
 
   seaweedfs:
     image: docker.io/chrislusf/seaweedfs:4.23
-    # The entrypoint also creates the bucket (background retry loop) — there is
-    # no separate one-shot init container to order around.
+    # entrypoint は bucket の作成も担う (背後で再試行ループを回す) —— 順序を
+    # 気にしてやる必要のある、使い捨ての init コンテナは別に無い。
     entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
     environment:
       - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
       - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
       - BROWSERHIVE_S3_BUCKET=browserhive
-    # Published for host-side tooling. browserhive reaches this by name, but
-    # waggle runs on the host and now reads result manifests and signs URLs
-    # against it — 8333 is the S3 API, 8888 the filer UI.
+    # host 側の道具のために publish している。browserhive は名前で届くが、waggle は
+    # host 上で動いていて、いまは結果の manifest を読み、URL の署名もここに対して
+    # 行う —— 8333 が S3 API、8888 が filer の UI。
     ports:
       - "127.0.0.1:8333:8333"
       - "127.0.0.1:8888:8888"
     volumes:
-      # Mounted straight out of the submodule rather than copied in by
-      # setup.sh: whatever browserhive ships at the pinned version is what runs,
-      # and a file added upstream cannot be missed.
+      # setup.sh がコピーしてくるのではなく、submodule から直接 mount している:
+      # 固定した版の browserhive が同梱しているものが、そのまま動く。上流で足された
+      # ファイルを取りこぼすことがない。
       - ./.upstream/browserhive/etc/seaweedfs:/etc/seaweedfs:ro
       - seaweedfs-data:/data
 
   chromium-1: &worker
     build:
-      # The chromium version browserhive itself was tested against — it is a
-      # submodule of the submodule, so the pair moves together.
+      # browserhive 自身が動作確認された版の chromium —— submodule の submodule なので、
+      # この 2 つは一緒に動く。
       context: ./.upstream/browserhive/chromium-server-docker
       dockerfile: docker/Dockerfile
       target: production
@@ -144,27 +137,27 @@ services:
       context: ./.upstream/browserhive
       dockerfile: Dockerfile.prod
     ports:
-      # gRPC. BrowserHive stopped serving HTTP in v3.
+      # gRPC。BrowserHive は v3 で HTTP の提供をやめた。
       - "127.0.0.1:50051:50051"
     environment:
-      # Name-based wiring via the platform DNS (<service>.waggle).
+      # プラットフォームの DNS (<service>.waggle) を使った、名前による結線。
       - BROWSERHIVE_BROWSER_URLS=http://chromium-1.waggle:9222,http://chromium-2.waggle:9222
       - BROWSERHIVE_S3_ENDPOINT=http://seaweedfs.waggle:8333
       - BROWSERHIVE_S3_REGION=us-east-1
       - BROWSERHIVE_S3_BUCKET=browserhive
       - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
       - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
-      # The bundled SeaweedFS has no wildcard DNS for the bucket subdomain, so
-      # virtual-hosted-style addressing fails. Path-style makes the bundled
-      # stack work out of the box; leave it unset when pointing at AWS.
+      # 同梱の SeaweedFS には bucket のサブドメイン用の wildcard DNS が無いので、
+      # virtual-hosted 形式のアドレス指定は失敗する。path 形式なら同梱のスタックが
+      # そのまま動く。AWS へ向けるときは設定しないでおくこと。
       - BROWSERHIVE_S3_FORCE_PATH_STYLE=true
       - LOG_LEVEL=info
-      # The entrypoint shim polls this before starting the server — depends_on
-      # is start order only, and the boot HeadBucket is fatal.
+      # entrypoint の shim が、server を起動する前にここを叩いて待つ —— depends_on は
+      # 起動順序でしかなく、起動時の HeadBucket は失敗すると致命的なため。
       - WAIT_FOR_S3=http://seaweedfs.waggle:8333
-      # The platform DNS publishes AAAA records too, but there is no v6 route
-      # between the VMs — resolve v4 first or worker WS URLs land on
-      # unreachable v6 addresses.
+      # プラットフォームの DNS は AAAA レコードも publish するが、VM 間に v6 の経路は
+      # 無い —— v4 を先に引かせないと、worker の WS URL が到達できない v6 アドレスに
+      # 着地する。
       - NODE_OPTIONS=--dns-result-order=ipv4first
     depends_on:
       - seaweedfs

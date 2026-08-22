@@ -113,14 +113,12 @@ jobs:
       # just brings the tag names with it.
       - name: Fetch upstream tags
         run: git -C .upstream/browserhive fetch --tags --force
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: docs-site/package-lock.json
-      # Only docs-site dependencies. The root install is not needed — the site
-      # reads waggle's source as text, it does not compile it.
-      - name: Install docs-site dependencies
-        run: npm ci --prefix docs-site
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Build site and verify doc references
-        run: npm run site:check
+        run: pnpm run site:check

@@ -8,7 +8,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       "src/rpc/generated/**",
-      // docs-site is a separate npm project with its own tsconfig and Astro
+      // docs-site is a separate workspace package with its own tsconfig and Astro
       // types; linting it from here fails on generated .astro/ modules that
       // the root tsconfig cannot see.
       "docs-site/**",

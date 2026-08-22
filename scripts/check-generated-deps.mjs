@@ -1,16 +1,20 @@
 /**
- * Every package `src/rpc/generated/` imports must be a production dependency.
+ * `src/rpc/generated/` が import するパッケージは、すべて production 依存で
+ * なければならない。
  *
- * The imports in there are chosen by ts-proto, not by anyone reading this repo,
- * and that is exactly how `@bufbuild/protobuf` got missed: npm hoists it out of
- * ts-proto's own tree, so it resolves during development and in every test.
- * `npm prune --omit=dev` in the Dockerfile then takes ts-proto away and the
- * hoisted copy with it, and the image fails at its first import — a failure no
- * amount of `npm run check` can reach.
+ * そこにある import を選ぶのは ts-proto であって、この repo を読む人ではない。
+ * `@bufbuild/protobuf` が漏れたのはまさにそれが理由だった: npm が ts-proto 自身の
+ * 木から hoist するので、開発中もテスト中も解決できてしまう。Dockerfile の
+ * prod 依存だけの木からは ts-proto ごと消えるので、イメージは最初の import で
+ * 落ちる —— `check` をいくら回しても届かない失敗。
  *
- * Regenerating after an upstream `.proto` change can introduce a new import
- * (well-known types pull in more of @bufbuild/protobuf), which is why this
- * looks at what the files actually import rather than at a fixed list.
+ * pnpm は既定で hoist しないので、同じ間違いは開発中に即エラーになる。それでも
+ * この検査を残しているのは、検出が早まることと、runtime イメージが prod 依存だけで
+ * 作られる事実は変わらないことの 2 つによる。
+ *
+ * 上流の `.proto` が変わって再生成すると新しい import が増えることがある
+ * (well-known types が @bufbuild/protobuf をさらに引く) ので、固定の一覧ではなく
+ * ファイルが実際に何を import しているかを見る。
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -49,8 +53,8 @@ if (missing.length > 0) {
     console.error(`  ${name}  (first seen in ${file})`);
   }
   console.error(
-    "\nAdd them with `npm i <name>`. A devDependency is not enough: the runtime\n" +
-      "image is built with `npm prune --omit=dev`.",
+    "\n`pnpm add <name>` で足すこと。devDependency では足りない: runtime イメージは\n" +
+      "prod 依存だけを入れた層から作られる (Dockerfile の deps 段)。",
   );
   process.exit(1);
 }

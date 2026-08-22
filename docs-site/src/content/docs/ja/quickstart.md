@@ -47,7 +47,9 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 ```
 
 `-import-path proto -proto …` は、この repo に vendor した契約を grpcurl に
-指しています。BrowserHive は reflection を提供しないので、呼ぶ側がサービスを
+指しています。BrowserHive は reflection を提供しません —— 未実装ではなく意図的な
+判断で、有効にするには descriptor set を同梱して実行時に読ませることになり、
+`.proto` がランタイムの資産になってしまうためです。したがって呼ぶ側がサービスを
 知る手段がこの `.proto` です —— クライアントの生成元と同じファイルです。
 
 ワーカーは headless です。描画を見たい場合は、ローカルの Chrome で
@@ -60,15 +62,15 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 （接続文字列は `.env` に入っています）。
 
 ```sh
-npm ci                        # 初回のみ
-npm run db:migrate            # urls テーブルを作成
-npm run db:seed               # サンプル 5 件を投入
+pnpm install         # 初回のみ
+pnpm run db:migrate  # urls テーブルを作成
+pnpm run db:seed     # サンプル 5 件を投入
 ```
 
 ## 5. キャプチャを投げる
 
 ```sh
-npm run dev -- --wacz --limit 1
+pnpm run dev --wacz --limit 1
 ```
 
 受理された URL ごとに 1 行、最後にサマリが出ます。

@@ -2,16 +2,10 @@
 #
 # setup.sh —— waggle のローカル開発環境を用意する。
 #
-# 上流のものはすべて `.upstream/browserhive` の submodule から届く: BrowserHive
-# 本体、それが動作確認された chromium-server-docker、スタックが mount する
-# SeaweedFS の設定。ダウンロードするものは無い —— `container build` は context の
-# ディレクトリしか受け取らないので、どのみちソースはディスク上に無ければならず、
-# submodule のポインタ 1 つが上流を固定する唯一の場所になる。
-#
 # ここでやること:
 #   1. Apple Container の道具が入っているかを見る。
 #   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
-#   3. submodule を初期化する (全員が忘れる手順)。
+#   3. submodule を初期化する。
 #   4. host 側の接続文字列を .env に書く。
 #
 
@@ -19,8 +13,17 @@ set -e
 
 cd "$(dirname "$0")"
 
+# `--help` は、上のヘッダコメントをそのまま出力にする。ヘルプ本文を別に持つと、
+# コメントと出力の 2 つが独立にずれていくので、出どころを 1 つにしている。
+#
+#   sed -n '3,10p'      このファイルの 3–10 行目、つまりヘッダの塊だけを取る
+#   sed 's/^# \{0,1\}//' 各行の先頭の `# ` を剥がす (空行は `#` だけなので 1 文字も可)
+#
+# **行の範囲は直書きなので、ヘッダを増減させたらここも直すこと。** 直し忘れると
+# 出力が途中で切れるか、`set -e` などの次の行まではみ出す —— どちらも
+# 「--help を叩いた人にしか見えない」壊れ方で、テストは緑のまま。
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
@@ -79,7 +82,7 @@ Setup complete.
 Then work on the host — there is no dev container; the stack is reachable by
 name:
 
-  npm ci
-  npm run db:migrate && npm run db:seed
-  npm run dev -- --webp --limit 3
+  pnpm install
+  pnpm run db:migrate && pnpm run db:seed
+  pnpm run dev --webp --limit 3
 EOF

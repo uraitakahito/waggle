@@ -1,4 +1,4 @@
-# Assertions for fga/model.fga, run by `npm run fga:test` (OpenFGA CLI).
+# Assertions for fga/model.fga, run by `pnpm run fga:test` (OpenFGA CLI).
 #
 # These are the questions the signing endpoint asks. If any of them flips, a
 # WACZ becomes visible to someone who should not see it — so this file is the

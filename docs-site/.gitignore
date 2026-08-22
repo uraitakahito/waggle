@@ -1,4 +1,4 @@
-# 依存(npm ci で再現するので追跡しない)
+# 依存(root からの pnpm install で再現するので追跡しない)
 node_modules/
 
 # ビルド成果物(_astro/・検索インデックス pagefind/ を含む)

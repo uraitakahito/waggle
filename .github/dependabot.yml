@@ -4,11 +4,18 @@
 # `target-branch` は「PR をどこへ出すか」を指すだけで、設定の置き場所ではない。
 # develop にだけ置いても効かないので、両方に同じものを入れてある。
 #
-# この repo は npm プロジェクトを 2 つ持つ:
-#   /            … npm  (package-lock.json)
-#   /docs-site   … npm  (package-lock.json) — root とは別の lockfile
-# lockfile が別なら entry も別。`directory: /` だけでは docs-site に届かず、
-# 既定動作 (= default branch 宛て) にフォールバックする。
+# この repo は pnpm の workspace で、lockfile は root の pnpm-lock.yaml 1 本だけ。
+# したがって npm の entry も **root の 1 つだけ**。`directory: /` が docs-site を
+# 含む workspace 全体を見る (docs-site/package.json と lockfile を一緒に更新する)。
+#
+# `directory: /docs-site` の entry を足してはならない。docs-site/package.json だけを
+# 書き換えて root の lockfile に触らない PR ができ、CI が
+# ERR_PNPM_OUTDATED_LOCKFILE で必ず落ちる —— 2026-08-22 に実際にそうなった。
+# 分けたいのは groups であって entry ではないので、下の `docs-site` グループで
+# パターンごと切り出している。
+#
+# ecosystem は pnpm でも `npm`。dependabot は pnpm-lock.yaml をこの ecosystem で
+# 扱う。
 version: 2
 updates:
   # ── アプリ本体 ──
@@ -22,39 +29,27 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
-    open-pull-requests-limit: 3
+    # グループ 3 つ (docs-site / production / development) に対して 4。
+    # docs-site の entry を畳んだので、旧構成の 3 + 1 と同じ本数になる。
+    open-pull-requests-limit: 4
     versioning-strategy: increase
     labels:
       - dependencies
     groups:
+      # dependency-type のグループより **先** に置くこと。dependabot は最初に
+      # 一致したグループへ入れるので、後ろに置くと docs-site の依存が
+      # production-dependencies に紛れる (astro は waggle の production ではない)。
+      docs-site:
+        patterns:
+          - "astro"
+          - "astro-*"
+          - "@astrojs/*"
+          - "mermaid"
+          - "satteri"
       production-dependencies:
         dependency-type: production
       development-dependencies:
         dependency-type: development
-
-  # ── docs-site (Astro) ──
-  #
-  # 本番コードではなくドキュメントのビルド専用なので、種類で分けずに **全部 1 本**
-  # にまとめる。上限も 1。entry ごとに open-pull-requests-limit が効くため、
-  # ここを 3 にすると npm だけで 1 repo 最大 6 本になり、溜まる状態を再生産する。
-  - package-ecosystem: npm
-    directory: /docs-site
-    target-branch: develop
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 3
-      semver-major-days: 7
-    open-pull-requests-limit: 1
-    versioning-strategy: increase
-    labels:
-      - dependencies
-      - docs
-    groups:
-      docs-site:
-        patterns:
-          - "*"
 
   # ── GitHub Actions ──
   - package-ecosystem: github-actions

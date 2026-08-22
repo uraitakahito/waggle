@@ -6,7 +6,7 @@ description: Prerequisites, daily commands, running without Compose, and trouble
 ## Prerequisites
 
 - **Node.js 24** (the version in `.nvmrc`). `nvm use` if you have nvm.
-- **npm 11+** — ships with Node 24.
+- **pnpm 11** — the version pinned by `packageManager`. `corepack enable` installs it.
 - **[Apple Container](https://github.com/apple/container)** and
   **container-compose** (both via Homebrew) — required for the stack, not for
   host-only development. macOS only.
@@ -21,10 +21,10 @@ description: Prerequisites, daily commands, running without Compose, and trouble
 git clone https://github.com/<you>/waggle.git
 cd waggle
 nvm use
-npm ci
+pnpm install
 sudo container system dns create waggle   # once per machine
 ./setup.sh          # submodules + .env
-npm run check       # typecheck + lint + format:check + tests
+pnpm run check       # typecheck + lint + format:check + tests
 ```
 
 `setup.sh` is mandatory before any `container-compose` invocation: it
@@ -33,22 +33,22 @@ points at, and refuses to continue if the `waggle` DNS domain is missing.
 
 ## Daily commands
 
-| Command                                  | What it does                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| `npm run dev -- <args>`                  | Build, then run the CLI (`tsc` then `node dist/cli.js`).            |
-| `npm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                  |
-| `npm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                  |
-| `npm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).      |
-| `npm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`. |
-| `npm test` / `test:watch`                | Vitest unit tests under `test/`.                                    |
-| `npm run check`                          | typecheck + lint + format:check + test. Run before pushing.         |
-| `npm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                           |
-| `npm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                  |
-| `npm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).   |
-| `npm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).              |
-| `npm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                     |
-| `npm run site:dev` / `site:build`        | This documentation site.                                            |
-| `npm run site:check`                     | Build the site and verify its references.                           |
+| Command                                   | What it does                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm run dev <args>`                     | Build, then run the CLI (`tsc` then `node dist/cli.js`).            |
+| `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                  |
+| `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                  |
+| `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).      |
+| `pnpm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`. |
+| `pnpm test` / `test:watch`                | Vitest unit tests under `test/`.                                    |
+| `pnpm run check`                          | typecheck + lint + format:check + test. Run before pushing.         |
+| `pnpm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                           |
+| `pnpm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                  |
+| `pnpm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).   |
+| `pnpm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).              |
+| `pnpm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                     |
+| `pnpm run site:dev` / `site:build`        | This documentation site.                                            |
+| `pnpm run site:check`                     | Build the site and verify its references.                           |
 
 ## Working against the stack
 
@@ -109,11 +109,11 @@ it worked around — aborting the whole stack on the migrator's legitimate exit 
 ```sh
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
 BROWSERHIVE_SERVER=https://browserhive.example/ \
-  npm run db:migrate
+  pnpm run db:migrate
 
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
 BROWSERHIVE_SERVER=https://browserhive.example/ \
-  npm run dev -- --webp --limit 3
+  pnpm run dev --webp --limit 3
 ```
 
 For TLS with a custom CA, set `NODE_EXTRA_CA_CERTS` to the CA file before
@@ -141,6 +141,6 @@ Postgres TLS, encode the parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
 
 - Source under `src/`, tests under `test/`, one concern per module.
 - `src/rpc/generated/` is generated and committed; never edit it by hand.
-- Prettier and ESLint are authoritative — run `npm run check` before pushing.
+- Prettier and ESLint are authoritative — run `pnpm run check` before pushing.
 - Documentation lives in `docs-site/`, in English and Japanese. Adding an
-  English page without its Japanese counterpart fails `npm run site:check`.
+  English page without its Japanese counterpart fails `pnpm run site:check`.

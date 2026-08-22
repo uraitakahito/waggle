@@ -23,7 +23,7 @@
  * 見出しを強いると日本語が悪くなる。ページの歩調を合わせるのは人の仕事で、
  * ページが消えないようにするのがこちらの仕事。
  *
- * `npm run site:check` (ビルド + このスクリプト) から走る。問題の一覧を出して 1 で
+ * `pnpm run site:check` (ビルド + このスクリプト) から走る。問題の一覧を出して 1 で
  * 終わるので、CI が PR を落とす。
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
