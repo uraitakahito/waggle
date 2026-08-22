@@ -1,21 +1,20 @@
 /**
- * Client CLI option parser.
+ * client の CLI オプション解析。
  *
- * `--server`, `--tls-ca-cert`, and `--database-url` fall back to their
- * matching env vars (`BROWSERHIVE_SERVER`, `BROWSERHIVE_TLS_CA_CERT`,
- * `DATABASE_URL`) when omitted on the command line. Per-job flags — the format
- * switches, `--limit`, `--dismiss-banners`, `--accept-language`, and the
- * capture knobs (`--device-pixel-ratios`, `--operation-delay-ms`,
- * `--behaviors`, `--no-site-behaviors`) —
- * intentionally have no env equivalents: they are caller-side intent, not
- * deployment configuration. BrowserHive has its own env vars for the same
- * knobs, and those are what set the server-wide defaults.
+ * `--server`・`--tls-ca-cert`・`--database-url` は、コマンドラインで省くと対応する
+ * 環境変数 (`BROWSERHIVE_SERVER`・`BROWSERHIVE_TLS_CA_CERT`・`DATABASE_URL`) に
+ * 落ちる。ジョブごとの旗 —— 形式のスイッチ、`--limit`、`--dismiss-banners`、
+ * `--accept-language`、そして取り込みの調整 (`--device-pixel-ratios`・
+ * `--operation-delay-ms`・`--behaviors`・`--no-site-behaviors`) —— には、意図的に
+ * 環境変数の対応物を用意していない: これらは呼ぶ側の意図であって、配備の設定では
+ * ないため。同じ調整に対する環境変数は BrowserHive 自身が持っていて、server 全体の
+ * 既定値を決めているのはそちら。
  *
- * `--server` has no commander-level default; `configureClient` falls back to
- * `DEFAULT_TARGET`. The OpenAPI SDK used to bake the default in from
- * `servers[0].url`, so the spec was the single source of truth for the
- * address — a `.proto` describes the service and not where it listens, so
- * that default now lives in `src/rpc/client.ts` and is stated below.
+ * `--server` に commander 層の既定値は無く、`configureClient` が `DEFAULT_TARGET` に
+ * 落とす。OpenAPI の SDK は `servers[0].url` から既定値を焼き込んでいたので、宛先に
+ * ついては spec が唯一の出どころだった —— `.proto` はサービスを記述するもので、
+ * どこで待ち受けるかは書かない。だからその既定値はいま `src/rpc/client.ts` に在り、
+ * 下でもそう述べている。
  */
 import { Command, InvalidArgumentError, Option } from "commander";
 import { logger } from "../logger.js";
@@ -41,9 +40,9 @@ export interface ClientOptions {
   behaviors?: string[];
   siteBehaviors?: boolean;
   /**
-   * Wait for each accepted capture and add the successful ones to the ledger.
-   * `--no-collect` submits and exits, leaving `waggle fga:reconcile` to pick
-   * the results up from the durable manifests later.
+   * 受理された取り込みを 1 件ずつ待ち、成功したものを台帳に足す。
+   * `--no-collect` は投げて終わり、結果は後から `waggle fga:reconcile` が
+   * 永続化された manifest から拾う。
    */
   collect?: boolean;
   captureTimeoutMs?: number;
@@ -65,13 +64,12 @@ const parseNonNegativeInt = (value: string): number => {
   return num;
 };
 
-// An empty `--behaviors ""` is meaningful: it turns every built-in off while
-// leaving the server's site behaviors alone. Only the ids are trimmed.
-// Ratios arrive as a comma-separated list because order is meaningful: the
-// images come out at the last entry's ratio. A repeated `--device-pixel-ratio`
-// flag would express the same thing, but a single list keeps the order visible
-// in one place. Range (1–3) and the no-duplicates rule are enforced
-// server-side, like every other value constraint since the move to protobuf.
+// `--behaviors ""` と空を渡すことには意味がある: built-in を全部切りつつ、server の
+// site behaviors には触れない。刈るのは id の前後の空白だけ。
+// 倍率をカンマ区切りのリストで受けるのは、順序に意味があるため: 画像は最後の要素の
+// 倍率で出る。`--device-pixel-ratio` を繰り返す形でも同じことは言えるが、1 つの
+// リストなら順序が 1 箇所で見える。範囲 (1–3) と重複禁止は server が強制する ——
+// protobuf に移ってから、値の制約はすべてそちらに寄せている。
 const parseRatioList = (value: string): number[] =>
   value
     .split(",")
@@ -91,10 +89,9 @@ const parseIdList = (value: string): string[] =>
     .map((id) => id.trim())
     .filter((id) => id !== "");
 
-// Reject empty / whitespace-only values up front; length and printable-ASCII
-// constraints are enforced server-side, in BrowserHive's RPC handlers —
-// protobuf has no way to state a value range, so those checks moved out of the
-// contract and into code when the transport changed.
+// 空文字と空白だけの値はここで弾く。長さと印字可能 ASCII の制約は server 側 ——
+// BrowserHive の RPC ハンドラ —— が強制する。protobuf は値域を書けないので、
+// 転送方式が変わったときにその検査は契約からコードへ移った。
 const parseNonEmpty = (value: string): string => {
   const trimmed = value.trim();
   if (trimmed === "") {
@@ -230,8 +227,8 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     ...(opts.devicePixelRatios !== undefined && { devicePixelRatios: opts.devicePixelRatios }),
     ...(opts.operationDelayMs !== undefined && { operationDelayMs: opts.operationDelayMs }),
     ...(opts.behaviors !== undefined && { behaviors: opts.behaviors }),
-    // commander sets this to `false` only when --no-site-behaviors was passed;
-    // the default `true` means "not specified", which must stay off the wire.
+    // commander がここを `false` にするのは --no-site-behaviors を渡したときだけ。
+    // 既定の `true` は「指定なし」の意味なので、wire に出してはならない。
     ...(opts.siteBehaviors === false && { siteBehaviors: false }),
   };
 };
@@ -248,13 +245,12 @@ export const getCaptureFormats = (options: ClientOptions): CaptureFormats => {
 };
 
 /**
- * Collapse the per-run capture knobs into the object `submitRequest` spreads
- * into the request body.
+ * 実行ごとの取り込み設定を、`submitRequest` がリクエストの body へ展開する
+ * オブジェクトに畳む。
  *
- * `captureFormats` and `dismissBanners` are always present — the server
- * requires the first and the second has a plain boolean default. Everything
- * else is only included when the caller actually asked for it, so BrowserHive
- * keeps applying its own defaults for the rest.
+ * `captureFormats` と `dismissBanners` は必ず在る —— 前者は server が要求し、
+ * 後者は素の boolean の既定値を持つため。それ以外は呼ぶ側が実際に求めたときだけ
+ * 入れるので、残りには BrowserHive が自分の既定値を当て続ける。
  */
 export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
   const behaviors = {
@@ -281,15 +277,14 @@ export const logClientConfig = (options: ClientOptions): void => {
   logger.info(
     {
       server: options.server ?? DEFAULT_TARGET,
-      // TLS is on exactly when a CA is named — the address carries no scheme
-      // to disagree with.
+      // CA が名指しされているときに限って TLS が有効になる —— 宛先には scheme が
+      // 無いので、食い違う余地がない。
       tls: options.tlsCaCert
         ? { enabled: true, caCertPath: options.tlsCaCert }
         : { enabled: false },
       database: redactDatabaseUrl(options.databaseUrl),
-      // Log the settings object that is actually sent, so a surprising capture
-      // can be explained from this one line rather than by guessing which
-      // flags were in play.
+      // 実際に送られる settings をそのままログに出す。妙な取り込みが起きたとき、
+      // どの旗が効いていたのかを推測せず、この 1 行から説明できるようにするため。
       capture: settings,
       limit: options.limit ?? null,
     },
