@@ -3,7 +3,7 @@
  *
  * ローカルの開発と本番構成の smoke test が使うサンプルの URL。
  *
- * 冪等性は `kysely_seed` の台帳が与える —— 一度当たったファイルを migrator が
+ * 冪等性は `kysely_seed` の記録が与える —— 一度当たったファイルを migrator が
  * 飛ばす —— ので、SQL の seed に在った `ON CONFLICT (url_hash) DO NOTHING` は
  * もう要らない。
  *
