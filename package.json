@@ -12,8 +12,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "waggle": "dist/cli.js",
-    "waggle-ledger": "dist/fga/cli.js",
+    "waggle": "dist/submit-captures.js",
+    "waggle-ledger": "dist/fga/ledger-commands.js",
     "waggle-api": "dist/api/server.js"
   },
   "files": [
@@ -21,7 +21,7 @@
     "proto"
   ],
   "scripts": {
-    "dev": "pnpm run build && node --env-file-if-exists=.env dist/cli.js",
+    "dev": "pnpm run build && node --env-file-if-exists=.env dist/submit-captures.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -41,8 +41,8 @@
     "fga:migrate": "node --env-file-if-exists=.env scripts/fga-migrate.mjs",
     "fga:test": "fga model test --tests fga/model.fga.yaml",
     "fga:deploy": "node --env-file-if-exists=.env scripts/fga-deploy.mjs",
-    "fga:drain": "pnpm run build && node --env-file-if-exists=.env dist/fga/cli.js drain",
-    "fga:reconcile": "pnpm run build && node --env-file-if-exists=.env dist/fga/cli.js reconcile",
+    "fga:drain": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js drain",
+    "fga:reconcile": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js reconcile",
     "api": "pnpm run build && node --env-file-if-exists=.env dist/api/server.js",
     "db:migrate": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js up",
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",

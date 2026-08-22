@@ -34,7 +34,7 @@ pnpm run check       # typecheck + lint + format:check + テスト
 
 | コマンド                                  | 内容                                                                    |
 | ----------------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm run dev <args>`                     | ビルドしてから CLI を実行 (`tsc` → `node dist/cli.js`)。                |
+| `pnpm run dev <args>`                     | ビルドしてから CLI を実行 (`tsc` → `node dist/submit-captures.js`)。    |
 | `pnpm run build`                          | `tsconfig.build.json` で `dist/` に JS/d.ts を出力。                    |
 | `pnpm run typecheck`                      | `tsc --noEmit`。テストと `*.config.ts` も含む。                         |
 | `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked)。         |
