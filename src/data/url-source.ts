@@ -1,12 +1,11 @@
 /**
- * URL source backed by Postgres.
+ * Postgres を裏に持つ URL の出どころ。
  *
- * Selects rows from the `urls` table created by
- * `db/migrations/0001_create_urls.sql`. The hot-path query is covered
- * by the `urls_enabled_id_idx` partial index.
+ * `db/migrations/0001_create_urls.sql` が作った `urls` テーブルから行を選ぶ。
+ * よく通る道のクエリは `urls_enabled_id_idx` の partial index が覆っている。
  *
- * `labels` is a `TEXT[]` column — pg returns it as `string[]`, which
- * matches `DataEntry.labels` exactly. No coercion needed.
+ * `labels` は `TEXT[]` の列 —— pg はこれを `string[]` で返し、`DataEntry.labels` と
+ * ちょうど一致する。変換は要らない。
  */
 import type { Pool } from "pg";
 
@@ -14,10 +13,9 @@ export interface DataEntry {
   labels: string[];
   url: string;
   /**
-   * Which organization this capture is run for. Carried through to
-   * `capture_submissions` so a result can still be attributed later, when the
-   * only thing left is a manifest in the bucket that knows nothing about
-   * organizations.
+   * この取り込みがどの組織のために走るか。`capture_submissions` まで持ち回るので、
+   * 後になって残っているのが「組織について何も知らない bucket の manifest」だけに
+   * なっても、結果の帰属を言える。
    */
   orgId: string;
 }
