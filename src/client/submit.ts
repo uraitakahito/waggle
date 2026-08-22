@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture } from "../rpc/calls.js";
-import { ArchiveMode, CacheMode } from "../rpc/generated/browserhive/v1/capture.js";
+import { CacheMode } from "../rpc/generated/browserhive/v1/capture.js";
 import { sealWire, type WireSubmitCapture } from "../rpc/wire.js";
 import type { DataEntry } from "../data/url-source.js";
 import type { CaptureSettings } from "../types/capture.js";
@@ -17,11 +17,6 @@ export interface SubmitResult {
 }
 
 const generateCorrelationId = (): string => randomUUID().replace(/-/g, "").slice(0, 8);
-
-const ARCHIVE_MODES: Record<NonNullable<CaptureSettings["archiveMode"]>, ArchiveMode> = {
-  "single-pass": ArchiveMode.ARCHIVE_MODE_SINGLE_PASS,
-  multipass: ArchiveMode.ARCHIVE_MODE_MULTIPASS,
-};
 
 /**
  * Pull a human-readable string out of whatever the call rejected with.
@@ -54,14 +49,17 @@ const extractErrorMessage = (raw: unknown): string | undefined => {
  *
  * Two shapes here are proto3's doing rather than a choice:
  *
- *   - `cache` and `archiveMode` are plain enum fields, so they cannot be
- *     absent. `*_UNSPECIFIED` (0) is how "the caller did not say" is spelled,
- *     and BrowserHive maps it back to its own default.
- *   - `behaviors.builtins` and `.custom` are `repeated`, which cannot tell an
- *     empty list from an omitted one. Sending `behaviors` with both empty is
- *     therefore *not* a way to clear the server's defaults — BrowserHive reads
- *     an empty list as "unspecified" — but the whole message is still left off
- *     when waggle has nothing to say, so the wire matches the intent.
+ *   - `cache` is a plain enum field, so it cannot be absent.
+ *     `*_UNSPECIFIED` (0) is how "the caller did not say" is spelled, and
+ *     BrowserHive maps it back to its own default.
+ *   - `devicePixelRatios`, `behaviors.builtins` and `.custom` are `repeated`,
+ *     which cannot be absent either and cannot tell an empty list from an
+ *     omitted one. `[]` is therefore how "the caller did not say" is spelled
+ *     for the ratios, and BrowserHive falls back to `--device-pixel-ratios`.
+ *     For the same reason, sending `behaviors` with both lists empty is *not* a
+ *     way to clear the server's defaults — but the whole `behaviors` message is
+ *     still left off when waggle has nothing to say, so the wire matches the
+ *     intent.
  */
 const buildRequest = (
   entry: DataEntry,
@@ -76,14 +74,8 @@ const buildRequest = (
     captureFormats: settings.captureFormats,
     dismissBannersEnabled: settings.dismissBanners,
     cache: CacheMode.CACHE_MODE_UNSPECIFIED,
-    archiveMode:
-      settings.archiveMode === undefined
-        ? ArchiveMode.ARCHIVE_MODE_UNSPECIFIED
-        : ARCHIVE_MODES[settings.archiveMode],
     ...(settings.acceptLanguage !== undefined && { acceptLanguage: settings.acceptLanguage }),
-    ...(settings.deviceScaleFactor !== undefined && {
-      deviceScaleFactor: settings.deviceScaleFactor,
-    }),
+    devicePixelRatios: settings.devicePixelRatios ?? [],
     ...(settings.operationDelayMs !== undefined && {
       operationDelayMs: settings.operationDelayMs,
     }),

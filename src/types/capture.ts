@@ -26,15 +26,27 @@ export interface CaptureFormats {
  *
  * Every optional field here has a server-side default, so an unset field must
  * be **omitted from the request body**, not sent as `undefined` — that is what
- * lets `--archive-mode` and friends stay opt-in without waggle having to know
- * what BrowserHive's current defaults are.
+ * lets `--device-pixel-ratios` and friends stay opt-in without waggle having to
+ * know what BrowserHive's current defaults are.
  */
 export interface CaptureSettings {
   captureFormats: CaptureFormats;
   dismissBanners: boolean;
   acceptLanguage?: string;
-  deviceScaleFactor?: number;
-  archiveMode?: "single-pass" | "multipass";
+  /**
+   * Device pixel ratios to load at, in load order. Each entry is 1–3 and no
+   * value may repeat; the server rejects anything else with INVALID_ARGUMENT.
+   *
+   * The length is the number of loads, so capture time and WARC size grow with
+   * it. Order matters: PNG/WebP are taken once after every load finishes, so
+   * they come out at the **last** entry's ratio — `[2, 1]` leaves the images 1x.
+   *
+   * Replaced `deviceScaleFactor` and `archiveMode`, which BrowserHive removed
+   * in v3.6.0 (`reserved 13, 14` in the proto — the field numbers must never be
+   * reused because an old client's `archive_mode = MULTIPASS` would decode as
+   * `device_pixel_ratios = [2]`).
+   */
+  devicePixelRatios?: number[];
   operationDelayMs?: number;
   behaviors?: {
     builtins?: string[];

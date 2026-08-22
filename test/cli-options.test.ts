@@ -137,10 +137,8 @@ describe("getCaptureSettings", () => {
         "--database-url",
         FAKE_DB_URL,
         "--wacz",
-        "--device-scale-factor",
-        "2",
-        "--archive-mode",
-        "multipass",
+        "--device-pixel-ratios",
+        "1,2",
         "--operation-delay-ms",
         "250",
         "--behaviors",
@@ -150,8 +148,8 @@ describe("getCaptureSettings", () => {
     );
     const settings = getCaptureSettings(options);
 
-    expect(settings.deviceScaleFactor).toBe(2);
-    expect(settings.archiveMode).toBe("multipass");
+    // 順序まで見る —— [1, 2] と [2, 1] は別の指示で、画像の倍率が変わる。
+    expect(settings.devicePixelRatios).toEqual([1, 2]);
     expect(settings.operationDelayMs).toBe(250);
     expect(settings.behaviors).toEqual({
       builtins: ["autoscroll", "autofetch"],

@@ -319,46 +319,6 @@ export function cacheModeToJSON(object: CacheMode): string {
   }
 }
 
-/** 1 回のロードで済ますか、DPR ごとに読み直すか。 */
-export enum ArchiveMode {
-  ARCHIVE_MODE_UNSPECIFIED = 0,
-  ARCHIVE_MODE_SINGLE_PASS = 1,
-  ARCHIVE_MODE_MULTIPASS = 2,
-  UNRECOGNIZED = -1,
-}
-
-export function archiveModeFromJSON(object: any): ArchiveMode {
-  switch (object) {
-    case 0:
-    case "ARCHIVE_MODE_UNSPECIFIED":
-      return ArchiveMode.ARCHIVE_MODE_UNSPECIFIED;
-    case 1:
-    case "ARCHIVE_MODE_SINGLE_PASS":
-      return ArchiveMode.ARCHIVE_MODE_SINGLE_PASS;
-    case 2:
-    case "ARCHIVE_MODE_MULTIPASS":
-      return ArchiveMode.ARCHIVE_MODE_MULTIPASS;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return ArchiveMode.UNRECOGNIZED;
-  }
-}
-
-export function archiveModeToJSON(object: ArchiveMode): string {
-  switch (object) {
-    case ArchiveMode.ARCHIVE_MODE_UNSPECIFIED:
-      return "ARCHIVE_MODE_UNSPECIFIED";
-    case ArchiveMode.ARCHIVE_MODE_SINGLE_PASS:
-      return "ARCHIVE_MODE_SINGLE_PASS";
-    case ArchiveMode.ARCHIVE_MODE_MULTIPASS:
-      return "ARCHIVE_MODE_MULTIPASS";
-    case ArchiveMode.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 /** 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。 */
 export interface CaptureFormats {
   png: boolean;
@@ -391,9 +351,16 @@ export interface ResetStateSpec {
   pageContext?: boolean | undefined;
 }
 
-/** viewport の指定。 */
+/**
+ * viewport の指定。
+ *
+ * proto は値域を書けないので、範囲は server 側の境界 (request-limits.ts) が
+ * 強制する。外れると INVALID_ARGUMENT。
+ */
 export interface Viewport {
+  /** 1–7680 (8K の幅)。 */
   width: number;
+  /** 1–4320 (8K の高さ)。 */
   height: number;
 }
 
@@ -428,17 +395,41 @@ export interface SubmitCaptureRequest {
   url: string;
   labels: string[];
   correlationId?: string | undefined;
-  captureFormats?: CaptureFormats | undefined;
+  captureFormats?:
+    | CaptureFormats
+    | undefined;
+  /**
+   * 上流へ送る Accept-Language。印字可能な ASCII のみ、200 文字以下。
+   * 制御文字 (CR/LF/NUL) は header への注入になるので境界が拒む。
+   */
   acceptLanguage?: string | undefined;
   signing?: boolean | undefined;
   dismissBannersEnabled?: boolean | undefined;
   dismissBannersSpec?: DismissSpec | undefined;
-  viewport?: Viewport | undefined;
+  viewport?:
+    | Viewport
+    | undefined;
+  /**
+   * 0–5000。ページ操作 1 つごとに挟む遅延で、headless の描画を眺めるためのもの。
+   * 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
+   */
   operationDelayMs?: number | undefined;
   trace?: boolean | undefined;
   cache: CacheMode;
-  archiveMode: ArchiveMode;
-  deviceScaleFactor?: number | undefined;
+  /**
+   * 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で
+   * (2 が Retina、3 が現行の携帯端末の上)、同じ値を 2 度置くことはできない。
+   *
+   * 要素数がそのまま読み込みの回数になる。読み込むたびにバナー除去も behaviors も
+   * 走るので、所要時間も WARC のバイト数も要素数に比例して増える。
+   *
+   * 順序に意味がある: PNG / WebP は読み込みが全部終わってから 1 度だけ撮るので、
+   * **最後の要素**の倍率になる。[2, 1] と書けば画像は 1x で残る。
+   *
+   * 空ならサーバ既定 (--device-pixel-ratios)。proto3 の repeated は「空」と
+   * 「未指定」を区別できないので、空は「指定なし」として扱うほかない。
+   */
+  devicePixelRatios: number[];
   fullPage?: boolean | undefined;
   behaviors?: BehaviorSpec | undefined;
   resetStateEnabled?: boolean | undefined;
@@ -635,7 +626,7 @@ export interface BuildInfo {
  * settings.limits と同じ値だが、答える問いが違う —— あちらは「何が起きたか」、
  * こちらは「これから何が起きるか」。
  *
- * 載せるのは境界だけ。viewport や archiveMode はリクエストで上書きできるので
+ * 載せるのは境界だけ。viewport や devicePixelRatios はリクエストで上書きできるので
  * 境界ではなく、ここには来ない。設定の置き場にし始めたら、それは status とは
  * 別の RPC に切る合図。
  */
@@ -1475,8 +1466,7 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
     operationDelayMs: undefined,
     trace: undefined,
     cache: 0,
-    archiveMode: 0,
-    deviceScaleFactor: undefined,
+    devicePixelRatios: [],
     fullPage: undefined,
     behaviors: undefined,
     resetStateEnabled: undefined,
@@ -1523,12 +1513,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.cache !== 0) {
       writer.uint32(96).int32(message.cache);
     }
-    if (message.archiveMode !== 0) {
-      writer.uint32(104).int32(message.archiveMode);
+    writer.uint32(162).fork();
+    for (const v of message.devicePixelRatios) {
+      writer.int32(v);
     }
-    if (message.deviceScaleFactor !== undefined) {
-      writer.uint32(112).int32(message.deviceScaleFactor);
-    }
+    writer.join();
     if (message.fullPage !== undefined) {
       writer.uint32(120).bool(message.fullPage);
     }
@@ -1650,21 +1639,23 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
           message.cache = reader.int32() as any;
           continue;
         }
-        case 13: {
-          if (tag !== 104) {
-            break;
+        case 20: {
+          if (tag === 160) {
+            message.devicePixelRatios.push(reader.int32());
+
+            continue;
           }
 
-          message.archiveMode = reader.int32() as any;
-          continue;
-        }
-        case 14: {
-          if (tag !== 112) {
-            break;
+          if (tag === 162) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.devicePixelRatios.push(reader.int32());
+            }
+
+            continue;
           }
 
-          message.deviceScaleFactor = reader.int32();
-          continue;
+          break;
         }
         case 15: {
           if (tag !== 120) {
@@ -1753,16 +1744,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         : undefined,
       trace: isSet(object.trace) ? globalThis.Boolean(object.trace) : undefined,
       cache: isSet(object.cache) ? cacheModeFromJSON(object.cache) : 0,
-      archiveMode: isSet(object.archiveMode)
-        ? archiveModeFromJSON(object.archiveMode)
-        : isSet(object.archive_mode)
-        ? archiveModeFromJSON(object.archive_mode)
-        : 0,
-      deviceScaleFactor: isSet(object.deviceScaleFactor)
-        ? globalThis.Number(object.deviceScaleFactor)
-        : isSet(object.device_scale_factor)
-        ? globalThis.Number(object.device_scale_factor)
-        : undefined,
+      devicePixelRatios: globalThis.Array.isArray(object?.devicePixelRatios)
+        ? object.devicePixelRatios.map((e: any) => globalThis.Number(e))
+        : globalThis.Array.isArray(object?.device_pixel_ratios)
+        ? object.device_pixel_ratios.map((e: any) => globalThis.Number(e))
+        : [],
       fullPage: isSet(object.fullPage)
         ? globalThis.Boolean(object.fullPage)
         : isSet(object.full_page)
@@ -1825,11 +1811,8 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.cache !== 0) {
       obj.cache = cacheModeToJSON(message.cache);
     }
-    if (message.archiveMode !== 0) {
-      obj.archiveMode = archiveModeToJSON(message.archiveMode);
-    }
-    if (message.deviceScaleFactor !== undefined) {
-      obj.deviceScaleFactor = Math.round(message.deviceScaleFactor);
+    if (message.devicePixelRatios?.length) {
+      obj.devicePixelRatios = message.devicePixelRatios.map((e) => Math.round(e));
     }
     if (message.fullPage !== undefined) {
       obj.fullPage = message.fullPage;
@@ -1872,8 +1855,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     message.operationDelayMs = object.operationDelayMs ?? undefined;
     message.trace = object.trace ?? undefined;
     message.cache = object.cache ?? 0;
-    message.archiveMode = object.archiveMode ?? 0;
-    message.deviceScaleFactor = object.deviceScaleFactor ?? undefined;
+    message.devicePixelRatios = object.devicePixelRatios?.map((e) => e) || [];
     message.fullPage = object.fullPage ?? undefined;
     message.behaviors = (object.behaviors !== undefined && object.behaviors !== null)
       ? BehaviorSpec.fromPartial(object.behaviors)
