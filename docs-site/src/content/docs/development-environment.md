@@ -6,7 +6,7 @@ description: Prerequisites, daily commands, running without Compose, and trouble
 ## Prerequisites
 
 - **Node.js 24** (the version in `.nvmrc`). `nvm use` if you have nvm.
-- **npm 11+** — ships with Node 24.
+- **pnpm 11** — the version pinned by `packageManager`. `corepack enable` installs it.
 - **[Apple Container](https://github.com/apple/container)** and
   **container-compose** (both via Homebrew) — required for the stack, not for
   host-only development. macOS only.
