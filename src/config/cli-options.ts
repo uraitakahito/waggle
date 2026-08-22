@@ -18,7 +18,7 @@
  */
 import { Command, InvalidArgumentError, Option } from "commander";
 import { logger } from "../logger.js";
-import { redactDatabaseUrl } from "../db/pool.js";
+import { maskPassword } from "../db/pool.js";
 import { DEFAULT_TARGET } from "../rpc/client.js";
 import type { CaptureFormats, CaptureSettings } from "../types/capture.js";
 
@@ -282,7 +282,7 @@ export const logClientConfig = (options: ClientOptions): void => {
       tls: options.tlsCaCert
         ? { enabled: true, caCertPath: options.tlsCaCert }
         : { enabled: false },
-      database: redactDatabaseUrl(options.databaseUrl),
+      database: maskPassword(options.databaseUrl),
       // 実際に送られる settings をそのままログに出す。妙な取り込みが起きたとき、
       // どの旗が効いていたのかを推測せず、この 1 行から説明できるようにするため。
       capture: settings,

@@ -13,7 +13,7 @@
 import { Argument, Command, Option } from "commander";
 import { parsePath } from "./cli-parsers.js";
 import { createKyselyClient } from "./kysely.js";
-import { redactDatabaseUrl } from "./pool.js";
+import { maskPassword } from "./pool.js";
 import { createChildLogger } from "../logger.js";
 import { runMigratorCli } from "./migrator-runner.js";
 
@@ -41,7 +41,7 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-cliLogger.info({ database: redactDatabaseUrl(databaseUrl) }, "Seeding database");
+cliLogger.info({ database: maskPassword(databaseUrl) }, "Seeding database");
 
 const kyselyClient = createKyselyClient(databaseUrl);
 await runMigratorCli(

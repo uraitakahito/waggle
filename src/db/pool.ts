@@ -17,10 +17,11 @@ export const createPool = (databaseUrl: string): Pool => {
 };
 
 /**
- * Postgres の接続 URL からパスワードを落とし、安全にログへ出せるようにする。
- * URL として解析できない文字列 (host:port 形式など) は、そのまま返す。
+ * 落とすのは password 要素だけ。ユーザ名・host・port・DB 名は残るので、
+ * ログから接続先を読み取れる。URL として解析できない文字列 (host:port 形式など)
+ * は、そのまま返す。
  */
-export const redactDatabaseUrl = (url: string): string => {
+export const maskPassword = (url: string): string => {
   try {
     const parsed = new URL(url);
     if (parsed.password) parsed.password = "***";
