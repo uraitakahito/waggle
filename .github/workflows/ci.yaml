@@ -35,28 +35,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # setup-node より前に置くこと。cache: 'pnpm' は pnpm が PATH に居ないと
+      # ストアの場所を解決できない。版は package.json の packageManager から読む。
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Format check
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Tests
-        run: npm test
+        run: pnpm test
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Apply migrations
         run: node dist/db/migrate.js up
@@ -67,14 +70,15 @@ jobs:
           node dist/db/migrate.js up
 
       - name: Proto drift check
-        run: npm run proto:check
+        run: pnpm run proto:check
 
       # Separate from the drift check: that one asks whether the generated tree
       # matches the .proto, this one asks whether what it imports will still be
-      # installed after `npm prune --omit=dev`. Only the second catches a
-      # package that npm hoists out of ts-proto's tree during development.
+      # installed in the prod-only layer the runtime image is built from.
+      # pnpm does not hoist, so a package that only resolved by hoisting now
+      # fails during development too — this stays as the second line of defence.
       - name: Generated dependency check
-        run: npm run proto:check-deps
+        run: pnpm run proto:check-deps
 
       # `fga model test` runs the model in-process — no OpenFGA server needed.
       # These assertions are what stands between a one-line edit to
@@ -86,4 +90,4 @@ jobs:
             | tar -xz -C /usr/local/bin fga
 
       - name: Authorization model tests
-        run: npm run fga:test
+        run: pnpm run fga:test
