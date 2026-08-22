@@ -90,17 +90,13 @@ jobs:
       # just brings the tag names with it.
       - name: Fetch upstream tags
         run: git -C .upstream/browserhive fetch --tags --force
-      # docs-site はまだ npm プロジェクト (root の workspace に入っていない) ので
-      # 依存の install は npm のまま。pnpm が要るのは root の `site:check` を
-      # 呼ぶためだけ。
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: docs-site/package-lock.json
-      - name: Install docs-site dependencies
-        run: npm ci --prefix docs-site
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       # site:check rather than site:build: the deployed site should never carry
       # a half-translated page or a stale snippet, and the check is seconds.
       - name: Build and verify
