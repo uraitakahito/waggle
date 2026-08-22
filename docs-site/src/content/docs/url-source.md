@@ -63,11 +63,11 @@ Migration files live under `src/db/migrations/<NNN>-<description>.ts` and export
 `up(db)` / `down(db)`. The runner is a thin wrapper around Kysely's `Migrator`
 with `FileMigrationProvider`; applied IDs are tracked in the `kysely_migration`
 ledger (`kysely_migration_lock` guards concurrent runs), so re-running
-`npm run db:migrate` is a no-op once current.
+`pnpm run db:migrate` is a no-op once current.
 
 ```sh
-npm run db:migrate        # apply
-npm run db:migrate:down   # revert the last one
+pnpm run db:migrate       # apply
+pnpm run db:migrate:down  # revert the last one
 ```
 
 To add one:
@@ -76,7 +76,7 @@ To add one:
 2. Implement `up` and `down` with the schema builder, or ``sql`…`.execute(db)``
    for what it does not cover — extensions, generated columns, `CHECK`
    expressions referencing other columns.
-3. Round-trip locally: `npm run db:migrate && npm run db:migrate:down && npm run db:migrate`.
+3. Round-trip locally: `pnpm run db:migrate && pnpm run db:migrate:down && pnpm run db:migrate`.
    CI runs the same round trip.
 4. Commit the migration and the code that depends on it together.
 

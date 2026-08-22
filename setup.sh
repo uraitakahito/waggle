@@ -82,7 +82,7 @@ Setup complete.
 Then work on the host — there is no dev container; the stack is reachable by
 name:
 
-  npm ci
-  npm run db:migrate && npm run db:seed
-  npm run dev -- --webp --limit 3
+  pnpm install
+  pnpm run db:migrate && pnpm run db:seed
+  pnpm run dev --webp --limit 3
 EOF

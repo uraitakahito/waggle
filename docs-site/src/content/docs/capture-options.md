@@ -63,10 +63,10 @@ the environment.
 ```sh
 # Loaded twice (1x then 2x), slow enough to watch over chrome://inspect.
 # Order matters: PNG/WebP come out at the last ratio, so this leaves them 2x.
-npm run dev -- --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
+pnpm run dev --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
 
 # No behaviors at all — "" is not the same as omitting the flag
-npm run dev -- --png --limit 1 --behaviors "" --no-site-behaviors
+pnpm run dev --png --limit 1 --behaviors "" --no-site-behaviors
 ```
 
 A rejected request reports the reason from BrowserHive's problem response:

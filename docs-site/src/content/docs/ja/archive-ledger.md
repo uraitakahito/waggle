@@ -130,8 +130,8 @@ contextual tuple として渡すので、入退社や組織変更を認可スト
 `fga/model.fga` が真実で、`fga/model.fga.yaml` のアサーションが CI で走ります:
 
 ```sh
-npm run fga:test     # サーバ不要でモデルを検証
-npm run fga:deploy   # モデルを投入し、固定すべき ID を出力
+pnpm run fga:test    # サーバ不要でモデルを検証
+pnpm run fga:deploy  # モデルを投入し、固定すべき ID を出力
 ```
 
 `fga:deploy` は `WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID` を出力します。
@@ -144,10 +144,10 @@ npm run fga:deploy   # モデルを投入し、固定すべき ID を出力
 
 ```sh
 container-compose up -d -b
-npm run fga:migrate          # OpenFGA のスキーマ（下記参照）
-npm run db:migrate
-npm run fga:deploy           # → 出力された 2 つの ID を export
-npm run api
+pnpm run fga:migrate          # OpenFGA のスキーマ（下記参照）
+pnpm run db:migrate
+pnpm run fga:deploy           # → 出力された 2 つの ID を export
+pnpm run api
 ```
 
 :::caution[`fga:migrate` が独立した手順である理由]

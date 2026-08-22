@@ -62,10 +62,10 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 ```sh
 # 1x と 2x で 2 回読み込み、chrome://inspect で観察できる速度で。
 # 順序に意味がある: PNG / WebP は最後の倍率で出るので、これだと 2x になる。
-npm run dev -- --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
+pnpm run dev --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
 
 # behavior を一切走らせない — "" は「省略」とは違う
-npm run dev -- --png --limit 1 --behaviors "" --no-site-behaviors
+pnpm run dev --png --limit 1 --behaviors "" --no-site-behaviors
 ```
 
 拒否されたリクエストは、BrowserHive の problem レスポンスから理由をそのまま

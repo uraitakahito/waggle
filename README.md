@@ -30,10 +30,10 @@ sudo container system dns create waggle   # once per machine
 container-compose up -d -b
 
 # waggle itself runs on the host — the stack is reachable by name
-npm ci                                    # first time only
-npm run db:migrate                        # first time only
-npm run db:seed                           # load src/db/seeds/001-sample-urls.ts
-npm run dev -- --webp --html --limit 3
+pnpm install         # first time only
+pnpm run db:migrate  # first time only
+pnpm run db:seed     # load src/db/seeds/001-sample-urls.ts
+pnpm run dev --webp --html --limit 3
 ```
 
 You should see one `Request accepted` line per submitted URL and a `Request summary` at the end. Captured artefacts land in the bundled SeaweedFS bucket (`browserhive`). The workers are headless; watch one render from `chrome://inspect` against `localhost:9222` / `:9223`.
@@ -49,10 +49,10 @@ To smoke-test the production image end-to-end (builds `Dockerfile`, applies migr
 ## Develop
 
 ```sh
-npm ci
-npm run check                 # typecheck + lint + format:check + tests
-npm run site:dev              # documentation site on localhost
-DATABASE_URL=postgres://... npm run dev -- --webp --limit 1 --server http://...
+pnpm install
+pnpm run check     # typecheck + lint + format:check + tests
+pnpm run site:dev  # documentation site on localhost
+DATABASE_URL=postgres://... pnpm run dev --webp --limit 1 --server http://...
 ```
 
-The documentation site lives in `docs-site/` and is part of the repository: `npm run site:check` fails when the docs have drifted from the code, and an English page without its Japanese counterpart is rejected.
+The documentation site lives in `docs-site/` and is part of the repository: `pnpm run site:check` fails when the docs have drifted from the code, and an English page without its Japanese counterpart is rejected.
