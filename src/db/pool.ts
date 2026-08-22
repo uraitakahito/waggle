@@ -16,11 +16,6 @@ export const createPool = (databaseUrl: string): Pool => {
   return pool;
 };
 
-/**
- * 落とすのは password 要素だけ。ユーザ名・host・port・DB 名は残るので、
- * ログから接続先を読み取れる。URL として解析できない文字列 (host:port 形式など)
- * は、そのまま返す。
- */
 export const maskPassword = (url: string): string => {
   try {
     const parsed = new URL(url);
