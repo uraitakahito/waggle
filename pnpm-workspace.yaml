@@ -3,22 +3,30 @@
 packages:
   - "docs-site"
 
-# pnpm 11 は依存の lifecycle script を既定で実行しない。走らせてよいものだけを
-# 明示する。増やす前には「なぜビルドが要るのか」を確かめること。
+# pnpm 11 は依存の lifecycle script を既定で実行しない。ここに挙がっているのは
+# 「実行してよいか」を pnpm に聞かれたパッケージで、**どちらも false でよい**
+# ことを実測で確かめてある。
 #
-#   @bufbuild/buf — postinstall がプラットフォーム別の buf バイナリを取ってくる。
-#                   これを止めると `buf generate` が動かない (= proto の生成が
-#                   まるごと落ちる) ので true。
-#   esbuild       — docs-site (Astro) 経由。postinstall が platform 別の binary を
-#                   用意する。docs-site を workspace に入れた時点で現れたもので、
-#                   root だけのときは居なかった。
+# 直感に反するが、この 2 つの postinstall は必須ではない:
 #
-# protobufjs は false。@grpc/grpc-js が引いてくるが、あれの postinstall は
-# package.json の versionScheme を見て警告を出すだけで、無ければ即 return する。
-# 機能には関与しないので走らせる理由が無い。
+#   @bufbuild/buf — bin/buf は platform 別のパッケージ (ここでは
+#                   @bufbuild/buf-darwin-arm64) を **実行時に** 解決する Node の
+#                   シム。platform パッケージは optional dependency として
+#                   postinstall と無関係に入るので、false でも buf は動く。
+#   esbuild       — docs-site (Astro) 経由。同じ形で、bin/esbuild が
+#                   @esbuild/<platform> を実行時に解決する。
+#
+# 反証で確かめた手順: 値を false にし、node_modules を消し、**ストアも分けて**
+# 冷えた install をやり直したうえで、`buf --version` と `astro build` が通ること
+# を見た (ストアを消さないと、前回ビルド済みのものが link され直して意味が無い)。
+#
+# postinstall がやるのはシムを実体の binary に置き換える最適化で、起動が少し
+# 速くなる。それと引き換えに第三者の install script を走らせる価値は無いと
+# 判断して false にしている。**増やすときは同じ手順で「本当に要るのか」を
+# 確かめること** —— 要る/要らないは直感では当たらない。
 allowBuilds:
-  "@bufbuild/buf": true
-  esbuild: true
+  "@bufbuild/buf": false
+  esbuild: false
   protobufjs: false
 
 # npm の `overrides` の移設先。pnpm 11 は package.json の `overrides` を読まず、
