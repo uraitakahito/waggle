@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
- * Push `fga/model.fga` to the running OpenFGA and print the ids to pin.
+ * `fga/model.fga` を動いている OpenFGA へ送り、固定すべき id を印字する。
  *
- * Prints two shell-ready assignments:
+ * shell にそのまま貼れる代入を 2 行出す:
  *
  *   WAGGLE_FGA_STORE_ID=01K...
  *   WAGGLE_FGA_MODEL_ID=01K...
  *
- * Pinning the model id matters. Authorization models are immutable and every
- * write mints a new one; a client that omits the id evaluates against
- * *whatever is newest*, so editing the model would silently change every
- * decision the moment it lands. Bumping the env var is what makes the switch
- * a deliberate, separate step from deploying code.
+ * モデルの id を固定することには意味がある。認可モデルは不変で、書き込むたびに
+ * 新しい id が生まれる。id を省いた client は **そのとき最も新しいもの** に対して
+ * 評価するので、モデルを編集した瞬間にすべての判断が黙って変わる。環境変数を
+ * 上げることが、その切り替えをコードの配備とは別の意図的な一歩にしている。
  *
- * The store is created once and then reused: an existing store whose name
- * matches is adopted rather than duplicated, so re-running this is safe.
+ * store は 1 度作って以後は使い回す: 名前の一致する既存の store は、複製せず
+ * そのまま採用するので、これを再実行しても安全。
  */
 import { spawnSync } from "node:child_process";
 
@@ -40,7 +39,7 @@ const findStore = () => {
 };
 
 const store = findStore() ?? JSON.parse(fga(["store", "create", "--name", STORE_NAME]));
-// `store create` nests the store; `store list` returns it flat.
+// `store create` は store を入れ子で返し、`store list` は平らに返す。
 const storeId = store.id ?? store.store?.id;
 if (!storeId) throw new Error(`could not determine store id from: ${JSON.stringify(store)}`);
 

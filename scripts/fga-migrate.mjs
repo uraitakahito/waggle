@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * Run OpenFGA's schema migration against the stack's `openfga-db`.
+ * スタックの `openfga-db` に対して OpenFGA のスキーマ migration を走らせる。
  *
- * This is a one-shot job, and container-compose has exactly four subcommands
- * (up / down / build / version) — there is no way to express it as a service.
- * The `openfga` image is distroless, so it also cannot run a shell retry loop
- * as its entrypoint the way seaweedfs does. So it runs here, invoked with
- * `container run`, the same way waxlens drives its one-shot image.
+ * これは 1 回きりのジョブで、container-compose のサブコマンドは 4 つしかない
+ * (up / down / build / version) —— サービスとして表現する方法が無い。`openfga` の
+ * イメージは distroless なので、seaweedfs のように entrypoint で shell の再試行
+ * ループを回すこともできない。だから `container run` で呼ぶ形でここに置いている。
+ * waxlens が 1 回きりのイメージを動かしているのと同じやり方。
  *
- * Until this succeeds the `openfga` service answers 500 on every request
- * (including /healthz) — it starts fine against an unmigrated database and
- * only fails when it touches a table.
+ * これが成功するまで、`openfga` サービスはすべてのリクエストに 500 を返す
+ * (/healthz も含む) —— migration していないデータベースに対しても起動自体は
+ * 成功し、テーブルに触った時点で初めて失敗する。
  *
- * Idempotent: re-running against an already-migrated database is a no-op, so
- * this is safe to call from setup scripts and from CI.
+ * 冪等: 既に migration 済みのデータベースに対して再実行しても何も起きないので、
+ * セットアップのスクリプトからも CI からも安全に呼べる。
  */
 import { spawnSync } from "node:child_process";
 
@@ -22,7 +22,7 @@ const URI =
   process.env["WAGGLE_FGA_DATASTORE_URI"] ??
   "postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable";
 
-/** attempts × delay covers a cold `openfga-db` still running initdb. */
+/** 試行回数 × 間隔で、まだ initdb 中の冷えた `openfga-db` を待ち切れるようにする。 */
 const ATTEMPTS = 30;
 const DELAY_MS = 1000;
 
@@ -36,10 +36,10 @@ for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       "--rm",
       IMAGE,
       "migrate",
-      // Flags, not env vars: container-compose injects Docker-link-style
-      // variables (OPENFGA_DB_* for the `openfga-db` service) that OpenFGA's
-      // viper config picks up and misreads — `--datastore-engine` supplied via
-      // env resolved to the database container's IP address. Flags win.
+      // 環境変数ではなくフラグで渡す: container-compose は Docker の link 形式の
+      // 変数 (`openfga-db` サービスに対する OPENFGA_DB_*) を注入し、それを OpenFGA の
+      // viper 設定が拾って読み違える —— 環境変数で与えた `--datastore-engine` が
+      // データベースのコンテナの IP アドレスに解決された。フラグのほうが勝つ。
       "--datastore-engine=postgres",
       `--datastore-uri=${URI}`,
     ],

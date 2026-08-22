@@ -1,32 +1,30 @@
 /**
- * Verify that the Starlight docs in docs-site/ stay honest.
+ * docs-site/ の Starlight のドキュメントが嘘をつかないことを確かめる。
  *
- * `astro build` catches one kind of drift on its own: an uninitialised
- * .upstream/browserhive submodule throws out of docs-site/src/lib/extract.ts
- * while rendering, and because the pin is read from an .mdx page that does
- * fail the build. Everything else is this script's job:
+ * `astro build` が自力で捕まえるずれは 1 種類だけ: .upstream/browserhive の
+ * submodule を初期化していないと、描画中に docs-site/src/lib/extract.ts から
+ * throw する。固定した版を読んでいるのが .mdx のページなので、こちらはビルドが
+ * 落ちる。残りはこのスクリプトの仕事:
  *
- *   1. Missing translations — an English page with no Japanese counterpart, or
- *      a Japanese page with no English original. Starlight silently falls back
- *      to English for a missing page, so a half-translated site builds green
- *      and nobody notices until a reader lands on the wrong language.
- *   2. Broken `#region` snippets. Do not assume the build covers these: a
- *      missing region logs "Failed to parse Markdown file" and `astro build`
- *      still reports every page built and exits 0 (measured, twice, on a cold
- *      cache). Left to the build, a doc would ship an empty code fence. The
- *      reason it differs from the pin above is the extension — a throw from an
- *      .mdx page surfaces through vite, one from a .md page is caught by
- *      Starlight's docs loader — and every page carrying a `#region` reference
- *      here is .md.
- *   3. Dead source paths — a `src/….ts` written in a code span that has since
- *      been renamed or deleted.
+ *   1. 訳の欠落 —— 日本語版の無い英語ページ、あるいは英語の原文が無い日本語
+ *      ページ。Starlight はページが無いと黙って英語に落とすので、半分だけ訳した
+ *      サイトも緑でビルドでき、読み手が違う言語に着地するまで誰も気づかない。
+ *   2. 壊れた `#region` の抜粋。ビルドが覆っていると思ってはいけない: region が
+ *      無いと "Failed to parse Markdown file" とログに出るのに、`astro build` は
+ *      全ページをビルドしたと報告して 0 で終わる (冷えたキャッシュで 2 度実測)。
+ *      ビルドに任せると、ドキュメントは空のコードフェンスのまま出てしまう。上の
+ *      固定版と違う理由は拡張子 —— .mdx からの throw は vite を通って表に出るが、
+ *      .md からのものは Starlight の docs loader が捕まえる —— で、ここで
+ *      `#region` を参照しているページはどれも .md。
+ *   3. 死んだソースのパス —— コードスパンに書かれた `src/….ts` のうち、その後
+ *      名前が変わったか消えたもの。
  *
- * Only page *existence* is checked for translations, never their structure.
- * Forcing the same headings on both languages makes for bad Japanese; keeping
- * the pages in step is a human job, keeping them from vanishing is this one.
+ * 訳について見るのはページの **存在** だけで、構造は一切見ない。両方の言語に同じ
+ * 見出しを強いると日本語が悪くなる。ページの歩調を合わせるのは人の仕事で、
+ * ページが消えないようにするのがこちらの仕事。
  *
- * Run via `npm run site:check` (build + this script). Exits 1 with the list of
- * problems so CI fails the PR.
+ * `npm run site:check` (ビルド + このスクリプト) から走る。問題の一覧を出して 1 で
+ * 終わるので、CI が PR を落とす。
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
@@ -44,7 +42,7 @@ const pagesIn = (dir) =>
 
 const problems = [];
 
-// ─── 1. English ↔ Japanese page parity ─────────────────────────────────────
+// ─── 1. 英語 ↔ 日本語のページの対応 ────────────────────────────────────────
 const en = pagesIn(DOCS);
 const ja = new Set(pagesIn(JA));
 
@@ -59,7 +57,7 @@ for (const page of ja) {
   }
 }
 
-// ─── 2. Source paths written in code spans ─────────────────────────────────
+// ─── 2. コードスパンに書かれたソースのパス ─────────────────────────────────
 const walk = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const p = join(dir, entry.name);
@@ -76,12 +74,12 @@ for (const file of walk(DOCS).filter((f) => isPage(f))) {
     }
   }
 
-  // ```ts file="src/…#region" — the injected snippets.
+  // ```ts file="src/…#region" —— 差し込まれる抜粋。
   //
-  // These are checked here rather than left to the build because `astro build`
-  // does NOT fail on them: a missing region logs "Failed to parse Markdown
-  // file" and the build still reports every page built and exits 0. Relying on
-  // the build would mean a doc that silently ships an empty code fence.
+  // ビルドに任せずここで見ているのは、`astro build` がこれで落ちないから: region が
+  // 無いと "Failed to parse Markdown file" とログに出るのに、ビルドは全ページを
+  // ビルドしたと報告して 0 で終わる。ビルドに頼ると、ドキュメントが黙って空の
+  // コードフェンスを出すことになる。
   for (const [, path, region] of text.matchAll(/file="([^"#]+)#([^"]+)"/g)) {
     const abs = resolve(ROOT, path);
     if (!existsSync(abs)) {
@@ -89,11 +87,10 @@ for (const file of walk(DOCS).filter((f) => isPage(f))) {
       continue;
     }
     const source = readFileSync(abs, "utf8");
-    // The name must run to the end of its line, matching extract.ts. `\b` is
-    // not enough: a word boundary sits between `s` and `-`, so asking for
-    // `urls-columns` would also match a marker reading `#region
-    // urls-columns-v2` — and this check is the only thing that exits non-zero,
-    // so a permissive pattern here means the drift ships.
+    // 名前は行末まで続いていなければならない。extract.ts と同じ規則。`\b` では
+    // 足りない: `s` と `-` の間に単語の境界が在るので、`urls-columns` を求めると
+    // `#region urls-columns-v2` という印にも当たってしまう —— そして非 0 で終わる
+    // のはこの検査だけなので、ここが緩いとずれがそのまま出荷される。
     const re = new RegExp(
       String.raw`//\s*#region\s+${region}[ \t]*\r?$[\s\S]*?//\s*#endregion`,
       "m",
@@ -106,7 +103,7 @@ for (const file of walk(DOCS).filter((f) => isPage(f))) {
   }
 }
 
-// ─── Report ────────────────────────────────────────────────────────────────
+// ─── 報告 ──────────────────────────────────────────────────────────────────
 if (problems.length > 0) {
   console.error(`✗ doc-ref check failed (${problems.length} problem(s)):`);
   for (const p of problems) console.error(`  - ${p}`);
