@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Ledger maintenance commands.
+ * 台帳の保守コマンド。
  *
- * Separate from `waggle` (the capture client) because these operate on the
- * ledger rather than submitting work, and because both are useful to run on a
- * timer from somewhere else. `waggle` stays a single-purpose command.
+ * `waggle` (取り込みの client) と分けているのは、これらが仕事を投げるのではなく
+ * 台帳を操作するものだから。そして両方とも、別のどこかからタイマーで走らせると
+ * 役に立つから。`waggle` は目的が 1 つのコマンドのままにしておく。
  *
- *   waggle-ledger drain      deliver queued tuples to OpenFGA
- *   waggle-ledger reconcile  fill ledger gaps from the bucket's manifests
+ *   waggle-ledger drain      積まれた tuple を OpenFGA へ配送する
+ *   waggle-ledger reconcile  bucket の manifest から台帳の穴を埋める
  */
 import { Command, Option } from "commander";
 import { fgaConfig, storageConfig } from "../config/env.js";

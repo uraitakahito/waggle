@@ -1,11 +1,10 @@
 /**
- * The Policy Enforcement Point.
+ * Policy Enforcement Point —— 認可を実際に強制する 1 点。
  *
- * S3 only checks a signature, so the moment a URL is signed the decision is
- * already made and cannot be taken back. That makes the line before
- * `presignArchive` the single place authorization can be enforced — every
- * other check is advisory. Nothing here may hand out a URL without a Check
- * immediately preceding it.
+ * S3 は署名しか見ないので、URL に署名した瞬間に判断は済んでいて、取り消せない。
+ * つまり `presignArchive` の直前の 1 行が、認可を強制できる唯一の場所になる ——
+ * 他の検査はすべて助言でしかない。ここでは、直前に Check を置かずに URL を配って
+ * はならない。
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
@@ -26,14 +25,13 @@ export interface RouteDeps {
   resolveIdentity: IdentityResolver;
 }
 
-/** Rows returned per page of the archive list. */
+/** アーカイブ一覧 1 ページあたりの行数。 */
 const PAGE_SIZE = 50;
 
 /**
- * Membership as contextual tuples, rebuilt from the caller's identity on every
- * request. Nothing about who belongs to which organization is persisted in
- * OpenFGA, so there is no membership to keep in sync — and no window where the
- * authorization store disagrees with the identity provider.
+ * 所属を contextual tuple として、リクエストのたびに呼び出し元の identity から
+ * 組み直す。誰がどの組織に属するかは OpenFGA に一切保存しないので、同期を保つべき
+ * 所属が存在しない —— 認可ストアと identity provider が食い違う窓も無い。
  */
 const membershipTuples = (identity: Identity) =>
   identity.organizations.map((org) => ({
@@ -49,12 +47,12 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { db, fga, s3, resolveIdentity } = deps;
 
   /**
-   * Issue a signed URL for one archive.
+   * アーカイブ 1 本に対して署名付き URL を発行する。
    *
-   * A denial answers 404, not 403. A 403 would confirm that this id names a
-   * real archive, which is exactly what an enumeration attempt is looking for
-   * — the leak OWASP API1:2023 (Broken Object Level Authorization) warns about.
-   * "You may not see it" and "it does not exist" have to be indistinguishable.
+   * 拒否は 403 ではなく 404 で答える。403 は「この id は実在するアーカイブを
+   * 指している」ことを確認してしまい、それはまさに列挙を試みる側が欲しい情報 ——
+   * OWASP API1:2023 (Broken Object Level Authorization) が警告している漏れ。
+   * 「見てはいけない」と「存在しない」は区別が付いてはならない。
    */
   app.post("/api/archives/:id/url", async (request: FastifyRequest, reply: FastifyReply) => {
     const identity = await resolveIdentity(request);
@@ -71,9 +69,9 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
         context: { current_time: new Date().toISOString() },
       },
       {
-        // The one place staleness is not acceptable. A cached allow here hands
-        // out a URL that stays valid for its whole lifetime, so a revocation
-        // that landed a second ago must already be visible.
+        // 古い答えが許されない唯一の場所。ここでキャッシュされた許可は、寿命の
+        // 間ずっと有効な URL を配ってしまうので、1 秒前に入った取り消しが既に
+        // 見えていなければならない。
         consistency: ConsistencyPreference.HigherConsistency,
       },
     );
@@ -89,8 +87,8 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
       .where("id", "=", id)
       .executeTakeFirst();
 
-    // Allowed by the model but absent from the ledger: a tuple outlived its
-    // archive. Same 404 — there is nothing to sign.
+    // モデル上は許されているが台帳に無い: tuple がアーカイブより長生きした場合。
+    // 同じ 404 —— 署名する相手が無い。
     if (!location) {
       log.warn({ archiveId: id }, "Check allowed an archive that is not in the ledger");
       return reply.code(404).send({ error: "not found" });
@@ -102,16 +100,14 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   });
 
   /**
-   * List the archives this caller may see, newest first.
+   * この呼び出し元が見てよいアーカイブを、新しい順に並べる。
    *
-   * Paginate in SQL, then ask about that page. `ListObjects` would answer the
-   * same question in one call, but it is capped (1,000 results by default) and
-   * gets more expensive as the corpus grows, whereas this stays proportional
-   * to the page.
+   * SQL でページを切ってから、そのページについて訊く。`ListObjects` なら同じ問いに
+   * 1 回で答えられるが、上限があり (既定で 1,000 件)、蓄積が増えるほど高くつく。
+   * こちらはページの大きさに比例したままでいられる。
    *
-   * Default consistency — the cache is fine here. Appearing in a list grants
-   * nothing: fetching any of these still has to pass the strongly consistent
-   * Check above.
+   * 一貫性は既定のまま —— ここではキャッシュで構わない。一覧に出ることは何も
+   * 与えない: どれかを取りに行くには、上の強一貫な Check を通る必要がある。
    */
   app.get("/api/archives", async (request: FastifyRequest, reply: FastifyReply) => {
     const identity = await resolveIdentity(request);
@@ -135,13 +131,13 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
         user: `user:${identity.subject}`,
         relation: "can_view",
         object: `archive:${archive.id}`,
-        // batchCheck wraps contextual tuples in `tuple_keys`; the single
-        // `check` above takes a bare array. Same concept, different shape.
+        // batchCheck は contextual tuple を `tuple_keys` で包む。上の単発の
+        // `check` は素の配列を取る。概念は同じで、形が違う。
         contextualTuples: { tuple_keys: contextualTuples },
         context: { current_time: now },
-        // Correlates responses with requests — order is not guaranteed. Not
-        // related to BrowserHive's capture `correlationId`, which is a
-        // different concept with the same name.
+        // 応答とリクエストを対応付けるためのもの —— 順序は保証されない。
+        // BrowserHive の取り込みの `correlationId` とは無関係で、名前が同じだけの
+        // 別概念。
         correlationId: archive.id.replace(/-/g, ""),
       })),
     });

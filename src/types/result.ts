@@ -1,34 +1,37 @@
 /**
- * Result<T, E> — success/failure discriminated union.
+ * Result<T, E> —— 成功と失敗の discriminated union。
  *
- * Convention: for "no value on success" cases, use `Result<void, E>`
- * (with `ok()`) rather than `Result<undefined, E>` (with `ok(undefined)`).
+ * 約束事: 「成功しても値が無い」場合は `Result<undefined, E>` (`ok(undefined)`) では
+ * なく `Result<void, E>` (`ok()`) を使う。
  *
- * Why `void` over `undefined`:
- *   - Ergonomics: callers write `ok()` instead of `ok(undefined)`. The
- *     `ok` overload below uses `void`'s special return-type compatibility
- *     rule to accept zero arguments at the type level.
- *   - Ecosystem fit: aligns with the `Promise<void>` convention used
- *     across the Node/DOM/browser APIs and TypeScript stdlib. Mixing
- *     `Promise<Result<undefined, E>>` into a codebase full of
- *     `Promise<void>` reads as a foreign idiom.
- *   - Library precedent: neverthrow, fp-ts (`Either<E, void>`), and
- *     effect-ts all use `void` for the empty-success case.
+ * `undefined` ではなく `void` にしている理由:
+ *   - 書き味: 呼ぶ側が `ok(undefined)` ではなく `ok()` と書ける。下の `ok` の
+ *     overload は `void` の戻り値互換の特別扱いを使って、型の上で引数 0 個を
+ *     受け付けている。
+ *   - 生態系との一致: Node / DOM / ブラウザの API と TypeScript の標準ライブラリで
+ *     使われている `Promise<void>` の慣習に揃う。`Promise<void>` だらけの codebase に
+ *     `Promise<Result<undefined, E>>` が混ざると異物に見える。
+ *   - ライブラリの先例: neverthrow、fp-ts (`Either<E, void>`)、effect-ts の
+ *     いずれも「値の無い成功」に `void` を使っている。
  *
- * Ported from upstream BrowserHive `src/result.ts`.
+ * `void` の代償はその緩い戻り値互換 (`() => void` が期待される場所にはどんな関数型も
+ * 代入できる)。この規則は `value: void` というフィールド自体を弱めるものではなく、
+ * 関数型を代入するときにしか効かないので、ここでの Result の使い方では書き味と
+ * 生態系との一致のほうが勝つ。
+ *
+ * 上流の BrowserHive `src/result.ts` からの移植。
  */
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 /**
- * Construct a success Result.
+ * 成功の Result を作る。
  *
- * Two overloads:
- *   - `ok()`             → Result<void, never>   (no-value success)
- *   - `ok<T>(value: T)`  → Result<T, never>      (value-carrying success)
+ * overload は 2 つ:
+ *   - `ok()`             → Result<void, never>   (値の無い成功)
+ *   - `ok<T>(value: T)`  → Result<T, never>      (値を運ぶ成功)
  *
- * The runtime value of `ok()` is `{ ok: true, value: undefined }`, which
- * is structurally compatible with `Result<void, E>` because `undefined`
- * is assignable to `void`.
+ * `ok()` の実行時の値は `{ ok: true, value: undefined }` で、`undefined` が `void` に
+ * 代入できるおかげで `Result<void, E>` と構造的に互換になる。
  */
 export const ok: {
   (): Result<void, never>;

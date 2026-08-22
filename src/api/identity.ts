@@ -1,26 +1,23 @@
 /**
- * Who is making this request.
+ * このリクエストを出しているのが誰か。
  *
- * ## This is a seam, not an implementation
+ * ## これは継ぎ目であって、実装ではない
  *
- * Authenticating the caller is a separate problem from authorizing them, and
- * it depends on an identity provider that has not been chosen. What the
- * authorization layer needs from it is small and stable — a subject and the
- * organizations they belong to — so that shape is fixed here and the
- * verification behind it can be replaced without touching anything else.
+ * 呼び出し元を認証することは、認可することとは別の問題で、しかもまだ選んでいない
+ * identity provider に依存する。認可の層がそこから必要とするものは小さく安定して
+ * いる —— subject と、その人が属する組織 —— ので、その形だけをここで固定し、
+ * 裏の検証は他に触れずに差し替えられるようにしてある。
  *
- * The dev resolver below trusts headers. That is only safe because it refuses
- * to run unless explicitly switched on, and it says so loudly at startup. When
- * a real IdP arrives, add a resolver that verifies a JWT and make it the
- * default; nothing in `routes.ts` changes.
+ * 下の開発用 resolver は header を信じる。それが安全なのは、明示的に有効化しない
+ * 限り動くことを拒み、起動時に大きな声でそう言うから。本物の IdP が来たら、JWT を
+ * 検証する resolver を足して既定にすればよい。`routes.ts` は何も変わらない。
  *
- * ## Why organizations come from the token
+ * ## なぜ組織はトークンから来るのか
  *
- * Membership is not stored in OpenFGA. It is passed per request as a
- * contextual tuple, so joining or leaving an organization never has to be
- * synchronised into the authorization store — the token is already the source
- * of truth for it. The cost is that revocation waits for the token to expire,
- * which is why tokens should be short-lived.
+ * 所属は OpenFGA に保存しない。リクエストごとに contextual tuple として渡すので、
+ * 組織への参加や離脱を認可ストアへ同期する必要が一度も生じない —— その点については
+ * トークンが既に出どころだから。代償は、取り消しがトークンの失効を待つこと。
+ * トークンを短命にすべき理由がそれ。
  */
 import type { FastifyRequest } from "fastify";
 
@@ -32,11 +29,11 @@ export interface Identity {
 export type IdentityResolver = (request: FastifyRequest) => Promise<Identity | undefined>;
 
 /**
- * Header-trusting resolver for local development.
+ * ローカル開発用の、header を信じる resolver。
  *
- * `X-Waggle-Subject` and `X-Waggle-Organizations` (comma-separated) are taken
- * at face value — anyone who can reach the port can claim to be anyone. Only
- * reachable when `WAGGLE_DEV_IDENTITY=1`.
+ * `X-Waggle-Subject` と `X-Waggle-Organizations` (カンマ区切り) をそのまま受け取る
+ * —— そのポートに届く者は誰にでもなれる。`WAGGLE_DEV_IDENTITY=1` のときしか
+ * 到達できない。
  */
 export const devIdentityResolver: IdentityResolver = (request) => {
   const subject = request.headers["x-waggle-subject"];
@@ -54,7 +51,7 @@ export const devIdentityResolver: IdentityResolver = (request) => {
   return Promise.resolve({ subject, organizations });
 };
 
-/** Refuses everyone. The default, so an unconfigured deployment cannot leak. */
+/** 全員を拒む。これが既定なので、設定していない配備から漏れることはない。 */
 export const denyAllResolver: IdentityResolver = () => Promise.resolve(undefined);
 
 export const resolveIdentityResolver = (): IdentityResolver =>

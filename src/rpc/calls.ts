@@ -1,9 +1,9 @@
 /**
- * Promise wrappers around the generated grpc-js stubs.
+ * 生成された grpc-js の stub を Promise で包む。
  *
- * grpc-js is callback-first, so every call site would otherwise repeat the
- * same `new Promise` dance. Rejections carry the `ServiceError` unchanged —
- * its `code` is the status, and callers narrow on it with `isStatus`.
+ * grpc-js は callback が前提なので、包まないと呼び出しのたびに同じ `new Promise` の
+ * 段取りを繰り返すことになる。reject は `ServiceError` をそのまま運ぶ ——
+ * その `code` が status で、呼ぶ側は `isStatus` で絞る。
  */
 import { status, type ServiceError } from "@grpc/grpc-js";
 import { getClient } from "./client.js";
@@ -31,12 +31,12 @@ export const getCapture = (request: GetCaptureRequest): Promise<GetCaptureRespon
   });
 
 /**
- * Whether a rejection is a gRPC failure with the given status.
+ * その reject が、指定した status を持つ gRPC の失敗かどうか。
  *
- * Anything thrown by the channel itself — a DNS failure, a refused connection
- * — also arrives as a `ServiceError`, with `UNAVAILABLE`. That is the reason
- * this checks the code rather than the class: "is this a gRPC error" is not a
- * useful question, "is this the *absent task* answer" is.
+ * channel 自身が投げるもの —— DNS の失敗、拒まれた接続 —— も `ServiceError` として
+ * 届き、status は `UNAVAILABLE` になる。クラスではなく code を見ているのはそのため:
+ * 「これは gRPC のエラーか」は役に立つ問いではなく、「これは **タスクが無い** という
+ * 答えか」が役に立つ問いだから。
  */
 export const isStatus = (error: unknown, expected: status): boolean =>
   typeof error === "object" && error !== null && (error as Partial<ServiceError>).code === expected;

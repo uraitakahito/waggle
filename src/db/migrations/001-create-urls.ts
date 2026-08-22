@@ -1,16 +1,15 @@
 /**
  * 001-create-urls
  *
- * Creates the `urls` table that backs waggle's URL source.
+ * waggle の URL の出どころになる `urls` テーブルを作る。
  *
- * `url_hash` is a SHA-256 of `url`, computed by pgcrypto's `digest()`
- * and stored as a generated column so the unique index covers it
- * without application-side hashing. The raw 32-byte BYTEA backs the
- * unique index — callers should never need to read the hash directly.
+ * `url_hash` は `url` の SHA-256 で、pgcrypto の `digest()` が計算し、生成列として
+ * 保存する。こうすると、アプリケーション側でハッシュを取らなくても unique index が
+ * それを覆える。unique index が使うのは生の 32 バイト BYTEA —— 呼ぶ側がハッシュを
+ * 直接読む必要は無いはず。
  *
- * `urls_enabled_id_idx` is a partial index covering the loader's hot
- * path (`WHERE enabled ORDER BY id`). Indexing disabled rows would be
- * wasted space.
+ * `urls_enabled_id_idx` は、読み込み側がよく通る道 (`WHERE enabled ORDER BY id`) を
+ * 覆う partial index。無効な行まで index に入れても場所の無駄になる。
  */
 import type { Kysely, SqlBool } from "kysely";
 import { sql } from "kysely";
@@ -45,5 +44,5 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema.dropTable("urls").execute();
-  // pgcrypto is left in place — other objects may depend on it.
+  // pgcrypto はそのまま残す —— 他のオブジェクトが依存しているかもしれない。
 };

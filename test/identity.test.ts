@@ -33,8 +33,8 @@ describe("devIdentityResolver", () => {
     });
   });
 
-  // No subject means no identity — the route answers 401 rather than falling
-  // through to a Check for `user:undefined`.
+  // subject が無いことは identity が無いということ —— route は `user:undefined` に
+  // 対する Check へ落ちるのではなく、401 で答える。
   it("returns undefined without a subject", async () => {
     await expect(devIdentityResolver(request({}))).resolves.toBeUndefined();
     await expect(devIdentityResolver(request({ "x-waggle-subject": "" }))).resolves.toBeUndefined();
@@ -51,8 +51,8 @@ describe("resolveIdentityResolver", () => {
     else process.env["WAGGLE_DEV_IDENTITY"] = original;
   });
 
-  // The header resolver trusts whatever it is told, so an unconfigured
-  // deployment must not get it by accident.
+  // header の resolver は言われたことを何でも信じるので、設定していない配備が
+  // 事故でそれを手にしてはならない。
   it("denies everyone by default", async () => {
     expect(resolveIdentityResolver()).toBe(denyAllResolver);
     await expect(

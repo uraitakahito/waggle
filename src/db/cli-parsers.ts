@@ -1,10 +1,9 @@
 /**
- * Commander argParser helpers for the db CLIs (`migrate`, `seed`).
+ * db の CLI (`migrate`、`seed`) のための commander argParser の補助。
  *
- * Mirrors contact-api's `cli-parsers.ts` shape. Kept colocated with
- * the bin scripts that use it rather than under `src/config/` because
- * the cli-options module there is wired into the application CLI
- * surface area, while these helpers are private to migrate/seed.
+ * contact-api の `cli-parsers.ts` と同じ形。`src/config/` ではなく、使う bin
+ * スクリプトの隣に置いている —— あちらの cli-options はアプリケーションの CLI の
+ * 表面に繋がっているが、この補助は migrate / seed の内輪のものだから。
  */
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";

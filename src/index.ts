@@ -1,10 +1,10 @@
 /**
- * Public library entry point.
+ * ライブラリとしての公開の入口。
  *
- * Stage 0 surface: the building blocks used by `cli.ts` are re-exported
- * so downstream callers can compose them programmatically (e.g. submit
- * from a different driver, drive a different CLI). The shape will
- * expand in later stages as polling / storage / pipeline features land.
+ * Stage 0 の表面: `cli.ts` が使っている部品を再 export しているので、下流の
+ * 呼び出し側がプログラムから組み合わせられる (別の driver から投げる、別の CLI を
+ * 動かす、など)。polling / storage / pipeline の機能が入る後の段で、この形は
+ * 広がっていく。
  */
 export { loadUrls, type DataEntry, type UrlSourceQuery } from "./data/url-source.js";
 export { createPool, redactDatabaseUrl } from "./db/pool.js";

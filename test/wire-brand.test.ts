@@ -1,14 +1,13 @@
 /**
- * Regression test for the brand: a cast alone must not reach the send path.
+ * 印に対する回帰テスト: cast だけで送信の経路に到達できてはならない。
  *
- * Nothing here is checked at runtime — the assertions are type-level, and the
- * checker is tsc. `@ts-expect-error` claims "this line must fail to compile",
- * so it flips to an error of its own the moment the protection stops working.
- * That property is the only thing that reports a defence coming undone at the
- * moment it comes undone.
+ * ここには実行時に検査されるものが 1 つも無い —— 主張は型の上に在り、検査するのは
+ * tsc。`@ts-expect-error` は「この行はコンパイルに失敗しなければならない」という
+ * 主張なので、守りが効かなくなった瞬間に、それ自体がエラーへ反転する。防御が
+ * 解けたことを、解けたその瞬間に報告してくれるのはこの性質だけ。
  *
- * This file therefore only means something because `npm run typecheck` runs in
- * CI. Neither vitest nor eslint inspects `@ts-expect-error`.
+ * したがってこのファイルに意味があるのは、CI で `npm run typecheck` が走るから。
+ * vitest も eslint も `@ts-expect-error` を見ていない。
  */
 import { describe, expect, it } from "vitest";
 import { submitCapture } from "../src/rpc/calls.js";
@@ -18,7 +17,7 @@ import {
   type SubmitCaptureRequest,
 } from "../src/rpc/generated/browserhive/v1/capture.js";
 
-/** Stands in for the real send path, which accepts only branded requests. */
+/** 印の付いたリクエストしか受け取らない、本物の送信経路の代役。 */
 const send = (request: WireSubmitCapture): string => request.url;
 
 const valid: SubmitCaptureRequest = {
@@ -29,13 +28,12 @@ const valid: SubmitCaptureRequest = {
 };
 
 /**
- * The real send path, not a stand-in.
+ * 代役ではなく、本物の送信経路。
  *
- * The stub below is convenient but proves nothing on its own: if
- * `submitCapture` were widened back to `SubmitCaptureRequest`, the stub would
- * keep passing while the actual gate was gone. A branded type is assignable to
- * its base, so nothing else would go red either. This line is what ties the
- * test to the thing being protected.
+ * 下の stub は便利だが、それ自体は何も証明しない: `submitCapture` の型が
+ * `SubmitCaptureRequest` に戻されたら、実際の関門は消えているのに stub は通り
+ * 続ける。印の付いた型は元の型に代入できるので、他のどこも赤くならない。この 1 行が、
+ * テストと守っている対象を結んでいる。
  */
 // @ts-expect-error submitCapture accepts only a sealed request
 const gatesTheRealSendPath: Parameters<typeof submitCapture>[0] = valid;
@@ -53,8 +51,8 @@ describe("wire brand", () => {
 
   it("rejects a two-step cast", () => {
     const plain: Record<string, unknown> = { url: "https://example.com/" };
-    // The spelling that broke BrowserHive's e2e suite. The cast gets past the
-    // type checker; the brand is what it cannot forge.
+    // BrowserHive の e2e を壊したのと同じ書き方。cast は型検査を通り抜ける。
+    // 偽造できないのが印のほう。
     // @ts-expect-error a two-step cast cannot satisfy WireSubmitCapture
     expect(() => send(plain as unknown as SubmitCaptureRequest)).not.toThrow();
   });

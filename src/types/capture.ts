@@ -1,10 +1,9 @@
 /**
- * Capture format flags exchanged with BrowserHive.
+ * BrowserHive とやり取りする、取り込み形式の旗。
  *
- * Mirrors the boolean shape that upstream's `submitCapture` expects in
- * its `captureFormats` body field. All six flags are required by the
- * 1.6.0 spec (`additionalProperties: false`); each defaults to `false`
- * and the server requires at least one of them to be `true`.
+ * 上流の `submitCapture` が `captureFormats` に期待する boolean の形をそのまま
+ * 写している。6 つとも必須で (1.6.0 の spec が `additionalProperties: false`)、
+ * どれも既定は `false`。少なくとも 1 つが `true` でなければ server が受け付けない。
  */
 export interface CaptureFormats {
   png: boolean;
@@ -16,35 +15,34 @@ export interface CaptureFormats {
 }
 
 /**
- * Everything about *how* a run captures, as opposed to *what* it captures
- * (the URLs, which come from the `urls` table).
+ * 1 回の実行が **どう** 撮るか。**何を** 撮るか (URL。`urls` テーブルから来る) の
+ * 反対側。
  *
- * These are per-run knobs rather than per-URL ones, matching how
- * `dismissBanners` and `acceptLanguage` already worked: the CLI states the
- * intent once and every entry in the run inherits it. Should a single run ever
- * need to vary them per URL, the setting belongs in the `urls` table instead.
+ * URL ごとではなく実行ごとの設定で、これは `dismissBanners` と `acceptLanguage` が
+ * 元からそうだったのに合わせている: CLI が意図を 1 度述べ、その実行の全エントリが
+ * それを継ぐ。1 回の実行の中で URL ごとに変えたくなったら、その設定は `urls`
+ * テーブルのほうに属する。
  *
- * Every optional field here has a server-side default, so an unset field must
- * be **omitted from the request body**, not sent as `undefined` — that is what
- * lets `--device-pixel-ratios` and friends stay opt-in without waggle having to
- * know what BrowserHive's current defaults are.
+ * ここの optional な field はどれも server 側に既定値があるので、設定しない field は
+ * **リクエストの body から省く**。`undefined` として送るのではない —— それが、
+ * BrowserHive の今の既定値を waggle が知らないままで `--device-pixel-ratios` の
+ * ような旗を opt-in に保つ仕掛けになっている。
  */
 export interface CaptureSettings {
   captureFormats: CaptureFormats;
   dismissBanners: boolean;
   acceptLanguage?: string;
   /**
-   * Device pixel ratios to load at, in load order. Each entry is 1–3 and no
-   * value may repeat; the server rejects anything else with INVALID_ARGUMENT.
+   * 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で、同じ値を
+   * 2 度置くことはできない。それ以外は server が INVALID_ARGUMENT で拒む。
    *
-   * The length is the number of loads, so capture time and WARC size grow with
-   * it. Order matters: PNG/WebP are taken once after every load finishes, so
-   * they come out at the **last** entry's ratio — `[2, 1]` leaves the images 1x.
+   * 要素数がそのまま読み込みの回数になるので、所要時間も WARC のバイト数も要素数に
+   * 比例して増える。順序に意味がある: PNG / WebP は読み込みが全部終わってから 1 度
+   * だけ撮るので、**最後の要素**の倍率で出る —— `[2, 1]` と書けば画像は 1x で残る。
    *
-   * Replaced `deviceScaleFactor` and `archiveMode`, which BrowserHive removed
-   * in v3.6.0 (`reserved 13, 14` in the proto — the field numbers must never be
-   * reused because an old client's `archive_mode = MULTIPASS` would decode as
-   * `device_pixel_ratios = [2]`).
+   * `deviceScaleFactor` と `archiveMode` を置き換えたもの。BrowserHive が v3.6.0 で
+   * 削除した (proto の `reserved 13, 14`。番号を再利用してはならない —— 旧 client の
+   * `archive_mode = MULTIPASS` が `device_pixel_ratios = [2]` として読まれるため)。
    */
   devicePixelRatios?: number[];
   operationDelayMs?: number;

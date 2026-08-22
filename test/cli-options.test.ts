@@ -157,8 +157,9 @@ describe("getCaptureSettings", () => {
     });
   });
 
-  // Absent keys, not undefined values: the request body is built by spreading
-  // this object, and every one of these has a server-side default.
+  // 値が undefined なのではなく、鍵が無いこと: リクエストの body はこの
+  // オブジェクトを展開して組むもので、ここに挙げたものはどれも server 側に
+  // 既定値を持つ。
   it("leaves out every knob the caller did not pass", () => {
     const settings = getCaptureSettings(
       parseClientOptions(argv("--database-url", FAKE_DB_URL, "--png")),

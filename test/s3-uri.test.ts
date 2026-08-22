@@ -9,8 +9,8 @@ describe("parseS3Uri", () => {
     });
   });
 
-  // BrowserHive's `--s3-key-prefix` puts slashes inside the key, so only the
-  // first separator delimits the bucket.
+  // BrowserHive の `--s3-key-prefix` は鍵の中に `/` を入れるので、bucket を
+  // 区切るのは最初の 1 つだけ。
   it("keeps slashes that belong to the key", () => {
     expect(parseS3Uri("s3://browserhive/2026/07/29/task.wacz")).toEqual({
       bucket: "browserhive",
@@ -22,8 +22,8 @@ describe("parseS3Uri", () => {
     expect(() => parseS3Uri("https://example.com/a.wacz")).toThrow(/not an s3:\/\/ URI/);
   });
 
-  // A local artifact store returns an absolute path, not a URI. Failing loudly
-  // beats deriving a bucket named "" from it.
+  // ローカルの成果物ストアは URI ではなく絶対パスを返す。そこから "" という名前の
+  // bucket を導くより、大きな音を立てて失敗するほうがよい。
   it("rejects an absolute filesystem path", () => {
     expect(() => parseS3Uri("/var/artifacts/a.wacz")).toThrow(/not an s3:\/\/ URI/);
   });

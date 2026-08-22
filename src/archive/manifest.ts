@@ -1,17 +1,15 @@
 /**
- * Reading BrowserHive's `.result.json` manifests.
+ * BrowserHive の `.result.json` manifest を読む。
  *
- * The manifest is the durable copy of a capture result, written to the bucket
- * next to the artifacts. Since BrowserHive v3 it is **protobuf JSON**: the
- * server serialises the same `CaptureResultReport` message it answers
- * `GetCapture` with, through the generated `toJSON`.
+ * manifest は取り込み結果の永続化された複製で、成果物の隣に書かれる。BrowserHive
+ * v3 以降これは **protobuf JSON**: server は `GetCapture` に答えるのと同じ
+ * `CaptureResultReport` メッセージを、生成された `toJSON` を通して直列化している。
  *
- * That means enums are spelled as their protobuf names — `status` reads
- * `"CAPTURE_STATUS_SUCCESS"`, not `"success"` — and it is why nothing here
- * hand-parses the object. `fromJSON` is the generated inverse of the writer,
- * so the decoded report is identical in shape to one that came back over the
- * wire, and callers can compare against the `CaptureStatus` enum without
- * caring which of the two paths the report arrived by.
+ * つまり enum は protobuf の名前で綴られる —— `status` は `"success"` ではなく
+ * `"CAPTURE_STATUS_SUCCESS"` —— し、ここで誰も手でオブジェクトを解析していないのは
+ * そのため。`fromJSON` は書き手の生成された逆関数なので、復号した report は wire から
+ * 戻ってきたものと形が同一になり、呼ぶ側は 2 つの経路のどちらで届いたかを気にせず
+ * `CaptureStatus` の enum と比べられる。
  */
 import { CaptureResultReport } from "../rpc/generated/browserhive/v1/capture.js";
 

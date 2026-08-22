@@ -9,8 +9,8 @@ import {
 import type { CaptureFormats, CaptureSettings } from "../src/types/capture.js";
 
 /**
- * The stub is mocked at the client, not at `calls.ts`, so the promise wrapper
- * and its callback plumbing are under test too.
+ * stub を差し込むのは `calls.ts` ではなく client の側。こうすると Promise の
+ * ラッパと callback の配線までテストの対象に入る。
  */
 type Callback = (error: unknown, response?: SubmitCaptureResponse) => void;
 const submitCapture = vi.fn<(request: SubmitCaptureRequest, callback: Callback) => void>();
@@ -41,7 +41,7 @@ const accepts = (taskId: string): void => {
   });
 };
 
-/** What grpc-js hands a callback: an Error whose `message` carries the status. */
+/** grpc-js が callback に渡すもの: `message` が status を運ぶ Error。 */
 const rejects = (code: status, name: string, details: string): void => {
   submitCapture.mockImplementationOnce((_request, callback) => {
     callback(Object.assign(new Error(`${String(code)} ${name}: ${details}`), { code, details }));
@@ -74,8 +74,8 @@ describe("submitRequest", () => {
     expect(result.correlationId).toMatch(/^[a-f0-9]{8}$/);
   });
 
-  // `message` would read "3 INVALID_ARGUMENT: url is empty". The status is
-  // already logged next to this, so the bare detail is what belongs here.
+  // `message` なら "3 INVALID_ARGUMENT: url is empty" になる。status は隣で既に
+  // ログに出ているので、ここに置くべきなのは素の detail のほう。
   it("prefers ServiceError.details over the status-prefixed message", async () => {
     rejects(status.INVALID_ARGUMENT, "INVALID_ARGUMENT", "url is empty");
 
@@ -89,8 +89,8 @@ describe("submitRequest", () => {
     expect(result.taskId).toBe("");
   });
 
-  // grpc-js leaves `details` empty for failures it raises itself rather than
-  // ones the server described, so the message has to still come through.
+  // server が述べた失敗ではなく grpc-js 自身が起こした失敗では `details` が空に
+  // なるので、message のほうは依然として通らなければならない。
   it("falls back to the message when details is empty", async () => {
     submitCapture.mockImplementationOnce((_request, callback) => {
       callback(
@@ -173,8 +173,8 @@ describe("submitRequest", () => {
     });
   });
 
-  // The server owns the defaults for all four, so an unset knob must not
-  // reach the wire as a value the server would obey.
+  // 4 つとも既定値を持っているのは server なので、設定していない調整が、server が
+  // 従ってしまう値として wire に出てはならない。
   it("omits every optional knob the caller did not set", async () => {
     accepts("task-5");
 
@@ -184,11 +184,10 @@ describe("submitRequest", () => {
     for (const key of ["operationDelayMs", "behaviors"]) {
       expect(request).not.toHaveProperty(key);
     }
-    // `cache` and `devicePixelRatios` are the exception, and not by choice:
-    // a proto3 enum field cannot be absent, and neither can a repeated one.
-    // UNSPECIFIED (0) and `[]` are how "the caller did not say" is spelled,
-    // and BrowserHive maps both back to its own defaults — so this asserts the
-    // value rather than the absence.
+    // `cache` と `devicePixelRatios` は例外で、選んだ結果ではない: proto3 の
+    // enum field は不在になれず、repeated も同じ。UNSPECIFIED (0) と `[]` が
+    // 「呼ぶ側は何も言わなかった」の綴りで、BrowserHive はどちらも自分の既定値に
+    // 戻す —— なのでここは不在ではなく値のほうを主張している。
     expect(request.cache).toBe(CacheMode.CACHE_MODE_UNSPECIFIED);
     expect(request.devicePixelRatios).toEqual([]);
   });

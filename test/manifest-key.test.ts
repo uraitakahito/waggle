@@ -2,14 +2,13 @@ import { describe, it, expect } from "vitest";
 import { manifestKey } from "../src/archive/watch.js";
 
 /**
- * Mirrors BrowserHive's `generateFilename` (src/capture/page-capturer.ts):
- * parts joined by `_`, labels joined by `-`, in the order
- * taskId, correlationId, labels.
+ * BrowserHive の `generateFilename` (src/capture/page-capturer.ts) を写したもの:
+ * 部分を `_` で繋ぎ、label は `-` で繋ぐ。順は taskId、correlationId、labels。
  *
- * This is the one key waggle reconstructs instead of reading it from a
- * server response, so it is worth pinning. Getting it wrong only costs the
- * eviction fallback — the reconciler finds manifests by listing — but a wrong
- * key would make that fallback silently useless.
+ * waggle が server の応答から読むのではなく自分で組み立てる唯一の鍵なので、
+ * 固定しておく価値がある。間違えても失うのは押し出されたときの代替経路だけ ——
+ * reconciler のほうは listing で manifest を見つける —— だが、鍵が違えばその
+ * 代替経路が黙って役に立たなくなる。
  */
 describe("manifestKey", () => {
   const TASK = "550e8400-e29b-41d4-a716-446655440000";

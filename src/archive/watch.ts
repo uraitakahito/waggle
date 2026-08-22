@@ -1,23 +1,22 @@
 /**
- * Wait for a submitted capture to finish, and report what became of it.
+ * 投げた取り込みが終わるのを待ち、それがどうなったかを報告する。
  *
- * `SubmitCapture` is fire-and-forget, so the outcome has to be collected
- * afterwards. `GetCapture` answers per task:
+ * `SubmitCapture` は投げっぱなしなので、結果は後から集めるほかない。`GetCapture` は
+ * タスクごとにこう答える:
  *
- *   PENDING / PROCESSING — still queued or in flight, retries included
- *   DONE                 — finished; `report.status` says whether artifacts exist
- *   NOT_FOUND (error)    — unknown, **or** evicted from the bounded result cache
+ *   PENDING / PROCESSING —— まだ queue の中か実行中。再試行も含む
+ *   DONE                 —— 終わった。成果物が在るかは `report.status` が言う
+ *   NOT_FOUND (エラー)    —— 知らない、**または** 有界の結果キャッシュから溢れた
  *
- * The NOT_FOUND is why this is not a two-line loop. A result ages out after
- * `--result-cache-size` newer ones (default 1000) and does not survive a
- * BrowserHive restart, so a long wait can end with the answer gone. The same
- * body is durable in the bucket as `.result.json`, so that is where this falls
- * back to — and if even that is missing, the manifest reconciler will pick the
- * task up later from a listing. Nothing is silently dropped.
+ * この NOT_FOUND が、これを 2 行のループにできない理由。結果は新しいものが
+ * `--result-cache-size` 件 (既定 1000) 積まれると押し出され、BrowserHive の再起動も
+ * 越えない。長く待つと、答えのほうが消えていることがある。同じ本文は bucket に
+ * `.result.json` として永続化されているので、そこへ落ちる —— それすら無ければ、
+ * manifest の reconciler が後から listing で拾う。黙って捨てられるものは無い。
  *
- * Anything that is not NOT_FOUND — an unreachable server, a broken channel —
- * propagates. Those are not "this capture is missing", and swallowing them
- * here would turn an outage into a run that quietly archives nothing.
+ * NOT_FOUND 以外 —— 届かない server、壊れた channel —— はそのまま伝播させる。
+ * それらは「この取り込みが見つからない」ではないし、ここで飲み込むと、障害が
+ * 「静かに何もアーカイブしない実行」に化ける。
  */
 import { status } from "@grpc/grpc-js";
 import { getCapture, isStatus } from "../rpc/calls.js";
@@ -33,7 +32,7 @@ export interface WatchOptions {
   s3: S3Client;
   bucket: string;
   pollIntervalMs?: number;
-  /** Give up after this long. A capture that never finishes must not hang a run. */
+  /** これだけ経ったら諦める。終わらない取り込みが実行全体を止めてはならない。 */
   timeoutMs?: number;
 }
 
@@ -43,12 +42,12 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1_000;
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The manifest sits next to the artifacts under BrowserHive's filename rule:
- * `{taskId}[_{correlationId}][_{labels}].result.json`, labels joined by `-`.
+ * manifest は成果物の隣に、BrowserHive のファイル名規則で置かれる:
+ * `{taskId}[_{correlationId}][_{labels}].result.json`。label は `-` で繋ぐ。
  *
- * This is the one place waggle reconstructs a key rather than reading one the
- * server handed it. Getting it wrong is not fatal — it only costs this
- * fallback, and the reconciler finds the object by listing instead.
+ * waggle が、server から渡された鍵を読むのではなく自分で組み立てる唯一の場所。
+ * 間違えても致命的ではない —— 失うのはこの代替経路だけで、reconciler のほうは
+ * listing でオブジェクトを見つける。
  */
 export const manifestKey = (
   taskId: string,
@@ -93,14 +92,14 @@ export const waitForCapture = async (
       ({ state, report } = await getCapture({ taskId }));
     } catch (caught) {
       if (!isStatus(caught, status.NOT_FOUND)) throw caught;
-      // Unknown task, or the result was evicted. Both look identical from
-      // here, so ask the durable copy.
+      // 知らないタスクか、結果が押し出されたか。ここからは見分けが付かないので、
+      // 永続化された複製に訊く。
       return readManifestFallback(taskId, correlationId, labels, options);
     }
 
-    // DONE without a report would mean the server contradicted itself. Treat
-    // it as the same missing answer rather than returning an empty report
-    // that later reads as a failed capture.
+    // report の無い DONE は、server が自分と矛盾したということ。空の report を
+    // 返すと後から「失敗した取り込み」として読まれるので、同じ「答えが無い」
+    // 扱いにする。
     if (state === CaptureState.CAPTURE_STATE_DONE) {
       if (report !== undefined) return report;
       log.warn({ taskId }, "capture reported DONE with no report; falling back to the manifest");

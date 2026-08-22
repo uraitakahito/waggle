@@ -3,10 +3,9 @@ import { readManifest } from "../src/archive/manifest.js";
 import { CaptureStatus } from "../src/rpc/generated/browserhive/v1/capture.js";
 
 /**
- * A `.result.json` exactly as BrowserHive v3 writes it: protobuf JSON, so the
- * enum is spelled with its full protobuf name. Hand-written rather than
- * produced by `toJSON`, which would only prove the generated pair agrees with
- * itself.
+ * BrowserHive v3 が書くとおりの `.result.json`: protobuf JSON なので、enum は
+ * protobuf の完全な名前で綴られる。`toJSON` で作らず手で書いている —— 生成された
+ * 対が自分自身と一致することしか証明しないので。
  */
 const v3Manifest = {
   taskId: "01J8Z0",
@@ -34,11 +33,11 @@ describe("readManifest", () => {
   });
 
   /**
-   * Manifests written before v3 spelled the status `"success"`. They decode to
-   * UNRECOGNIZED, not to SUCCESS — so the reconciler skips them and says so,
-   * rather than registering an archive on a value it did not understand.
-   * Objects left in a bucket by a v2 server therefore stay unregistered; that
-   * is the intended cost of the transport change, not an oversight.
+   * v3 より前に書かれた manifest は status を `"success"` と綴っていた。それらは
+   * SUCCESS ではなく UNRECOGNIZED に復号される —— なので reconciler は、理解できて
+   * いない値の上にアーカイブを登録するのではなく、飛ばしてそう言う。v2 の server が
+   * bucket に残したオブジェクトは登録されないままになる。それは転送方式を変えた
+   * ことの意図した代償であって、見落としではない。
    */
   it("does not mistake a pre-v3 status string for success", () => {
     const report = readManifest({ ...v3Manifest, status: "success" });

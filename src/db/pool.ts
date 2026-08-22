@@ -1,10 +1,9 @@
 /**
- * Postgres pool factory.
+ * Postgres の pool を作る。
  *
- * One pool per process. Pool errors (idle-client failures, network blips
- * that break a checked-out connection) are surfaced through the logger
- * rather than crashing the process — pg's pool re-establishes the
- * connection on the next checkout.
+ * pool はプロセスに 1 つ。pool のエラー (待機中の client の失敗、貸し出し中の接続を
+ * 切るネットワークの瞬断) は、プロセスを落とさず logger に出す —— pg の pool は
+ * 次の貸し出しで接続を張り直す。
  */
 import { Pool } from "pg";
 import { logger } from "../logger.js";
@@ -18,9 +17,8 @@ export const createPool = (databaseUrl: string): Pool => {
 };
 
 /**
- * Strip the password component from a Postgres connection URL so it can
- * be safely logged. Returns the original string unchanged when it does
- * not parse as a URL (host:port style strings, etc.).
+ * Postgres の接続 URL からパスワードを落とし、安全にログへ出せるようにする。
+ * URL として解析できない文字列 (host:port 形式など) は、そのまま返す。
  */
 export const redactDatabaseUrl = (url: string): string => {
   try {

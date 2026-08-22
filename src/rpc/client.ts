@@ -1,42 +1,42 @@
 /**
- * The BrowserHive gRPC client.
+ * BrowserHive の gRPC client。
  *
- * One channel per process, created by `configureClient` and torn down by
- * `closeClient`. The channel is a real resource — an open HTTP/2 connection
- * with its own keepalive timers — which is the main way this differs from the
- * `fetch`-based client it replaces: **a run that forgets to close it does not
- * exit.** `runClient` closes it in a `finally`.
+ * channel はプロセスに 1 本で、`configureClient` が作り `closeClient` が畳む。
+ * channel は本物のリソース —— keepalive のタイマーを持つ開いた HTTP/2 接続 ——
+ * で、そこが置き換えた `fetch` ベースの client との主な違いになる:
+ * **閉じ忘れた実行はプロセスが終わらない。** `runClient` は `finally` で閉じている。
  *
- * The other difference worth knowing is that `--tls-ca-cert` now does
- * something. Under `fetch` the flag was informational and the trust anchor had
- * to be handed to Node out-of-band through `NODE_EXTRA_CA_CERTS`; grpc-js
- * takes the CA in the credentials, so the flag is the whole story.
+ * もう 1 つ知っておく価値のある違いは、`--tls-ca-cert` が実際に働くようになった
+ * こと。`fetch` の時代この旗は案内でしかなく、信頼の起点は `NODE_EXTRA_CA_CERTS` を
+ * 通して Node へ別経路で渡す必要があった。grpc-js は CA を credentials で受け取る
+ * ので、旗がすべてになる。
  */
 import { readFileSync } from "node:fs";
 import { credentials, type ChannelCredentials } from "@grpc/grpc-js";
 import { CaptureServiceClient } from "./generated/browserhive/v1/capture.js";
 
 /**
- * Where BrowserHive listens when nothing says otherwise. The OpenAPI SDK used
- * to bake this in from `servers[0].url`, so omitting `--server` still reached a
- * default; a `.proto` carries no address, so the default lives here now.
+ * 何も言われないときに BrowserHive が待ち受けている場所。OpenAPI の SDK はこれを
+ * `servers[0].url` から焼き込んでいたので、`--server` を省いても既定値に届いていた。
+ * `.proto` は宛先を運ばないので、その既定値はいまここに在る。
  */
 export const DEFAULT_TARGET = "localhost:50051";
 
 let client: CaptureServiceClient | undefined;
 
 /**
- * gRPC targets are `host:port`, not URLs. Callers who still type a scheme —
- * out of habit, or from a config written for the HTTP transport — get it
- * stripped rather than a connection to a host literally named `http`.
+ * gRPC の宛先は URL ではなく `host:port`。それでも scheme を書く呼び出し ——
+ * 癖で、あるいは HTTP 転送の時代に書かれた設定から —— に対しては、`http` という
+ * 名前の host へ繋ぎに行くのではなく、scheme を落とす。
  */
 const toTarget = (server: string | undefined): string =>
   (server ?? DEFAULT_TARGET).replace(/^[a-z]+:\/\//, "").replace(/\/+$/, "");
 
 /**
- * TLS is on when a CA is named. There is no way to ask for TLS-with-system-
- * roots, because BrowserHive's TLS mode is meant for a private CA — a public
- * certificate would mean the server is on the open internet, which it is not.
+ * CA が名指しされているときに TLS が有効になる。「システムの root で TLS」を
+ * 求める手段は用意していない —— BrowserHive の TLS は私設 CA を想定したもので、
+ * 公開の証明書が要るということは server が公開インターネット上に在るという意味に
+ * なるが、そうではないため。
  */
 const buildCredentials = (tlsCaCert: string | undefined): ChannelCredentials =>
   tlsCaCert === undefined
@@ -49,12 +49,11 @@ export const configureClient = (server: string | undefined, tlsCaCert?: string):
 };
 
 /**
- * The configured client, for the call wrappers in this directory.
+ * 設定済みの client。このディレクトリの呼び出しラッパのためのもの。
  *
- * Throwing on an unconfigured client is deliberate: the alternative is to
- * lazily build one against the default target, which turns "the caller forgot
- * to pass `--server`" into a connection refused against localhost several
- * seconds later.
+ * 設定されていないときに throw するのは意図的: もう一方の道は既定の宛先に対して
+ * 遅延生成することだが、それをすると「呼ぶ側が `--server` を渡し忘れた」が、
+ * 数秒後の localhost への connection refused に化ける。
  */
 export const getClient = (): CaptureServiceClient => {
   if (client === undefined) {
