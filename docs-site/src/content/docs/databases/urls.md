@@ -10,24 +10,6 @@ which URLs get captured — lives here.
 
 ```
 
-## How it is read
-
-One query per run. That is the only read path.
-
-```sql
-SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1
-```
-
-- **`WHERE enabled`** — `false` rows are never submitted; this is how a URL is
-  taken out of rotation without losing the row
-- **`ORDER BY id ASC`** — insertion order, fixed. `--limit 1` always picks the
-  oldest row
-- **`LIMIT $1`** — the only place `--limit` lands. **Nothing narrows down _which_
-  URL**
-
-The CLI has no way to pass a URL. Positional arguments and `--url` are both
-rejected by the parser. Changing what gets captured means an `INSERT` here.
-
 ## Column notes
 
 | Column                      | Note                                                                                                        |
