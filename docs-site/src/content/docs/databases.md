@@ -21,117 +21,43 @@ inside waggle's application transaction. **It cannot** — OpenFGA is written
 through its HTTP API, never through SQL, so no transaction spans both.
 
 Keeping them apart removes the room for that assumption. And it is precisely
-what makes [`fga_outbox`](#fga_outbox) necessary.
+what makes [`fga_outbox`](/waggle/databases/fga-outbox/) necessary.
 
-## waggle's database
+## The tables
 
-### urls
+### waggle's database
 
-The list of what to capture — the answer to the one question waggle asks.
+| Table                                                           | Role                                                 |
+| --------------------------------------------------------------- | ---------------------------------------------------- |
+| [`urls`](/waggle/databases/urls/)                               | What to capture                                      |
+| [`capture_submissions`](/waggle/databases/capture-submissions/) | What was submitted; the only source of organizations |
+| [`archives`](/waggle/databases/archives/)                       | The ledger — captures that produced an archive       |
+| [`fga_outbox`](/waggle/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                      |
+| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`       | Kysely's own bookkeeping (below)                     |
 
-The columns are described in [URL source](/waggle/url-source/).
+### OpenFGA's database
 
-### capture_submissions
+| Table                               | Role                                               |
+| ----------------------------------- | -------------------------------------------------- |
+| [`tuple`](/waggle/databases/tuple/) | The relationships themselves                       |
+| `authorization_model`               | The model — one row per version, immutable (below) |
+| `changelog`                         | History of writes (below)                          |
+| `store`                             | Namespaces; deletion is soft (below)               |
+| `assertion`                         | Unused (below)                                     |
+| `goose_db_version`                  | OpenFGA's own schema migrations (below)            |
 
-```ts file="src/db/migrations/004-create-capture-submissions.ts#capture-submissions-columns"
+## Tables without a page of their own
 
-```
-
-**This records who a capture was submitted for, at the moment it is submitted.**
-BrowserHive has no notion of an organization, so when the ledger is later filled
-from a `.result.json` in the bucket, that manifest carries nothing identifying
-one. This table is the only source.
-
-### archives
-
-```ts file="src/db/migrations/002-create-archives.ts#archives-columns"
-
-```
-
-**The ledger: one row per capture that produced an archive.** A failed capture
-uploaded nothing, so recording it would have the signing endpoint hand out URLs
-for objects that do not exist.
-
-`(bucket, object_key)` is UNIQUE, so the poller and the reconciler both reaching
-the same capture is a no-op rather than a duplicate.
-
-:::note[The absence of an owner column is deliberate]
-There is no `owner_id` and no `org_id`. **Who may read an archive is a
-relationship, and OpenFGA holds it.** Two places answering the same question
-will eventually disagree.
-:::
-
-The number of submissions and the number of ledger rows do not match. That is
-not a fault: **only captures that produced an archive enter the ledger.**
-
-### fga_outbox
-
-```ts file="src/db/migrations/003-create-fga-outbox.ts#fga-outbox-columns"
-
-```
-
-**A box for tuples waiting to be sent to OpenFGA.** Despite the name it is
-waggle's table, and `payload` holds JSON like this:
-
-```json
-{
-  "writes": [
-    { "user": "capture_job:7f170ae4-…", "object": "archive:3a4cb75c-…", "relation": "parent" },
-    { "user": "organization:acme", "object": "capture_job:7f170ae4-…", "relation": "parent" }
-  ]
-}
-```
-
-It is written in the same transaction as the archive row, so **either both land
-or neither does**. Delivery is done by `waggle-ledger drain` or the API's timer,
-retrying until OpenFGA accepts. See [Archive ledger](/waggle/archive-ledger/).
+These are **created by tooling and used by tooling**; waggle rarely has to think
+about them.
 
 ### The four tables Kysely creates
 
 `kysely_migration` / `kysely_migration_lock` / `kysely_seed` / `kysely_seed_lock`.
 
-**Nobody designed these; Kysely creates and updates them.** The content is two
-columns — which migration ran, and when — and the `_lock` tables hold a single
-row each. The same runner is reused for migrations and seeds with nothing but
-the table names changed.
-
-## OpenFGA's database
-
-**Read it if you like, but do not write to it.** A direct `INSERT` or `UPDATE`
-will disagree with OpenFGA's cache and its `changelog`. Changes go through the
-HTTP API.
-
-```sh
-# Reaching it takes container exec, since no port is published
-container exec openfga-db.waggle psql -U openfga -d openfga -c "\dt"
-```
-
-### tuple
-
-**The relationships themselves.** Almost everything OpenFGA stores is this one
-table.
-
-| Column                                 | Role                                |
-| -------------------------------------- | ----------------------------------- |
-| `store`                                | every row is partitioned by store   |
-| `object_type` / `object_id`            | "on what", split across two columns |
-| `relation`                             | in what relationship                |
-| `_user`                                | "who" — not necessarily a person    |
-| `user_type`                            | `user` vs `userset`                 |
-| `condition_name` / `condition_context` | there only for conditioned tuples   |
-
-The underscore in `_user` is because `user` is reserved in SQL. Real rows contain
-things like `capture_job:…` and `organization:acme`, which is what "not
-necessarily a person" means.
-
-**There are indexes in two directions.**
-
-- the primary key `(store, object_type, object_id, relation, _user)` — "who is
-  attached to this object", which Check uses
-- `idx_user_lookup (store, _user, relation, object_type, object_id)` — "what
-  objects is this user attached to", used by ListObjects
-
-The same data has to be read from both directions, so it needs both indexes.
+The content is two columns — which migration ran, and when — and the `_lock`
+tables hold a single row each. The same runner is reused for migrations and seeds
+with nothing but the table names changed.
 
 ### authorization_model
 
@@ -183,3 +109,6 @@ container exec postgres.waggle psql -U waggle -d waggle -c "\dt"
 # OpenFGA's — no published port, so container exec
 container exec openfga-db.waggle psql -U openfga -d openfga -c "\d tuple"
 ```
+
+**Read OpenFGA's database if you like, but do not write to it.** A direct
+`INSERT` or `UPDATE` will disagree with its cache and its `changelog`.
