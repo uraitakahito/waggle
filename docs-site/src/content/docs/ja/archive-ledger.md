@@ -120,6 +120,27 @@ curl -X POST http://localhost:7070/api/archives/<id>/url \
 ポートに到達できる人は誰にでもなりすませます。明示的に有効化しない限り
 動かず、起動時に警告を出します。
 
+CLI も同じ形の身元を持ちますが、経路が違います。ヘッダの来ない場所なので、
+`WAGGLE_DEV_SUBJECT` と `WAGGLE_DEV_ORGANIZATIONS` の 2 つの環境変数を読みます
+（`setup.sh` が `.env` に書きます）:
+
+```sh
+WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run dev --wacz
+```
+
+こちらも**検証は一切しません**。`.env` を書き換えれば誰にでもなりすませます。
+それでも置いてあるのは、これが `capture_submissions.submitted_by` と
+`capture_job` の `owner` tuple になるからで、空のままだと**投げた本人ですら
+アーカイブを削除できません**（`can_delete` は `owner from parent` だけを見ます）。
+
+API 側の `WAGGLE_DEV_IDENTITY=1` に相当するスイッチは CLI にはありません。
+未設定なら起動時に落ちます。API はネットワークに口を開けるので既定を
+「拒否」にしていますが、CLI は手元の道具なので、危ないのは逆側 ——
+黙って空のまま通されて、記録が嘘になることです。
+
+どちらの経路も `src/config/identity.ts` の 1 つの関数に行き着きます。IdP が
+決まったとき差し替えるのはそこだけで、呼ぶ側は `Identity` 型しか見ていません。
+
 所属は OpenFGA に**保存していません**。リクエストごとに呼び出し元の身元から
 contextual tuple として渡すので、入退社や組織変更を認可ストアへ同期する
 必要がそもそも生じません。代償は**剥奪がトークンの失効待ちになる**ことで、

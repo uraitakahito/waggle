@@ -10,7 +10,11 @@
  * よりはるかに悪い。
  */
 
-const required = (name: string): string => {
+/**
+ * `identity.ts` も同じ方針 (既定値に落とさず throw) を使うので export している。
+ * この 2 つは env.ts の外へ広く配るためのものではない。
+ */
+export const required = (name: string): string => {
   const value = process.env[name];
   if (value === undefined || value === "") {
     throw new Error(`${name} is not set`);
@@ -18,7 +22,7 @@ const required = (name: string): string => {
   return value;
 };
 
-const optional = (name: string, fallback: string): string => {
+export const optional = (name: string, fallback: string): string => {
   const value = process.env[name];
   return value === undefined || value === "" ? fallback : value;
 };

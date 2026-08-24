@@ -127,6 +127,29 @@ curl -X POST http://localhost:7070/api/archives/<id>/url \
 Anyone who can reach the port can claim to be anyone. It refuses to run unless
 switched on explicitly, and the server warns loudly at startup.
 
+The CLI carries the same identity by a different route. There are no headers to
+read there, so it takes two environment variables, `WAGGLE_DEV_SUBJECT` and
+`WAGGLE_DEV_ORGANIZATIONS` (written into `.env` by `setup.sh`):
+
+```sh
+WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run dev --wacz
+```
+
+Nothing is verified here either — editing `.env` is enough to become anyone. It
+is there because this is what becomes `capture_submissions.submitted_by` and the
+`owner` tuple on the `capture_job`, and while those are empty **not even the
+person who asked for the archive can delete it** (`can_delete` reads
+`owner from parent` and nothing else).
+
+There is no CLI equivalent of the API's `WAGGLE_DEV_IDENTITY=1` switch: the CLI
+refuses to start when the variables are unset. The API opens a port, so its
+default is to deny; the CLI is a tool you run yourself, and there the dangerous
+default is the other one — passing silently with an empty subject and writing a
+record that lies.
+
+Both routes end at one function in `src/config/identity.ts`. That is the only
+thing an identity provider replaces; callers see nothing but the `Identity` type.
+
 Membership is **not** stored in OpenFGA. It is passed per request as a
 contextual tuple built from the caller's identity, so joining or leaving an
 organization never has to be synchronised into the authorization store. The

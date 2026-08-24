@@ -1,6 +1,7 @@
 import type { Kysely } from "kysely";
 import { getCaptureSettings, logClientConfig, type ClientOptions } from "../config/cli-options.js";
 import { storageConfig } from "../config/env.js";
+import { devIdentity, type Identity } from "../config/identity.js";
 import { loadUrls, type DataEntry } from "../data/url-source.js";
 import { createPool } from "../db/pool.js";
 import { createKyselyClient } from "../db/kysely.js";
@@ -79,7 +80,11 @@ const logSummary = (results: SubmitResult[], totalDuration: number): void => {
  * 組織という概念は無く、後から manifest から復元した結果は組織を特定するものを
  * 何も運ばない —— この行が無いと、reconciler はアーカイブの帰属を言えない。
  */
-const recordSubmissions = async (db: Kysely<Database>, results: SubmitResult[]): Promise<void> => {
+const recordSubmissions = async (
+  db: Kysely<Database>,
+  results: SubmitResult[],
+  identity: Identity,
+): Promise<void> => {
   const accepted = results.filter((r) => r.accepted);
   if (accepted.length === 0) return;
 
@@ -90,7 +95,7 @@ const recordSubmissions = async (db: Kysely<Database>, results: SubmitResult[]):
         taskId: r.taskId,
         correlationId: r.correlationId,
         orgId: r.orgId,
-        submittedBy: null,
+        submittedBy: identity.subject,
         sourceUrl: r.sourceUrl,
       })),
     )
@@ -112,6 +117,7 @@ const collectResults = async (
   db: Kysely<Database>,
   results: SubmitResult[],
   options: ClientOptions,
+  identity: Identity,
 ): Promise<void> => {
   const storage = storageConfig();
   const s3 = createS3Client(storage);
@@ -125,7 +131,7 @@ const collectResults = async (
         ...(options.captureTimeoutMs !== undefined && { timeoutMs: options.captureTimeoutMs }),
       });
       if (!report) continue;
-      await registerArchive(db, report, result.orgId);
+      await registerArchive(db, report, result.orgId, identity.subject);
     } catch (caught) {
       logger.warn(
         { err: caught, taskId: result.taskId },
@@ -141,6 +147,9 @@ const collectResults = async (
  */
 export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
+
+  // 実行の主体。ここが唯一の入口で、以降は identity を持ち回る。
+  const identity = devIdentity();
 
   logClientConfig(options);
   configureClient(options.server, options.tlsCaCert);
@@ -165,13 +174,29 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
       return;
     }
 
+    // 自分が属さない組織の URL は投げない。
+    //
+    // **いまは仮の検査**。identity は環境変数から来るので、書いた人が何とでも
+    // 名乗れる。それでも置いてあるのは、本物の認証が入った瞬間にこの行が効き
+    // 始めるから —— 後日「検査を足す場所」を探さずに済む。
+    const foreign = [
+      ...new Set(
+        entries.filter((e) => !identity.organizations.includes(e.orgId)).map((e) => e.orgId),
+      ),
+    ];
+    if (foreign.length > 0) {
+      throw new Error(
+        `${identity.subject} is not a member of: ${foreign.join(", ")} (set WAGGLE_DEV_ORGANIZATIONS)`,
+      );
+    }
+
     const results = await submitAll(entries, getCaptureSettings(options));
 
     const db = createKyselyClient(options.databaseUrl);
     try {
-      await recordSubmissions(db, results);
+      await recordSubmissions(db, results, identity);
       if (options.collect !== false) {
-        await collectResults(db, results, options);
+        await collectResults(db, results, options, identity);
       }
     } finally {
       await db.destroy();

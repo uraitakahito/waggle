@@ -77,7 +77,7 @@ export const reconcile = async (
     // 空けておくより悪い。
     const submission = await db
       .selectFrom("captureSubmissions")
-      .select("orgId")
+      .select(["orgId", "submittedBy"])
       .where("taskId", "=", taskId)
       .executeTakeFirst();
     if (!submission) {
@@ -98,7 +98,15 @@ export const reconcile = async (
     }
 
     // 冪等: polling 側との競合は unique index が吸収する。
-    const registered = await registerArchive(db, readManifest(raw), submission.orgId);
+    // identity はここでは作らない。reconcile は掃除役で、いま動かしている人と
+    // 取り込みを頼んだ人は別 —— 投げた時点の記録から読む。`org_id` が既に
+    // 取っているのと同じ形。
+    const registered = await registerArchive(
+      db,
+      readManifest(raw),
+      submission.orgId,
+      submission.submittedBy,
+    );
     if (registered.archiveId !== undefined) result.registered += 1;
     else result.skipped += 1;
   }
