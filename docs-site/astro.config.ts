@@ -62,6 +62,7 @@ export default defineConfig({
           translations: { ja: "開発者向け" },
           items: [
             { label: "Architecture", translations: { ja: "アーキテクチャ" }, slug: "architecture" },
+            { label: "Databases", translations: { ja: "データベース" }, slug: "databases" },
           ],
         },
         // 一次情報 (BrowserHive の docs) への出口はここに置いていた。あちらが
