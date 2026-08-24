@@ -35,10 +35,24 @@ const DOCS = resolve(ROOT, "docs-site/src/content/docs");
 const JA = join(DOCS, "ja");
 
 const isPage = (name) => /\.mdx?$/.test(name);
-const pagesIn = (dir) =>
-  readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && isPage(entry.name))
-    .map((entry) => entry.name);
+
+/**
+ * ページを再帰的に集め、`dir` からの相対パスで返す (`databases/urls.md` の形)。
+ *
+ * 子ディレクトリまで降りるのは、そこに置いたページも訳の欠落と `#region` の
+ * 検査を受けるべきだから。以前は `isFile()` で止まっていたので、
+ * `databases/` 配下の 10 ページがまるごと無検査だった。
+ *
+ * `ja` は英語ページの隣にある翻訳の入れ物なので、走査から外す。
+ */
+const pagesIn = (dir, prefix = "") =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory()) {
+      if (prefix === "" && entry.name === "ja") return [];
+      return pagesIn(join(dir, entry.name), `${prefix}${entry.name}/`);
+    }
+    return entry.isFile() && isPage(entry.name) ? [`${prefix}${entry.name}`] : [];
+  });
 
 const problems = [];
 
