@@ -62,7 +62,18 @@ export default defineConfig({
           translations: { ja: "開発者向け" },
           items: [
             { label: "Architecture", translations: { ja: "アーキテクチャ" }, slug: "architecture" },
-            { label: "Databases", translations: { ja: "データベース" }, slug: "databases" },
+            {
+              label: "Databases",
+              translations: { ja: "データベース" },
+              items: [
+                { label: "Overview", translations: { ja: "全体像" }, slug: "databases" },
+                { label: "urls", slug: "databases/urls" },
+                { label: "capture_submissions", slug: "databases/capture-submissions" },
+                { label: "archives", slug: "databases/archives" },
+                { label: "fga_outbox", slug: "databases/fga-outbox" },
+                { label: "tuple", slug: "databases/tuple" },
+              ],
+            },
           ],
         },
         // 一次情報 (BrowserHive の docs) への出口はここに置いていた。あちらが
