@@ -10,21 +10,6 @@ description: 撮る対象の一覧。waggle が答える唯一の問いの答え
 
 ```
 
-## 読まれ方
-
-実行のたびに 1 本のクエリで読まれます。これが唯一の読み取り経路です。
-
-```sql
-SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1
-```
-
-- **`WHERE enabled`** — `false` の行は投げられません。一覧から一時的に外す手段です
-- **`ORDER BY id ASC`** — 順序は投入順に固定。`--limit 1` は必ず「いちばん古い行」を選びます
-- **`LIMIT $1`** — `--limit` が入るのはここだけ。**URL を絞り込む条件はどこにもありません**
-
-CLI に URL を渡す口はありません。位置引数も `--url` も、パーサが拒否します。
-撮る対象を変えるのはこのテーブルへの `INSERT` です。
-
 ## 列の要点
 
 | 列                          | 要点                                                                                         |
