@@ -24,9 +24,6 @@ flowchart LR
   W -.->|ログのみ| OUT["Request accepted × N<br/>Request summary"]
 ```
 
-waggle の担当範囲が小さいのは意図的です。`SubmitCapture` から右側はすべて
-BrowserHive のもので、あちらのドキュメントに書かれています。
-
 ## 投げっぱなし (fire-and-forget)
 
 `SubmitCapture` はリクエストをキューに載せた時点で `taskId` を返し、キャプチャは
