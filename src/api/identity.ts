@@ -20,11 +20,9 @@
  * トークンを短命にすべき理由がそれ。
  */
 import type { FastifyRequest } from "fastify";
+import type { Identity } from "../config/identity.js";
 
-export interface Identity {
-  subject: string;
-  organizations: string[];
-}
+export type { Identity };
 
 export type IdentityResolver = (request: FastifyRequest) => Promise<Identity | undefined>;
 
