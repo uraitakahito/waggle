@@ -66,6 +66,10 @@ const parseNonNegativeInt = (value: string): number => {
 
 // `--behaviors ""` と空を渡すことには意味がある: built-in を全部切りつつ、server の
 // site behaviors には触れない。刈るのは id の前後の空白だけ。
+//
+// BrowserHive v4.0.0 より前は、これが **効いていなかった**。空のリストは wire 上で
+// 「指定なし」と区別が付かず、server は自分の既定を走らせていた。v4 で `behaviors`
+// が message に包まれ presence を持ったので、いまは意図どおりに届く。
 // 倍率をカンマ区切りのリストで受けるのは、順序に意味があるため: 画像は最後の要素の
 // 倍率で出る。`--device-pixel-ratio` を繰り返す形でも同じことは言えるが、1 つの
 // リストなら順序が 1 箇所で見える。範囲 (1–3) と重複禁止は server が強制する ——
@@ -83,11 +87,29 @@ const parseRatioList = (value: string): number[] =>
       return n;
     });
 
-const parseIdList = (value: string): string[] =>
-  value
+/**
+ * BrowserHive が同梱している built-in。`Behavior` の oneof の枝と 1 対 1。
+ *
+ * ここで検査するのは、通してしまうと **黙って何も走らない** から: server 側の
+ * runner は id で登録済みのクラスを探し、見つからなければ何も言わずに飛ばす。
+ * 打ち間違いが「成功したが空の取り込み」に化ける。
+ */
+const KNOWN_BEHAVIORS = ["autoscroll", "autofetch", "autoplay"];
+
+const parseIdList = (value: string): string[] => {
+  const ids = value
     .split(",")
     .map((id) => id.trim())
     .filter((id) => id !== "");
+  for (const id of ids) {
+    if (!KNOWN_BEHAVIORS.includes(id)) {
+      throw new InvalidArgumentError(
+        `Unknown behavior "${id}". Known: ${KNOWN_BEHAVIORS.join(", ")}`,
+      );
+    }
+  }
+  return ids;
+};
 
 // 空文字と空白だけの値はここで弾く。長さと印字可能 ASCII の制約は server 側 ——
 // BrowserHive の RPC ハンドラ —— が強制する。protobuf は値域を書けないので、
@@ -155,7 +177,9 @@ export const createProgram = (): Command => {
     .addOption(
       new Option(
         "--behaviors <ids>",
-        'Comma-separated built-in behavior ids (e.g. "autoscroll,autofetch"). Pass "" to run none.',
+        'Comma-separated built-in behavior ids (e.g. "autoscroll,autofetch"). ' +
+          "What you list is what runs — omit the flag to take BrowserHive's default set, " +
+          'or pass "" to run none.',
       ).argParser(parseIdList),
     )
     .option(

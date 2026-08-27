@@ -4,9 +4,6 @@ package browserhive.v1;
 
 // BrowserHive の capture API。
 //
-// HTTP/OpenAPI から戻した契約で、operation は当時の 2 本から 3 本に増えている
-// (GetCapture は HTTP 時代に足されたもの)。
-//
 // HTTP との対応で決めたことが 2 つある:
 //
 //   1. 202 を state に移した。HTTP では「受理 = 202」「取得は処理中なら 202、
@@ -38,7 +35,7 @@ enum CaptureStatus {
   CAPTURE_STATUS_HTTP_ERROR = 4;
 }
 
-// GetCapture の進行。HTTP の 202/200 の代わり。
+// GetCapture の進行。
 enum CaptureState {
   CAPTURE_STATE_UNSPECIFIED = 0;
   CAPTURE_STATE_PENDING = 1;
@@ -126,27 +123,88 @@ message Viewport {
   int32 height = 2;
 }
 
-// 1 つの behavior に渡す値。OpenAPI では自由形式の object だったので、
-// JSON 文字列として運ぶ (proto に写しても中身を型で守れないため)。
-message BehaviorOptions {
-  string options_json = 1;
+// 走らせるもの 1 つぶん。どれを走らせるかと、どう設定するかを 1 つにする。
+//
+// oneof にしているので、存在しない behavior は **綴れない**。かつては id が
+// ただの文字列で、`autoscrol` と打ち間違えても黙って通り、何も走らないまま
+// 取り込みが成功していた。
+message Behavior {
+  oneof kind {
+    AutoScroll autoscroll = 1;
+    AutoFetch autofetch = 2;
+    AutoPlay autoplay = 3;
+    Custom custom = 4;
+  }
+}
+
+// 省いた値はサーバ既定へ落ちる (optional なので presence がある)。既定値は
+// src/config/defaults.ts に在り、両者の一致は lint:behavior-roster が見る。
+
+// ページの全高までスクロールして、遅延読み込みを発火させる。
+message AutoScroll {
+  // 既定 40。
+  optional int32 max_steps = 1;
+  // 既定 250。
+  optional int32 step_delay_ms = 2;
+  // 既定 1000。
+  optional int32 idle_time_ms = 3;
+}
+
+// srcset の全候補と data-* の遅延属性を能動的に取りに行く。
+message AutoFetch {
+  // 既定 2000。
+  optional int32 max_urls = 1;
+}
+
+// <video> / <audio> をミュート再生して、その資源を取りに行く。
+message AutoPlay {
+  // 既定 1000。
+  optional int32 settle_ms = 1;
 }
 
 // client が持ち込む behavior。サーバが --allow-custom-behaviors で起動している
 // ときだけ効き、そうでなければ黙って無視される。
-message CustomBehavior {
+message Custom {
   // behavior report に出る識別子。
   string id = 1;
   // { static id, static isMatch, run(ctx) } を実装した JS のクラス式。
   string source = 2;
+  // この behavior に渡す値。中身が任意の JS である以上、その設定も型では守れない
+  // —— JSON の逃げ道はここだけに閉じてある。
+  optional string options_json = 3;
+}
+
+// 走らせるものの列。message で包んでいるのは `optional` を付けるため: proto3 の
+// repeated には presence が無く、空と未指定を区別できない。
+message BehaviorList {
+  repeated Behavior items = 1;
 }
 
 // capture ごとの behavior の指定。
 message BehaviorSpec {
-  repeated string builtins = 1;
-  optional BehaviorOptions options = 2;
+  // 1 から 4 は builtins (repeated string) / options / site_behaviors /
+  // custom が使っていた。番号を再利用しない —— 旧 client が送る
+  // `builtins = ["autoscroll"]` は 1 番の length-delimited で、そのまま
+  // 別の型として読むと沈黙して化ける。予約しておけば未知として捨てられ、
+  // サーバ既定に落ちる。
+  reserved 1, 4;
+  reserved "builtins", "custom";
+
+  // 走らせるものを、走らせる順に。
+  //
+  //   省略 → サーバ既定 (--behaviors) をそのまま走らせる
+  //   items が空 → 1 つも走らせない
+  //   並び → 走らせるものを **書き切ったもの**
+  //
+  // 最後の 1 行が肝で、「既定の集合はそのままで設定だけ差し替える」はできない。
+  // かつては有効集合と設定が別々に届いたのでそれができ、同時に「集合を空に
+  // したつもりが既定に戻っていた」も起きていた。
+  optional BehaviorList behaviors = 5;
+
+  // 同梱の site behavior を対象にするか。省略するとサーバ既定 (出荷時は on)。
+  // `behaviors` と別なのは性質が違うから —— site behavior は host を見る
+  // isMatch() が門番で、client が並べるものではない。
   optional bool site_behaviors = 3;
-  repeated CustomBehavior custom = 4;
 }
 
 message SubmitCaptureRequest {
@@ -159,8 +217,7 @@ message SubmitCaptureRequest {
   optional string accept_language = 5;
   optional bool signing = 6;
 
-  // HTTP では boolean か object の oneOf だった。true/false だけの指定と、
-  // 細かい指定を区別する必要があるので oneof で写す。
+  // true/false だけの指定と、細かい指定を区別する必要があるので oneof にする。
   oneof dismiss_banners {
     bool dismiss_banners_enabled = 7;
     DismissSpec dismiss_banners_spec = 8;
@@ -218,17 +275,15 @@ message GetCaptureRequest {
 }
 
 message GetStatusRequest {
-  // 返す pending task の上限。省略時は 50 (handler が当てる)。OpenAPI では
-  // query parameter で minimum: 0 / maximum: 200 / default: 50 と書けていたが、
-  // proto は値域を持てないので範囲の検査は handler へ移る。
+  // 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
+  // 既定を当てるのも範囲の検査も handler の仕事。
   optional int32 pending_limit = 1;
 }
 
 // -- 結果 ------------------------------------------------------------------
 
 message SubmitCaptureResponse {
-  // HTTP 時代の 202 body と同じ。失敗は status code で返るので、ここに来るのは
-  // 受理されたときだけ。
+  // 失敗は status code で返るので、ここに来るのは受理されたときだけ。
   bool accepted = 1;
   string task_id = 2;
   optional string correlation_id = 3;
@@ -301,9 +356,18 @@ message CaptureResultReport {
   optional CaptureErrorDetails error_details = 15;
 }
 
+// GetCapture の答え。state と report は独立していない —— report が入るのは state が
+// DONE のときだけで、その対応を protobuf で書く手段が無いため、型ではなく約束として
+// 守られている。
 message GetCaptureResponse {
-  // HTTP の 202/200 の代わり。DONE 以外では report を見ないこと。
   CaptureState state = 1;
+
+  // 触る前に `state == DONE` を確かめること。`state != PENDING` では足りない ——
+  // PENDING と PROCESSING はどちらも「まだ終わっていない」側。
+  //
+  // 確かめずに読むと status = 0 (CAPTURE_STATUS_UNSPECIFIED) を掴む。言語によっては
+  // 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
+  // まだ走っている取り込みが失敗として台帳に載る。
   optional CaptureResultReport report = 2;
 }
 

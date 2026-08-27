@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture } from "../rpc/calls.js";
-import { CacheMode } from "../rpc/generated/browserhive/v1/capture.js";
+import { CacheMode, type Behavior } from "../rpc/generated/browserhive/v1/capture.js";
 import { sealWire, type WireSubmitCapture } from "../rpc/wire.js";
 import type { DataEntry } from "../data/url-source.js";
 import type { CaptureSettings } from "../types/capture.js";
@@ -52,13 +52,38 @@ const extractErrorMessage = (raw: unknown): string | undefined => {
  *   - `cache` は素の enum field なので、不在になれない。`*_UNSPECIFIED` (0) が
  *     「呼ぶ側は何も言わなかった」の綴りで、BrowserHive がそれを自分の既定値に
  *     戻す。
- *   - `devicePixelRatios`・`behaviors.builtins`・`.custom` は `repeated` で、
- *     これも不在になれず、空のリストと省略を区別できない。だから倍率については
- *     `[]` が「呼ぶ側は何も言わなかった」の綴りで、BrowserHive は
- *     `--device-pixel-ratios` に落ちる。同じ理由で、`behaviors` を両方空にして
- *     送っても server の既定値を消す手段には **ならない** —— ただし waggle に
- *     言うことが無いときは `behaviors` message ごと省くので、wire は意図と一致する。
+ *   - `devicePixelRatios` は `repeated` で、これも不在になれず、空のリストと
+ *     省略を区別できない。だから `[]` が「呼ぶ側は何も言わなかった」の綴りで、
+ *     BrowserHive は `--device-pixel-ratios` に落ちる。
+ *
+ * behavior は v4.0.0 でこの制約から抜けた。`behaviors.behaviors` は message で
+ * 包まれていて presence を持つので、**空の `items` が「1 つも走らせない」を言える**。
+ * それ以前は空のリストが「指定なし」に化け、`--behaviors ""` は黙って効いて
+ * いなかった。
  */
+/**
+ * built-in の id 1 つを、wire の `Behavior` にする。
+ *
+ * 設定は載せない —— waggle が渡すのは「どれを走らせるか」だけで、値は
+ * BrowserHive の既定に委ねている。設定まで指定したくなったら、ここに
+ * その behavior の枝を組み立てる。
+ *
+ * 知らない id は `--behaviors` の argParser が既に弾いている。ここで既定へ
+ * 落とすと、打ち間違いが「何も走らないまま成功」に化ける。
+ */
+const toWireBehavior = (id: string): Behavior => {
+  switch (id) {
+    case "autoscroll":
+      return { autoscroll: {} };
+    case "autofetch":
+      return { autofetch: {} };
+    case "autoplay":
+      return { autoplay: {} };
+    default:
+      throw new Error(`unknown built-in behavior: ${id}`);
+  }
+};
+
 const buildRequest = (
   entry: DataEntry,
   settings: CaptureSettings,
@@ -79,8 +104,11 @@ const buildRequest = (
     }),
     ...(behaviors !== undefined && {
       behaviors: {
-        builtins: behaviors.builtins ?? [],
-        custom: [],
+        // `builtins` を書いたら、それが走るものの全部になる。書かなければ
+        // `behaviors` の message ごと省き、BrowserHive の既定に委ねる。
+        ...(behaviors.builtins !== undefined && {
+          behaviors: { items: behaviors.builtins.map(toWireBehavior) },
+        }),
         ...(behaviors.siteBehaviors !== undefined && { siteBehaviors: behaviors.siteBehaviors }),
       },
     }),
