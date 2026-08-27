@@ -33,6 +33,13 @@ export const registerArchive = async (
   db: Kysely<Database>,
   report: CaptureResultReport,
   orgId: string,
+  /**
+   * 頼んだ本人。`null` なら owner の tuple を積まない。
+   *
+   * 本物の認証が入っても null はありうる —— 人ではなく組織に属する定期実行が
+   * 投げたものがそれ。その場合、組織のメンバーは読めるが、削除できる者は居ない。
+   */
+  submittedBy: string | null,
 ): Promise<RegisterResult> => {
   // 失敗した取り込みは何もアップロードしていない。それを記録すると、署名の
   // エンドポイントが存在しないオブジェクトの URL を配ることになる —— 404 に対して
@@ -98,6 +105,17 @@ export const registerArchive = async (
               relation: "parent",
               object: `capture_job:${report.taskId}`,
             },
+            // 削除は owner だけに許されている (`can_delete: owner from parent`)。
+            // この tuple が無いと、そのアーカイブは誰にも消せない。
+            ...(submittedBy === null
+              ? []
+              : [
+                  {
+                    user: `user:${submittedBy}`,
+                    relation: "owner",
+                    object: `capture_job:${report.taskId}`,
+                  },
+                ]),
           ],
         }),
       })

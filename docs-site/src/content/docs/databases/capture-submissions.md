@@ -54,8 +54,8 @@ re-run**, hence `onConflict … doNothing()`.
 
 ```
 read taskId from .result.json
-  → look up org_id in capture_submissions
-  → register in archives, and queue tuples with that org_id
+  → look up org_id and submitted_by in capture_submissions
+  → register in archives, and queue tuples with that org_id and submitted_by
 ```
 
 ## Column notes
@@ -67,6 +67,17 @@ read taskId from .result.json
 | `submitted_by` | The user who asked, when there was one. **NULL for scheduled runs that belong to an organization rather than a person** |
 | `source_url`   | Not a foreign key to `urls` — the row survives the URL being removed                                                    |
 | `submitted_at` | Default `now()`                                                                                                         |
+
+:::caution[`submitted_by` is not the result of authentication]
+What fills this column is whatever the CLI read out of `WAGGLE_DEV_SUBJECT`
+(see [Identity](/waggle/archive-ledger/#identity)). **Nothing verifies it** —
+editing `.env` is enough to put any name in the column.
+
+It is still worth filling, because this value becomes the `owner` tuple on the
+`capture_job`. An archive without one **cannot be deleted by anyone**:
+[`can_delete`](/waggle/archive-ledger/#the-authorization-model) reads
+`owner from parent` and nothing else.
+:::
 
 :::note[The counts will not match the ledger]
 Everything submitted lands here, but only captures that **produced an archive**

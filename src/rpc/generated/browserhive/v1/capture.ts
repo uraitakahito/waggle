@@ -71,7 +71,7 @@ export function captureStatusToJSON(object: CaptureStatus): string {
   }
 }
 
-/** GetCapture の進行。HTTP の 202/200 の代わり。 */
+/** GetCapture の進行。 */
 export enum CaptureState {
   CAPTURE_STATE_UNSPECIFIED = 0,
   CAPTURE_STATE_PENDING = 1,
@@ -365,30 +365,91 @@ export interface Viewport {
 }
 
 /**
- * 1 つの behavior に渡す値。OpenAPI では自由形式の object だったので、
- * JSON 文字列として運ぶ (proto に写しても中身を型で守れないため)。
+ * 走らせるもの 1 つぶん。どれを走らせるかと、どう設定するかを 1 つにする。
+ *
+ * oneof にしているので、存在しない behavior は **綴れない**。かつては id が
+ * ただの文字列で、`autoscrol` と打ち間違えても黙って通り、何も走らないまま
+ * 取り込みが成功していた。
  */
-export interface BehaviorOptions {
-  optionsJson: string;
+export interface Behavior {
+  autoscroll?: AutoScroll | undefined;
+  autofetch?: AutoFetch | undefined;
+  autoplay?: AutoPlay | undefined;
+  custom?: Custom | undefined;
+}
+
+/** ページの全高までスクロールして、遅延読み込みを発火させる。 */
+export interface AutoScroll {
+  /** 既定 40。 */
+  maxSteps?:
+    | number
+    | undefined;
+  /** 既定 250。 */
+  stepDelayMs?:
+    | number
+    | undefined;
+  /** 既定 1000。 */
+  idleTimeMs?: number | undefined;
+}
+
+/** srcset の全候補と data-* の遅延属性を能動的に取りに行く。 */
+export interface AutoFetch {
+  /** 既定 2000。 */
+  maxUrls?: number | undefined;
+}
+
+/** <video> / <audio> をミュート再生して、その資源を取りに行く。 */
+export interface AutoPlay {
+  /** 既定 1000。 */
+  settleMs?: number | undefined;
 }
 
 /**
  * client が持ち込む behavior。サーバが --allow-custom-behaviors で起動している
  * ときだけ効き、そうでなければ黙って無視される。
  */
-export interface CustomBehavior {
+export interface Custom {
   /** behavior report に出る識別子。 */
   id: string;
   /** { static id, static isMatch, run(ctx) } を実装した JS のクラス式。 */
   source: string;
+  /**
+   * この behavior に渡す値。中身が任意の JS である以上、その設定も型では守れない
+   * —— JSON の逃げ道はここだけに閉じてある。
+   */
+  optionsJson?: string | undefined;
+}
+
+/**
+ * 走らせるものの列。message で包んでいるのは `optional` を付けるため: proto3 の
+ * repeated には presence が無く、空と未指定を区別できない。
+ */
+export interface BehaviorList {
+  items: Behavior[];
 }
 
 /** capture ごとの behavior の指定。 */
 export interface BehaviorSpec {
-  builtins: string[];
-  options?: BehaviorOptions | undefined;
+  /**
+   * 走らせるものを、走らせる順に。
+   *
+   *   省略 → サーバ既定 (--behaviors) をそのまま走らせる
+   *   items が空 → 1 つも走らせない
+   *   並び → 走らせるものを **書き切ったもの**
+   *
+   * 最後の 1 行が肝で、「既定の集合はそのままで設定だけ差し替える」はできない。
+   * かつては有効集合と設定が別々に届いたのでそれができ、同時に「集合を空に
+   * したつもりが既定に戻っていた」も起きていた。
+   */
+  behaviors?:
+    | BehaviorList
+    | undefined;
+  /**
+   * 同梱の site behavior を対象にするか。省略するとサーバ既定 (出荷時は on)。
+   * `behaviors` と別なのは性質が違うから —— site behavior は host を見る
+   * isMatch() が門番で、client が並べるものではない。
+   */
   siteBehaviors?: boolean | undefined;
-  custom: CustomBehavior[];
 }
 
 export interface SubmitCaptureRequest {
@@ -455,18 +516,14 @@ export interface GetCaptureRequest {
 
 export interface GetStatusRequest {
   /**
-   * 返す pending task の上限。省略時は 50 (handler が当てる)。OpenAPI では
-   * query parameter で minimum: 0 / maximum: 200 / default: 50 と書けていたが、
-   * proto は値域を持てないので範囲の検査は handler へ移る。
+   * 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
+   * 既定を当てるのも範囲の検査も handler の仕事。
    */
   pendingLimit?: number | undefined;
 }
 
 export interface SubmitCaptureResponse {
-  /**
-   * HTTP 時代の 202 body と同じ。失敗は status code で返るので、ここに来るのは
-   * 受理されたときだけ。
-   */
+  /** 失敗は status code で返るので、ここに来るのは受理されたときだけ。 */
   accepted: boolean;
   taskId: string;
   correlationId?: string | undefined;
@@ -539,9 +596,21 @@ export interface CaptureResultReport {
   errorDetails?: CaptureErrorDetails | undefined;
 }
 
+/**
+ * GetCapture の答え。state と report は独立していない —— report が入るのは state が
+ * DONE のときだけで、その対応を protobuf で書く手段が無いため、型ではなく約束として
+ * 守られている。
+ */
 export interface GetCaptureResponse {
-  /** HTTP の 202/200 の代わり。DONE 以外では report を見ないこと。 */
   state: CaptureState;
+  /**
+   * 触る前に `state == DONE` を確かめること。`state != PENDING` では足りない ——
+   * PENDING と PROCESSING はどちらも「まだ終わっていない」側。
+   *
+   * 確かめずに読むと status = 0 (CAPTURE_STATUS_UNSPECIFIED) を掴む。言語によっては
+   * 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
+   * まだ走っている取り込みが失敗として台帳に載る。
+   */
   report?: CaptureResultReport | undefined;
 }
 
@@ -1243,19 +1312,28 @@ export const Viewport: MessageFns<Viewport> = {
   },
 };
 
-function createBaseBehaviorOptions(): BehaviorOptions {
-  return { optionsJson: "" };
+function createBaseBehavior(): Behavior {
+  return { autoscroll: undefined, autofetch: undefined, autoplay: undefined, custom: undefined };
 }
 
-export const BehaviorOptions: MessageFns<BehaviorOptions> = {
-  encode(message: BehaviorOptions, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.optionsJson !== "") {
-      writer.uint32(10).string(message.optionsJson);
+export const Behavior: MessageFns<Behavior> = {
+  encode(message: Behavior, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.autoscroll !== undefined) {
+      AutoScroll.encode(message.autoscroll, writer.uint32(10).fork()).join();
+    }
+    if (message.autofetch !== undefined) {
+      AutoFetch.encode(message.autofetch, writer.uint32(18).fork()).join();
+    }
+    if (message.autoplay !== undefined) {
+      AutoPlay.encode(message.autoplay, writer.uint32(26).fork()).join();
+    }
+    if (message.custom !== undefined) {
+      Custom.encode(message.custom, writer.uint32(34).fork()).join();
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): BehaviorOptions {
+  decode(input: BinaryReader | Uint8Array, length?: number): Behavior {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -1264,7 +1342,7 @@ export const BehaviorOptions: MessageFns<BehaviorOptions> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseBehaviorOptions();
+      const message = createBaseBehavior();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
@@ -1273,7 +1351,31 @@ export const BehaviorOptions: MessageFns<BehaviorOptions> = {
               break;
             }
 
-            message.optionsJson = reader.string();
+            message.autoscroll = AutoScroll.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.autofetch = AutoFetch.decode(reader, reader.uint32());
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.autoplay = AutoPlay.decode(reader, reader.uint32());
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.custom = Custom.decode(reader, reader.uint32());
             continue;
           }
         }
@@ -1288,50 +1390,72 @@ export const BehaviorOptions: MessageFns<BehaviorOptions> = {
     }
   },
 
-  fromJSON(object: any): BehaviorOptions {
+  fromJSON(object: any): Behavior {
     return {
-      optionsJson: isSet(object.optionsJson)
-        ? globalThis.String(object.optionsJson)
-        : isSet(object.options_json)
-        ? globalThis.String(object.options_json)
-        : "",
+      autoscroll: isSet(object.autoscroll) ? AutoScroll.fromJSON(object.autoscroll) : undefined,
+      autofetch: isSet(object.autofetch) ? AutoFetch.fromJSON(object.autofetch) : undefined,
+      autoplay: isSet(object.autoplay) ? AutoPlay.fromJSON(object.autoplay) : undefined,
+      custom: isSet(object.custom) ? Custom.fromJSON(object.custom) : undefined,
     };
   },
 
-  toJSON(message: BehaviorOptions): unknown {
+  toJSON(message: Behavior): unknown {
     const obj: any = {};
-    if (message.optionsJson !== "") {
-      obj.optionsJson = message.optionsJson;
+    if (message.autoscroll !== undefined) {
+      obj.autoscroll = AutoScroll.toJSON(message.autoscroll);
+    }
+    if (message.autofetch !== undefined) {
+      obj.autofetch = AutoFetch.toJSON(message.autofetch);
+    }
+    if (message.autoplay !== undefined) {
+      obj.autoplay = AutoPlay.toJSON(message.autoplay);
+    }
+    if (message.custom !== undefined) {
+      obj.custom = Custom.toJSON(message.custom);
     }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<BehaviorOptions>, I>>(base?: I): BehaviorOptions {
-    return BehaviorOptions.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<Behavior>, I>>(base?: I): Behavior {
+    return Behavior.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<BehaviorOptions>, I>>(object: I): BehaviorOptions {
-    const message = createBaseBehaviorOptions();
-    message.optionsJson = object.optionsJson ?? "";
+  fromPartial<I extends Exact<DeepPartial<Behavior>, I>>(object: I): Behavior {
+    const message = createBaseBehavior();
+    message.autoscroll = (object.autoscroll !== undefined && object.autoscroll !== null)
+      ? AutoScroll.fromPartial(object.autoscroll)
+      : undefined;
+    message.autofetch = (object.autofetch !== undefined && object.autofetch !== null)
+      ? AutoFetch.fromPartial(object.autofetch)
+      : undefined;
+    message.autoplay = (object.autoplay !== undefined && object.autoplay !== null)
+      ? AutoPlay.fromPartial(object.autoplay)
+      : undefined;
+    message.custom = (object.custom !== undefined && object.custom !== null)
+      ? Custom.fromPartial(object.custom)
+      : undefined;
     return message;
   },
 };
 
-function createBaseCustomBehavior(): CustomBehavior {
-  return { id: "", source: "" };
+function createBaseAutoScroll(): AutoScroll {
+  return { maxSteps: undefined, stepDelayMs: undefined, idleTimeMs: undefined };
 }
 
-export const CustomBehavior: MessageFns<CustomBehavior> = {
-  encode(message: CustomBehavior, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.id !== "") {
-      writer.uint32(10).string(message.id);
+export const AutoScroll: MessageFns<AutoScroll> = {
+  encode(message: AutoScroll, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.maxSteps !== undefined) {
+      writer.uint32(8).int32(message.maxSteps);
     }
-    if (message.source !== "") {
-      writer.uint32(18).string(message.source);
+    if (message.stepDelayMs !== undefined) {
+      writer.uint32(16).int32(message.stepDelayMs);
+    }
+    if (message.idleTimeMs !== undefined) {
+      writer.uint32(24).int32(message.idleTimeMs);
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): CustomBehavior {
+  decode(input: BinaryReader | Uint8Array, length?: number): AutoScroll {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -1340,7 +1464,266 @@ export const CustomBehavior: MessageFns<CustomBehavior> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseCustomBehavior();
+      const message = createBaseAutoScroll();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.maxSteps = reader.int32();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.stepDelayMs = reader.int32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.idleTimeMs = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AutoScroll {
+    return {
+      maxSteps: isSet(object.maxSteps)
+        ? globalThis.Number(object.maxSteps)
+        : isSet(object.max_steps)
+        ? globalThis.Number(object.max_steps)
+        : undefined,
+      stepDelayMs: isSet(object.stepDelayMs)
+        ? globalThis.Number(object.stepDelayMs)
+        : isSet(object.step_delay_ms)
+        ? globalThis.Number(object.step_delay_ms)
+        : undefined,
+      idleTimeMs: isSet(object.idleTimeMs)
+        ? globalThis.Number(object.idleTimeMs)
+        : isSet(object.idle_time_ms)
+        ? globalThis.Number(object.idle_time_ms)
+        : undefined,
+    };
+  },
+
+  toJSON(message: AutoScroll): unknown {
+    const obj: any = {};
+    if (message.maxSteps !== undefined) {
+      obj.maxSteps = Math.round(message.maxSteps);
+    }
+    if (message.stepDelayMs !== undefined) {
+      obj.stepDelayMs = Math.round(message.stepDelayMs);
+    }
+    if (message.idleTimeMs !== undefined) {
+      obj.idleTimeMs = Math.round(message.idleTimeMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AutoScroll>, I>>(base?: I): AutoScroll {
+    return AutoScroll.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AutoScroll>, I>>(object: I): AutoScroll {
+    const message = createBaseAutoScroll();
+    message.maxSteps = object.maxSteps ?? undefined;
+    message.stepDelayMs = object.stepDelayMs ?? undefined;
+    message.idleTimeMs = object.idleTimeMs ?? undefined;
+    return message;
+  },
+};
+
+function createBaseAutoFetch(): AutoFetch {
+  return { maxUrls: undefined };
+}
+
+export const AutoFetch: MessageFns<AutoFetch> = {
+  encode(message: AutoFetch, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.maxUrls !== undefined) {
+      writer.uint32(8).int32(message.maxUrls);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AutoFetch {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAutoFetch();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.maxUrls = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AutoFetch {
+    return {
+      maxUrls: isSet(object.maxUrls)
+        ? globalThis.Number(object.maxUrls)
+        : isSet(object.max_urls)
+        ? globalThis.Number(object.max_urls)
+        : undefined,
+    };
+  },
+
+  toJSON(message: AutoFetch): unknown {
+    const obj: any = {};
+    if (message.maxUrls !== undefined) {
+      obj.maxUrls = Math.round(message.maxUrls);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AutoFetch>, I>>(base?: I): AutoFetch {
+    return AutoFetch.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AutoFetch>, I>>(object: I): AutoFetch {
+    const message = createBaseAutoFetch();
+    message.maxUrls = object.maxUrls ?? undefined;
+    return message;
+  },
+};
+
+function createBaseAutoPlay(): AutoPlay {
+  return { settleMs: undefined };
+}
+
+export const AutoPlay: MessageFns<AutoPlay> = {
+  encode(message: AutoPlay, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.settleMs !== undefined) {
+      writer.uint32(8).int32(message.settleMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AutoPlay {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAutoPlay();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.settleMs = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AutoPlay {
+    return {
+      settleMs: isSet(object.settleMs)
+        ? globalThis.Number(object.settleMs)
+        : isSet(object.settle_ms)
+        ? globalThis.Number(object.settle_ms)
+        : undefined,
+    };
+  },
+
+  toJSON(message: AutoPlay): unknown {
+    const obj: any = {};
+    if (message.settleMs !== undefined) {
+      obj.settleMs = Math.round(message.settleMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AutoPlay>, I>>(base?: I): AutoPlay {
+    return AutoPlay.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AutoPlay>, I>>(object: I): AutoPlay {
+    const message = createBaseAutoPlay();
+    message.settleMs = object.settleMs ?? undefined;
+    return message;
+  },
+};
+
+function createBaseCustom(): Custom {
+  return { id: "", source: "", optionsJson: undefined };
+}
+
+export const Custom: MessageFns<Custom> = {
+  encode(message: Custom, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.source !== "") {
+      writer.uint32(18).string(message.source);
+    }
+    if (message.optionsJson !== undefined) {
+      writer.uint32(26).string(message.optionsJson);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Custom {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCustom();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
@@ -1360,6 +1743,14 @@ export const CustomBehavior: MessageFns<CustomBehavior> = {
             message.source = reader.string();
             continue;
           }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.optionsJson = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -1372,14 +1763,19 @@ export const CustomBehavior: MessageFns<CustomBehavior> = {
     }
   },
 
-  fromJSON(object: any): CustomBehavior {
+  fromJSON(object: any): Custom {
     return {
       id: isSet(object.id) ? globalThis.String(object.id) : "",
       source: isSet(object.source) ? globalThis.String(object.source) : "",
+      optionsJson: isSet(object.optionsJson)
+        ? globalThis.String(object.optionsJson)
+        : isSet(object.options_json)
+        ? globalThis.String(object.options_json)
+        : undefined,
     };
   },
 
-  toJSON(message: CustomBehavior): unknown {
+  toJSON(message: Custom): unknown {
     const obj: any = {};
     if (message.id !== "") {
       obj.id = message.id;
@@ -1387,37 +1783,102 @@ export const CustomBehavior: MessageFns<CustomBehavior> = {
     if (message.source !== "") {
       obj.source = message.source;
     }
+    if (message.optionsJson !== undefined) {
+      obj.optionsJson = message.optionsJson;
+    }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<CustomBehavior>, I>>(base?: I): CustomBehavior {
-    return CustomBehavior.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<Custom>, I>>(base?: I): Custom {
+    return Custom.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<CustomBehavior>, I>>(object: I): CustomBehavior {
-    const message = createBaseCustomBehavior();
+  fromPartial<I extends Exact<DeepPartial<Custom>, I>>(object: I): Custom {
+    const message = createBaseCustom();
     message.id = object.id ?? "";
     message.source = object.source ?? "";
+    message.optionsJson = object.optionsJson ?? undefined;
+    return message;
+  },
+};
+
+function createBaseBehaviorList(): BehaviorList {
+  return { items: [] };
+}
+
+export const BehaviorList: MessageFns<BehaviorList> = {
+  encode(message: BehaviorList, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.items) {
+      Behavior.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BehaviorList {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseBehaviorList();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.items.push(Behavior.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): BehaviorList {
+    return { items: globalThis.Array.isArray(object?.items) ? object.items.map((e: any) => Behavior.fromJSON(e)) : [] };
+  },
+
+  toJSON(message: BehaviorList): unknown {
+    const obj: any = {};
+    if (message.items?.length) {
+      obj.items = message.items.map((e) => Behavior.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BehaviorList>, I>>(base?: I): BehaviorList {
+    return BehaviorList.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BehaviorList>, I>>(object: I): BehaviorList {
+    const message = createBaseBehaviorList();
+    message.items = object.items?.map((e) => Behavior.fromPartial(e)) || [];
     return message;
   },
 };
 
 function createBaseBehaviorSpec(): BehaviorSpec {
-  return { builtins: [], options: undefined, siteBehaviors: undefined, custom: [] };
+  return { behaviors: undefined, siteBehaviors: undefined };
 }
 
 export const BehaviorSpec: MessageFns<BehaviorSpec> = {
   encode(message: BehaviorSpec, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    for (const v of message.builtins) {
-      writer.uint32(10).string(v!);
-    }
-    if (message.options !== undefined) {
-      BehaviorOptions.encode(message.options, writer.uint32(18).fork()).join();
+    if (message.behaviors !== undefined) {
+      BehaviorList.encode(message.behaviors, writer.uint32(42).fork()).join();
     }
     if (message.siteBehaviors !== undefined) {
       writer.uint32(24).bool(message.siteBehaviors);
-    }
-    for (const v of message.custom) {
-      CustomBehavior.encode(v!, writer.uint32(34).fork()).join();
     }
     return writer;
   },
@@ -1435,20 +1896,12 @@ export const BehaviorSpec: MessageFns<BehaviorSpec> = {
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
+          case 5: {
+            if (tag !== 42) {
               break;
             }
 
-            message.builtins.push(reader.string());
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.options = BehaviorOptions.decode(reader, reader.uint32());
+            message.behaviors = BehaviorList.decode(reader, reader.uint32());
             continue;
           }
           case 3: {
@@ -1457,14 +1910,6 @@ export const BehaviorSpec: MessageFns<BehaviorSpec> = {
             }
 
             message.siteBehaviors = reader.bool();
-            continue;
-          }
-          case 4: {
-            if (tag !== 34) {
-              break;
-            }
-
-            message.custom.push(CustomBehavior.decode(reader, reader.uint32()));
             continue;
           }
         }
@@ -1481,30 +1926,22 @@ export const BehaviorSpec: MessageFns<BehaviorSpec> = {
 
   fromJSON(object: any): BehaviorSpec {
     return {
-      builtins: globalThis.Array.isArray(object?.builtins) ? object.builtins.map((e: any) => globalThis.String(e)) : [],
-      options: isSet(object.options) ? BehaviorOptions.fromJSON(object.options) : undefined,
+      behaviors: isSet(object.behaviors) ? BehaviorList.fromJSON(object.behaviors) : undefined,
       siteBehaviors: isSet(object.siteBehaviors)
         ? globalThis.Boolean(object.siteBehaviors)
         : isSet(object.site_behaviors)
         ? globalThis.Boolean(object.site_behaviors)
         : undefined,
-      custom: globalThis.Array.isArray(object?.custom) ? object.custom.map((e: any) => CustomBehavior.fromJSON(e)) : [],
     };
   },
 
   toJSON(message: BehaviorSpec): unknown {
     const obj: any = {};
-    if (message.builtins?.length) {
-      obj.builtins = message.builtins;
-    }
-    if (message.options !== undefined) {
-      obj.options = BehaviorOptions.toJSON(message.options);
+    if (message.behaviors !== undefined) {
+      obj.behaviors = BehaviorList.toJSON(message.behaviors);
     }
     if (message.siteBehaviors !== undefined) {
       obj.siteBehaviors = message.siteBehaviors;
-    }
-    if (message.custom?.length) {
-      obj.custom = message.custom.map((e) => CustomBehavior.toJSON(e));
     }
     return obj;
   },
@@ -1514,12 +1951,10 @@ export const BehaviorSpec: MessageFns<BehaviorSpec> = {
   },
   fromPartial<I extends Exact<DeepPartial<BehaviorSpec>, I>>(object: I): BehaviorSpec {
     const message = createBaseBehaviorSpec();
-    message.builtins = object.builtins?.map((e) => e) || [];
-    message.options = (object.options !== undefined && object.options !== null)
-      ? BehaviorOptions.fromPartial(object.options)
+    message.behaviors = (object.behaviors !== undefined && object.behaviors !== null)
+      ? BehaviorList.fromPartial(object.behaviors)
       : undefined;
     message.siteBehaviors = object.siteBehaviors ?? undefined;
-    message.custom = object.custom?.map((e) => CustomBehavior.fromPartial(e)) || [];
     return message;
   },
 };
@@ -5287,9 +5722,6 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
 
 /**
  * BrowserHive の capture API。
- *
- * HTTP/OpenAPI から戻した契約で、operation は当時の 2 本から 3 本に増えている
- * (GetCapture は HTTP 時代に足されたもの)。
  *
  * HTTP との対応で決めたことが 2 つある:
  *

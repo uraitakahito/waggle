@@ -6,7 +6,7 @@
 #   1. Apple Container の道具が入っているかを見る。
 #   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
 #   3. submodule を初期化する。
-#   4. host 側の接続文字列を .env に書く。
+#   4. host 側の接続文字列と、開発用の仮 identity を .env に書く。
 #
 
 set -e
@@ -64,10 +64,16 @@ git submodule status --recursive | sed 's/^/  /'
 # --- .env を書く ----------------------------------------------------------
 # host 側が必要とするものだけ: waggle は host で動き、スタックへはプラット
 # フォームの DNS を通って届く。サービス間の配線は docker-compose.yml に在る。
+#
+# WAGGLE_DEV_* は認証ではない。誰が投げたかを記録に残すための足場で、
+# 検証は一切されない —— .env を書き換えれば誰にでも成りすませる。本物の
+# identity provider が決まるまでの繋ぎなので、そのつもりで扱うこと。
 cat > .env <<EOF
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
 BROWSERHIVE_SERVER=browserhive.waggle:50051
 LOG_LEVEL=info
+WAGGLE_DEV_SUBJECT=${USER:-dev}
+WAGGLE_DEV_ORGANIZATIONS=acme
 EOF
 echo "Created .env"
 

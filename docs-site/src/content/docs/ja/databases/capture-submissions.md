@@ -54,8 +54,8 @@ await db
 
 ```
 .result.json から taskId を得る
-  → capture_submissions で org_id を引く
-  → archives に登録し、その org_id で tuple を積む
+  → capture_submissions で org_id と submitted_by を引く
+  → archives に登録し、その org_id と submitted_by で tuple を積む
 ```
 
 ## 列の要点
@@ -67,6 +67,17 @@ await db
 | `submitted_by` | それを求めた利用者。**人ではなく組織に属する定期実行では NULL**       |
 | `source_url`   | 投げた URL。`urls` への外部キーではない（後から URL が消えても残る）  |
 | `submitted_at` | `now()` 既定                                                          |
+
+:::caution[`submitted_by` は認証の結果ではありません]
+この列を埋めているのは、CLI が `WAGGLE_DEV_SUBJECT` から読んだ値です
+（[身元](/waggle/ja/archive-ledger/#身元)）。**検証は一切されません** ——
+`.env` を書き換えれば誰の名前でも入ります。
+
+それでも `null` のままにしないのは、この値がそのまま `capture_job` の
+`owner` tuple になるからです。埋まっていないアーカイブは、
+[`can_delete`](/waggle/ja/archive-ledger/#認可モデル) が `owner from parent`
+だけを見るので、**誰にも削除できません**。
+:::
 
 :::note[台帳と件数が一致しません]
 この表には**投げたものすべて**が入りますが、[`archives`](/waggle/ja/databases/archives/)
