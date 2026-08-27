@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   parseClientOptions,
   getCaptureFormats,
@@ -184,5 +184,30 @@ describe("getCaptureSettings", () => {
     );
 
     expect(settings.behaviors).toEqual({ builtins: [] });
+  });
+
+  it("知らない behavior の id を弾く", () => {
+    // 通してしまうと黙って何も走らない —— server 側の runner は id で登録済みの
+    // クラスを探し、見つからなければ何も言わずに飛ばす。打ち間違いが「成功した
+    // が空の取り込み」に化けるので、投げる前に落とす。
+    //
+    // commander は argParser の InvalidArgumentError を捕まえて使い方を表示し、
+    // process.exit(1) する。だから見るのは throw の中身ではなく、その exit。
+    const exit = vi.spyOn(process, "exit").mockImplementation((): never => {
+      throw new Error("exited");
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(() =>
+        parseClientOptions(
+          argv("--database-url", FAKE_DB_URL, "--png", "--behaviors", "autoscrol"),
+        ),
+      ).toThrow("exited");
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(stderr.mock.calls.flat().join("")).toContain('Unknown behavior "autoscrol"');
+    } finally {
+      exit.mockRestore();
+      stderr.mockRestore();
+    }
   });
 });

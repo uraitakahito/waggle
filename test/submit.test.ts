@@ -166,11 +166,25 @@ describe("submitRequest", () => {
     // 別の指示。集合として比べると、その違いを取り落とす。
     expect(request.devicePixelRatios).toEqual([1, 2]);
     expect(request.operationDelayMs).toBe(250);
+    // built-in は 1 件 1 枝で並ぶ。id の文字列ではなく型の枝なので、`autoscrol` の
+    // ような綴りはそもそも wire に載らない。
     expect(request.behaviors).toEqual({
-      builtins: ["autoscroll"],
-      custom: [],
+      behaviors: { items: [{ autoscroll: {} }] },
       siteBehaviors: false,
     });
+  });
+
+  it("空の builtins は「1 つも走らせない」として届く", async () => {
+    // v4.0.0 より前は、これが server 既定に化けていた —— proto3 の repeated には
+    // presence が無く、空と未指定を区別できなかったため。
+    accepts("task-4b");
+
+    await submitRequest(
+      { url: "https://example.com/", labels: [], orgId: "acme" },
+      settings({ behaviors: { builtins: [] } }),
+    );
+
+    expect(sentRequest().behaviors).toEqual({ behaviors: { items: [] } });
   });
 
   // 4 つとも既定値を持っているのは server なので、設定していない調整が、server が
