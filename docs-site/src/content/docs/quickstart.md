@@ -98,7 +98,7 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 
 A `state` of `CAPTURE_STATE_PENDING` or `_PROCESSING` means it is still
 running — ask again. The same report is also written to
-the bucket as `<taskId>_..._<labels>.result.json`, which is the one to read if
+the bucket as `<taskId>_<correlationId>[_<labels>].result.json`, which is the one to read if
 missing a result is not acceptable. See
 Capture results.
 

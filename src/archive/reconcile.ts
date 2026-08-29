@@ -38,9 +38,14 @@ export interface ReconcileResult {
 
 /**
  * タスク id は manifest の鍵を `_` で区切った最初の部分 (BrowserHive は名前を
- * `{taskId}[_{correlationId}][_{labels}].{ext}` として組む) なので、オブジェクトを
+ * `{taskId}_{correlationId}[_{labels}].{ext}` として組む) なので、オブジェクトを
  * 取りに行かずに読める。おかげで最も多い場合 —— 既に台帳に在る manifest ——
  * の GET が 0 回で済む。
+ *
+ * ここが `_` で切れるのは taskId が UUID だから。BrowserHive は correlationId と
+ * labels を `%XX` へ逃がして組むが、**taskId だけは逃がさない** —— 逃がす対象の
+ * 文字を含まないので、逃がしても逃がさなくても同じ綴りになる。将来 taskId の形が
+ * UUID でなくなったら、この 1 行が最初に壊れる。
  */
 const taskIdFromKey = (key: string): string =>
   key.slice(0, -MANIFEST_SUFFIX.length).split("_")[0] ?? "";

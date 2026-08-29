@@ -32,7 +32,7 @@ capture runs asynchronously.
 The outcome is collected afterwards through `GetCapture`, whose `state` says
 `PENDING` / `PROCESSING` while a task is in flight and `DONE` once it finished,
 carrying the status and every artifact location. The same report is also written
-to the bucket as `{taskId}_..._{labels}.result.json`, which survives a
+to the bucket as `{taskId}_{correlationId}[_{labels}].result.json`, which survives a
 BrowserHive restart — and is what `waitForCapture` falls back to when the
 in-memory result has already been evicted.
 

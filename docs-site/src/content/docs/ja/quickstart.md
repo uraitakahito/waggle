@@ -98,7 +98,7 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 
 `state` が `CAPTURE_STATE_PENDING` か `_PROCESSING` ならまだ処理中なので、もう
 一度問い合わせてください。同じ内容は
-`<taskId>_..._<labels>.result.json` としてバケットにも書かれます。結果を
+`<taskId>_<correlationId>[_<labels>].result.json` としてバケットにも書かれます。結果を
 取りこぼしてはいけない用途ではそちらを読みます。
 キャプチャ結果を参照。
 
