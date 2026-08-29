@@ -43,22 +43,32 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 /**
  * manifest は成果物の隣に、BrowserHive のファイル名規則で置かれる:
- * `{taskId}[_{correlationId}][_{labels}].result.json`。label は `-` で繋ぐ。
+ * `{taskId}_{correlationId}[_{labels}].result.json`。
+ *
+ * **correlationId の枠は空でも出る** (`{taskId}__{labels}` のように下線が並ぶ)。
+ * それが BrowserHive 側で名前を読み戻せるようにしている仕掛けで、こちらも
+ * 合わせないと存在しない鍵を作ることになる。値の中の `_` `.` `/` 空白などは
+ * `%XX` へ逃がす —— 逃がさないと区切りと衝突して、鍵が 1 文字ずれる。
  *
  * waggle が、server から渡された鍵を読むのではなく自分で組み立てる唯一の場所。
- * 間違えても致命的ではない —— 失うのはこの代替経路だけで、reconciler のほうは
- * listing でオブジェクトを見つける。
+ * **間違えても静かに壊れる** —— 失うのはこの代替経路だけで、reconciler のほうは
+ * listing でオブジェクトを見つけてしまうので、ログにも結果にも出ない。
+ * だから test/manifest-key.test.ts は BrowserHive と同じケースを並べてある。
+ *
+ * 本体は browserhive の src/capture/artifact-name.ts (generateFilename)。
  */
+const ESCAPED = /[%_.<>:"/\\|?*\s]/g;
+
+/** 逃がすのは 1 回の走査で。順に replace を重ねると二重符号化する。 */
+const encodeField = (value: string): string =>
+  value.replace(ESCAPED, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+
 export const manifestKey = (
   taskId: string,
   correlationId: string | undefined,
   labels: string[],
-): string => {
-  const parts = [taskId];
-  if (correlationId !== undefined && correlationId !== "") parts.push(correlationId);
-  if (labels.length > 0) parts.push(labels.join("-"));
-  return `${parts.join("_")}.result.json`;
-};
+): string =>
+  [taskId, encodeField(correlationId ?? ""), ...labels.map(encodeField)].join("_") + ".result.json";
 
 const readManifestFallback = async (
   taskId: string,

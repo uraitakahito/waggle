@@ -31,7 +31,7 @@ flowchart LR
 
 結末は後から `GetCapture` で回収します。`state` が処理中なら `PENDING` /
 `PROCESSING`、完了していれば `DONE` で、成否と全成果物の場所が入っています。
-同じ内容は `{taskId}_..._{labels}.result.json` としてバケットにも書かれ、
+同じ内容は `{taskId}_{correlationId}[_{labels}].result.json` としてバケットにも書かれ、
 こちらは BrowserHive の再起動にも耐えます —— メモリ上の結果が既に追い出されて
 いたとき `waitForCapture` が落ちる先がこれです。
 
