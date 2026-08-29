@@ -38,7 +38,11 @@ takes the first _n_ — so a smoke test always exercises the same URLs.
 ## Labels
 
 Labels are free-form and end up in the artifact filename, which makes them the
-natural place for an external key. The bundled fixture uses a securities code
+natural place for an external key. Free-form is literal here: BrowserHive
+escapes anything that would collide with the filename's structure, so `_`, `.`,
+`/`, spaces and non-ASCII all survive the round trip. The one limit is length —
+the whole artifact name must fit in 255 UTF-8 bytes, and a submission that
+would exceed it is refused up front. The bundled fixture uses a securities code
 alongside a company name:
 
 ```ts

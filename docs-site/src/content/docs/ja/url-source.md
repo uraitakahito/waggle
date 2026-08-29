@@ -38,7 +38,10 @@ SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC [LIMIT $1]
 ## labels の使い方
 
 labels は自由形式で、成果物のファイル名に入ります。そのため**外部キーを持たせる
-場所**として自然です。同梱のサンプルは証券コードと社名を並べています。
+場所**として自然です。「自由形式」は文字どおりで、ファイル名の構造とぶつかる文字
+（`_` `.` `/` 空白）は BrowserHive が逃がすため、非 ASCII も含めてそのまま往復します。
+制限は長さだけで、成果物の名前全体が 255 UTF-8 バイトに収まる必要があり、超える
+登録は受け付ける段で断られます。同梱のサンプルは証券コードと社名を並べています。
 
 ```ts
 { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"] }
