@@ -455,7 +455,19 @@ export interface BehaviorSpec {
 
 export interface SubmitCaptureRequest {
   url: string;
+  /**
+   * 成果物のファイル名に入る札。使える文字の制限は無い —— 名前を組むときに
+   * 区切りと衝突する文字は %XX へ逃がされるので、空白も `_` も `/` も日本語も
+   * そのまま渡せる。制限は **合計の長さ** だけで、
+   * `{taskId}_{correlationId}[_{labels}].result.json` が 255 UTF-8 バイトを
+   * 超える要求は境界が拒む。逃がされる文字と非 ASCII は 1 文字 3 バイト。
+   */
   labels: string[];
+  /**
+   * client 側の相関キー。labels と同じ規則でファイル名に入る。
+   * 送らなかった場合も名前の枠は残る (`{taskId}__{labels}` のように下線が並ぶ) ——
+   * 枠が固定されているので、名前から元の値を読み戻せる。
+   */
   correlationId?: string | undefined;
   captureFormats?:
     | CaptureFormats
@@ -464,16 +476,31 @@ export interface SubmitCaptureRequest {
    * 上流へ送る Accept-Language。印字可能な ASCII のみ、200 文字以下。
    * 制御文字 (CR/LF/NUL) は header への注入になるので境界が拒む。
    */
-  acceptLanguage?: string | undefined;
+  acceptLanguage?:
+    | string
+    | undefined;
+  /**
+   * wacz-auth の署名を求める。`capture_formats.wacz` と一緒のときだけ有効で、
+   * 他の組み合わせは INVALID_ARGUMENT で拒む。
+   */
   signing?: boolean | undefined;
   dismissBannersEnabled?: boolean | undefined;
-  dismissBannersSpec?: DismissSpec | undefined;
+  dismissBannersSpec?:
+    | DismissSpec
+    | undefined;
+  /**
+   * リクエスト単位の viewport。値域 (1–7680 × 1–4320) は server 側の境界
+   * (request-limits.ts) が強制する。
+   */
   viewport?:
     | Viewport
     | undefined;
   /**
    * 0–5000。ページ操作 1 つごとに挟む遅延で、headless の描画を眺めるためのもの。
    * 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
+   *
+   * 操作ごとの timeout の予算の **外側** で数える —— わざと遅くした取り込みは
+   * 固まった取り込みではない。効くのはタスク全体の予算だけ。
    */
   operationDelayMs?: number | undefined;
   trace?:

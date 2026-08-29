@@ -214,12 +214,22 @@ message BehaviorSpec {
 
 message SubmitCaptureRequest {
   string url = 1;
+  // 成果物のファイル名に入る札。使える文字の制限は無い —— 名前を組むときに
+  // 区切りと衝突する文字は %XX へ逃がされるので、空白も `_` も `/` も日本語も
+  // そのまま渡せる。制限は **合計の長さ** だけで、
+  // `{taskId}_{correlationId}[_{labels}].result.json` が 255 UTF-8 バイトを
+  // 超える要求は境界が拒む。逃がされる文字と非 ASCII は 1 文字 3 バイト。
   repeated string labels = 2;
+  // client 側の相関キー。labels と同じ規則でファイル名に入る。
+  // 送らなかった場合も名前の枠は残る (`{taskId}__{labels}` のように下線が並ぶ) ——
+  // 枠が固定されているので、名前から元の値を読み戻せる。
   optional string correlation_id = 3;
   CaptureFormats capture_formats = 4;
   // 上流へ送る Accept-Language。印字可能な ASCII のみ、200 文字以下。
   // 制御文字 (CR/LF/NUL) は header への注入になるので境界が拒む。
   optional string accept_language = 5;
+  // wacz-auth の署名を求める。`capture_formats.wacz` と一緒のときだけ有効で、
+  // 他の組み合わせは INVALID_ARGUMENT で拒む。
   optional bool signing = 6;
 
   // true/false だけの指定と、細かい指定を区別する必要があるので oneof にする。
@@ -228,9 +238,14 @@ message SubmitCaptureRequest {
     DismissSpec dismiss_banners_spec = 8;
   }
 
+  // リクエスト単位の viewport。値域 (1–7680 × 1–4320) は server 側の境界
+  // (request-limits.ts) が強制する。
   optional Viewport viewport = 9;
   // 0–5000。ページ操作 1 つごとに挟む遅延で、headless の描画を眺めるためのもの。
   // 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
+  //
+  // 操作ごとの timeout の予算の **外側** で数える —— わざと遅くした取り込みは
+  // 固まった取り込みではない。効くのはタスク全体の予算だけ。
   optional int32 operation_delay_ms = 10;
   optional bool trace = 11;
   // 退役した番号。**再利用しない。**
