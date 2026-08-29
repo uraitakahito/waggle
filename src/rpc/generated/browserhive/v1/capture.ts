@@ -543,6 +543,10 @@ export interface GetCaptureRequest {
   taskId: string;
 }
 
+export interface GetCaptureProgressRequest {
+  taskId: string;
+}
+
 export interface GetServerStatusRequest {
   /**
    * 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
@@ -641,6 +645,40 @@ export interface GetCaptureResponse {
    * まだ走っている取り込みが失敗として台帳に載る。
    */
   report?: CaptureResultReport | undefined;
+}
+
+/** 取り込みが **終わる前** の様子。どのフィールドが入るかは state で決まる。 */
+export interface CaptureProgress {
+  /**
+   * キューに入ってからの時間。requeue が enqueued_at を保つので、リトライを
+   * またいでも「本当に待っている時間」になる。
+   */
+  queuedMs: number;
+  /**
+   * 何度目の試行か。0 のまま増えなければ順調。増えていれば、前の試行が
+   * task_total_ms を使い切っている —— これが「詰まっている」の信号。
+   */
+  retryCount: number;
+  /** PROCESSING のときだけ。task_total_ms に対してどこまで来たかが分かる。 */
+  elapsedMs?: number | undefined;
+  workerIndex?:
+    | number
+    | undefined;
+  /**
+   * PENDING のときだけ。0 が先頭。切り詰めない探索で数えるので、キューが
+   * 深くても正しい (GetServerStatus の pending_tasks は pending_limit で
+   * 切られるので、そこからは数えられない)。
+   */
+  queuePosition?: number | undefined;
+}
+
+export interface GetCaptureProgressResponse {
+  state: CaptureState;
+  /**
+   * state != DONE のときに入る。DONE なら report を GetCapture で取ること
+   * —— こちらは結果を運ばない。
+   */
+  progress?: CaptureProgress | undefined;
 }
 
 export interface ErrorTaskInfo {
@@ -2354,6 +2392,79 @@ export const GetCaptureRequest: MessageFns<GetCaptureRequest> = {
   },
 };
 
+function createBaseGetCaptureProgressRequest(): GetCaptureProgressRequest {
+  return { taskId: "" };
+}
+
+export const GetCaptureProgressRequest: MessageFns<GetCaptureProgressRequest> = {
+  encode(message: GetCaptureProgressRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.taskId !== "") {
+      writer.uint32(10).string(message.taskId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureProgressRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetCaptureProgressRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.taskId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetCaptureProgressRequest {
+    return {
+      taskId: isSet(object.taskId)
+        ? globalThis.String(object.taskId)
+        : isSet(object.task_id)
+        ? globalThis.String(object.task_id)
+        : "",
+    };
+  },
+
+  toJSON(message: GetCaptureProgressRequest): unknown {
+    const obj: any = {};
+    if (message.taskId !== "") {
+      obj.taskId = message.taskId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetCaptureProgressRequest>, I>>(base?: I): GetCaptureProgressRequest {
+    return GetCaptureProgressRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetCaptureProgressRequest>, I>>(object: I): GetCaptureProgressRequest {
+    const message = createBaseGetCaptureProgressRequest();
+    message.taskId = object.taskId ?? "";
+    return message;
+  },
+};
+
 function createBaseGetServerStatusRequest(): GetServerStatusRequest {
   return { pendingLimit: undefined };
 }
@@ -3830,6 +3941,246 @@ export const GetCaptureResponse: MessageFns<GetCaptureResponse> = {
     message.state = object.state ?? 0;
     message.report = (object.report !== undefined && object.report !== null)
       ? CaptureResultReport.fromPartial(object.report)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseCaptureProgress(): CaptureProgress {
+  return { queuedMs: 0, retryCount: 0, elapsedMs: undefined, workerIndex: undefined, queuePosition: undefined };
+}
+
+export const CaptureProgress: MessageFns<CaptureProgress> = {
+  encode(message: CaptureProgress, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.queuedMs !== 0) {
+      writer.uint32(8).int32(message.queuedMs);
+    }
+    if (message.retryCount !== 0) {
+      writer.uint32(16).int32(message.retryCount);
+    }
+    if (message.elapsedMs !== undefined) {
+      writer.uint32(24).int32(message.elapsedMs);
+    }
+    if (message.workerIndex !== undefined) {
+      writer.uint32(32).int32(message.workerIndex);
+    }
+    if (message.queuePosition !== undefined) {
+      writer.uint32(40).int32(message.queuePosition);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CaptureProgress {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCaptureProgress();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.queuedMs = reader.int32();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.retryCount = reader.int32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.elapsedMs = reader.int32();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.workerIndex = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.queuePosition = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CaptureProgress {
+    return {
+      queuedMs: isSet(object.queuedMs)
+        ? globalThis.Number(object.queuedMs)
+        : isSet(object.queued_ms)
+        ? globalThis.Number(object.queued_ms)
+        : 0,
+      retryCount: isSet(object.retryCount)
+        ? globalThis.Number(object.retryCount)
+        : isSet(object.retry_count)
+        ? globalThis.Number(object.retry_count)
+        : 0,
+      elapsedMs: isSet(object.elapsedMs)
+        ? globalThis.Number(object.elapsedMs)
+        : isSet(object.elapsed_ms)
+        ? globalThis.Number(object.elapsed_ms)
+        : undefined,
+      workerIndex: isSet(object.workerIndex)
+        ? globalThis.Number(object.workerIndex)
+        : isSet(object.worker_index)
+        ? globalThis.Number(object.worker_index)
+        : undefined,
+      queuePosition: isSet(object.queuePosition)
+        ? globalThis.Number(object.queuePosition)
+        : isSet(object.queue_position)
+        ? globalThis.Number(object.queue_position)
+        : undefined,
+    };
+  },
+
+  toJSON(message: CaptureProgress): unknown {
+    const obj: any = {};
+    if (message.queuedMs !== 0) {
+      obj.queuedMs = Math.round(message.queuedMs);
+    }
+    if (message.retryCount !== 0) {
+      obj.retryCount = Math.round(message.retryCount);
+    }
+    if (message.elapsedMs !== undefined) {
+      obj.elapsedMs = Math.round(message.elapsedMs);
+    }
+    if (message.workerIndex !== undefined) {
+      obj.workerIndex = Math.round(message.workerIndex);
+    }
+    if (message.queuePosition !== undefined) {
+      obj.queuePosition = Math.round(message.queuePosition);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CaptureProgress>, I>>(base?: I): CaptureProgress {
+    return CaptureProgress.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CaptureProgress>, I>>(object: I): CaptureProgress {
+    const message = createBaseCaptureProgress();
+    message.queuedMs = object.queuedMs ?? 0;
+    message.retryCount = object.retryCount ?? 0;
+    message.elapsedMs = object.elapsedMs ?? undefined;
+    message.workerIndex = object.workerIndex ?? undefined;
+    message.queuePosition = object.queuePosition ?? undefined;
+    return message;
+  },
+};
+
+function createBaseGetCaptureProgressResponse(): GetCaptureProgressResponse {
+  return { state: 0, progress: undefined };
+}
+
+export const GetCaptureProgressResponse: MessageFns<GetCaptureProgressResponse> = {
+  encode(message: GetCaptureProgressResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.state !== 0) {
+      writer.uint32(8).int32(message.state);
+    }
+    if (message.progress !== undefined) {
+      CaptureProgress.encode(message.progress, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureProgressResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetCaptureProgressResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.state = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.progress = CaptureProgress.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetCaptureProgressResponse {
+    return {
+      state: isSet(object.state) ? captureStateFromJSON(object.state) : 0,
+      progress: isSet(object.progress) ? CaptureProgress.fromJSON(object.progress) : undefined,
+    };
+  },
+
+  toJSON(message: GetCaptureProgressResponse): unknown {
+    const obj: any = {};
+    if (message.state !== 0) {
+      obj.state = captureStateToJSON(message.state);
+    }
+    if (message.progress !== undefined) {
+      obj.progress = CaptureProgress.toJSON(message.progress);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetCaptureProgressResponse>, I>>(base?: I): GetCaptureProgressResponse {
+    return GetCaptureProgressResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetCaptureProgressResponse>, I>>(object: I): GetCaptureProgressResponse {
+    const message = createBaseGetCaptureProgressResponse();
+    message.state = object.state ?? 0;
+    message.progress = (object.progress !== undefined && object.progress !== null)
+      ? CaptureProgress.fromPartial(object.progress)
       : undefined;
     return message;
   },
@@ -5657,6 +6008,29 @@ export const CaptureServiceService = {
     responseDeserialize: (value: Buffer): GetCaptureResponse => GetCaptureResponse.decode(value),
   },
   /**
+   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
+   * こちらは「途中」を返す —— 結果は運ばない。
+   *
+   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
+   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
+   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *
+   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
+   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
+   * 効いてくる。
+   */
+  getCaptureProgress: {
+    path: "/browserhive.v1.CaptureService/GetCaptureProgress" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetCaptureProgressRequest): Buffer =>
+      Buffer.from(GetCaptureProgressRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetCaptureProgressRequest => GetCaptureProgressRequest.decode(value),
+    responseSerialize: (value: GetCaptureProgressResponse): Buffer =>
+      Buffer.from(GetCaptureProgressResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetCaptureProgressResponse => GetCaptureProgressResponse.decode(value),
+  },
+  /**
    * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
    * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
    * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
@@ -5686,6 +6060,19 @@ export interface CaptureServiceServer extends UntypedServiceImplementation {
    * report は空。
    */
   getCapture: handleUnaryCall<GetCaptureRequest, GetCaptureResponse>;
+  /**
+   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
+   * こちらは「途中」を返す —— 結果は運ばない。
+   *
+   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
+   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
+   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *
+   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
+   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
+   * 効いてくる。
+   */
+  getCaptureProgress: handleUnaryCall<GetCaptureProgressRequest, GetCaptureProgressResponse>;
   /**
    * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
    * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
@@ -5733,6 +6120,33 @@ export interface CaptureServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: GetCaptureResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
+   * こちらは「途中」を返す —— 結果は運ばない。
+   *
+   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
+   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
+   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *
+   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
+   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
+   * 効いてくる。
+   */
+  getCaptureProgress(
+    request: GetCaptureProgressRequest,
+    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
+  ): ClientUnaryCall;
+  getCaptureProgress(
+    request: GetCaptureProgressRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
+  ): ClientUnaryCall;
+  getCaptureProgress(
+    request: GetCaptureProgressRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
   ): ClientUnaryCall;
   /**
    * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
