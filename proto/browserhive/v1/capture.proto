@@ -20,6 +20,18 @@ service CaptureService {
   // report は空。
   rpc GetCapture(GetCaptureRequest) returns (GetCaptureResponse);
 
+  // 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
+  // こちらは「途中」を返す —— 結果は運ばない。
+  //
+  // GetCapture と違って PROCESSING を実際に返す。待っている側にとって
+  // 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
+  // (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+  //
+  // GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
+  // 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
+  // 効いてくる。
+  rpc GetCaptureProgress(GetCaptureProgressRequest) returns (GetCaptureProgressResponse);
+
   // キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
   // —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
   // その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
@@ -300,6 +312,10 @@ message GetCaptureRequest {
   string task_id = 1;
 }
 
+message GetCaptureProgressRequest {
+  string task_id = 1;
+}
+
 message GetServerStatusRequest {
   // 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
   // 既定を当てるのも範囲の検査も handler の仕事。
@@ -395,6 +411,34 @@ message GetCaptureResponse {
   // 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
   // まだ走っている取り込みが失敗として台帳に載る。
   optional CaptureResultReport report = 2;
+}
+
+// 取り込みが **終わる前** の様子。どのフィールドが入るかは state で決まる。
+message CaptureProgress {
+  // キューに入ってからの時間。requeue が enqueued_at を保つので、リトライを
+  // またいでも「本当に待っている時間」になる。
+  int32 queued_ms = 1;
+
+  // 何度目の試行か。0 のまま増えなければ順調。増えていれば、前の試行が
+  // task_total_ms を使い切っている —— これが「詰まっている」の信号。
+  int32 retry_count = 2;
+
+  // PROCESSING のときだけ。task_total_ms に対してどこまで来たかが分かる。
+  optional int32 elapsed_ms = 3;
+  optional int32 worker_index = 4;
+
+  // PENDING のときだけ。0 が先頭。切り詰めない探索で数えるので、キューが
+  // 深くても正しい (GetServerStatus の pending_tasks は pending_limit で
+  // 切られるので、そこからは数えられない)。
+  optional int32 queue_position = 5;
+}
+
+message GetCaptureProgressResponse {
+  CaptureState state = 1;
+
+  // state != DONE のときに入る。DONE なら report を GetCapture で取ること
+  // —— こちらは結果を運ばない。
+  optional CaptureProgress progress = 2;
 }
 
 // -- status ----------------------------------------------------------------
