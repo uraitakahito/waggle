@@ -39,6 +39,7 @@ export interface ClientOptions {
   operationDelayMs?: number;
   behaviors?: string[];
   siteBehaviors?: boolean;
+  session?: "isolated" | "shared";
   /**
    * 受理された取り込みを 1 件ずつ待ち、成功したものを台帳に足す。
    * `--no-collect` は投げて終わり、結果は後から `waggle fga:reconcile` が
@@ -186,6 +187,14 @@ export const createProgram = (): Command => {
       "--no-site-behaviors",
       "Skip the site-specific behaviors BrowserHive bundles (they are considered on every capture by default)",
     )
+    .addOption(
+      new Option(
+        "--session <mode>",
+        "Whether a capture carries state over from the previous task on the same BrowserHive worker: " +
+          "isolated (default — a throwaway BrowserContext, so cookies and origin storage start empty) | " +
+          "shared (reuse the worker's context and tab; state survives between captures)",
+      ).choices(["isolated", "shared"]),
+    )
     .option(
       "--no-collect",
       "Submit and exit without waiting for results (fga:reconcile picks them up from the bucket later)",
@@ -229,6 +238,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     operationDelayMs?: number;
     behaviors?: string[];
     siteBehaviors?: boolean;
+    session?: "isolated" | "shared";
     collect?: boolean;
     captureTimeoutMs?: number;
   }>();
@@ -254,6 +264,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     // commander がここを `false` にするのは --no-site-behaviors を渡したときだけ。
     // 既定の `true` は「指定なし」の意味なので、wire に出してはならない。
     ...(opts.siteBehaviors === false && { siteBehaviors: false }),
+    ...(opts.session !== undefined && { session: opts.session }),
   };
 };
 
@@ -292,6 +303,7 @@ export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
     }),
     ...(options.operationDelayMs !== undefined && { operationDelayMs: options.operationDelayMs }),
     ...(Object.keys(behaviors).length > 0 && { behaviors }),
+    ...(options.session !== undefined && { session: options.session }),
   };
   // #endregion capture-settings
 };

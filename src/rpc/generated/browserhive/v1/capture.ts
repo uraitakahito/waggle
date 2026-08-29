@@ -273,47 +273,54 @@ export function errorTypeToJSON(object: ErrorType): string {
   }
 }
 
-/** ブラウザ HTTP キャッシュの扱い。 */
-export enum CacheMode {
-  CACHE_MODE_UNSPECIFIED = 0,
-  CACHE_MODE_DEFAULT = 1,
-  CACHE_MODE_BYPASS = 2,
-  CACHE_MODE_CLEAR = 3,
+/**
+ * この取り込みが、前のタスクの残留物を持ち越すかどうか。
+ *
+ * 0 番に ISOLATED を置いているのは意図的で、この repo の他の enum が守っている
+ * `_UNSPECIFIED = 0` の慣習を破っている。proto3 のスカラ enum は「未設定」と「0」を
+ * 区別できないので、0 を ISOLATED にすれば「指定しなかった」と「隔離を頼んだ」が
+ * 同じものになる —— つまり **「指定しなかったのに持ち越されていた」が表現できなく
+ * なる**。かつて cache と reset_state という 3 つのつまみでそれを表そうとして、
+ * どれも origin ストレージを覆っておらず、www.yahoo.co.jp のフィードが
+ * アーカイブに入らないことに 1 年近く誰も気づかなかった。
+ */
+export enum SessionMode {
+  /**
+   * SESSION_MODE_ISOLATED - 既定。使い捨ての BrowserContext で取り込む。cookie / HTTP キャッシュ /
+   * localStorage / sessionStorage / IndexedDB / Service Worker がすべて空から始まる。
+   */
+  SESSION_MODE_ISOLATED = 0,
+  /**
+   * SESSION_MODE_SHARED - worker が持ち回る BrowserContext とタブを使う。ログイン後の連続取り込みなど、
+   * 持ち越すことが目的のときだけ選ぶ。同じ worker に載った **無関係なタスクにも
+   * 状態が漏れる** ことを承知の上で。後始末は一切しない。
+   */
+  SESSION_MODE_SHARED = 1,
   UNRECOGNIZED = -1,
 }
 
-export function cacheModeFromJSON(object: any): CacheMode {
+export function sessionModeFromJSON(object: any): SessionMode {
   switch (object) {
     case 0:
-    case "CACHE_MODE_UNSPECIFIED":
-      return CacheMode.CACHE_MODE_UNSPECIFIED;
+    case "SESSION_MODE_ISOLATED":
+      return SessionMode.SESSION_MODE_ISOLATED;
     case 1:
-    case "CACHE_MODE_DEFAULT":
-      return CacheMode.CACHE_MODE_DEFAULT;
-    case 2:
-    case "CACHE_MODE_BYPASS":
-      return CacheMode.CACHE_MODE_BYPASS;
-    case 3:
-    case "CACHE_MODE_CLEAR":
-      return CacheMode.CACHE_MODE_CLEAR;
+    case "SESSION_MODE_SHARED":
+      return SessionMode.SESSION_MODE_SHARED;
     case -1:
     case "UNRECOGNIZED":
     default:
-      return CacheMode.UNRECOGNIZED;
+      return SessionMode.UNRECOGNIZED;
   }
 }
 
-export function cacheModeToJSON(object: CacheMode): string {
+export function sessionModeToJSON(object: SessionMode): string {
   switch (object) {
-    case CacheMode.CACHE_MODE_UNSPECIFIED:
-      return "CACHE_MODE_UNSPECIFIED";
-    case CacheMode.CACHE_MODE_DEFAULT:
-      return "CACHE_MODE_DEFAULT";
-    case CacheMode.CACHE_MODE_BYPASS:
-      return "CACHE_MODE_BYPASS";
-    case CacheMode.CACHE_MODE_CLEAR:
-      return "CACHE_MODE_CLEAR";
-    case CacheMode.UNRECOGNIZED:
+    case SessionMode.SESSION_MODE_ISOLATED:
+      return "SESSION_MODE_ISOLATED";
+    case SessionMode.SESSION_MODE_SHARED:
+      return "SESSION_MODE_SHARED";
+    case SessionMode.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
   }
@@ -343,12 +350,6 @@ export interface DismissSpec {
   excludeFrameworks: string[];
   heuristic?: DismissHeuristicSpec | undefined;
   failOnError?: boolean | undefined;
-}
-
-/** task 間の初期化を軸ごとに制御する。省略時はサーバ既定。 */
-export interface ResetStateSpec {
-  cookies?: boolean | undefined;
-  pageContext?: boolean | undefined;
 }
 
 /**
@@ -475,8 +476,9 @@ export interface SubmitCaptureRequest {
    * 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
    */
   operationDelayMs?: number | undefined;
-  trace?: boolean | undefined;
-  cache: CacheMode;
+  trace?:
+    | boolean
+    | undefined;
   /**
    * 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で
    * (2 が Retina、3 が現行の携帯端末の上)、同じ値を 2 度置くことはできない。
@@ -492,11 +494,11 @@ export interface SubmitCaptureRequest {
    */
   devicePixelRatios: number[];
   fullPage?: boolean | undefined;
-  behaviors?: BehaviorSpec | undefined;
-  resetStateEnabled?: boolean | undefined;
-  resetStateSpec?:
-    | ResetStateSpec
+  behaviors?:
+    | BehaviorSpec
     | undefined;
+  /** 前のタスクの残留物を持ち越すか。省略 = ISOLATED (使い捨ての context)。 */
+  session: SessionMode;
   /**
    * この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetStatus の
    * limits.max_response_bytes)。
@@ -1134,95 +1136,6 @@ export const DismissSpec: MessageFns<DismissSpec> = {
       ? DismissHeuristicSpec.fromPartial(object.heuristic)
       : undefined;
     message.failOnError = object.failOnError ?? undefined;
-    return message;
-  },
-};
-
-function createBaseResetStateSpec(): ResetStateSpec {
-  return { cookies: undefined, pageContext: undefined };
-}
-
-export const ResetStateSpec: MessageFns<ResetStateSpec> = {
-  encode(message: ResetStateSpec, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.cookies !== undefined) {
-      writer.uint32(8).bool(message.cookies);
-    }
-    if (message.pageContext !== undefined) {
-      writer.uint32(16).bool(message.pageContext);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): ResetStateSpec {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseResetStateSpec();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.cookies = reader.bool();
-            continue;
-          }
-          case 2: {
-            if (tag !== 16) {
-              break;
-            }
-
-            message.pageContext = reader.bool();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): ResetStateSpec {
-    return {
-      cookies: isSet(object.cookies) ? globalThis.Boolean(object.cookies) : undefined,
-      pageContext: isSet(object.pageContext)
-        ? globalThis.Boolean(object.pageContext)
-        : isSet(object.page_context)
-        ? globalThis.Boolean(object.page_context)
-        : undefined,
-    };
-  },
-
-  toJSON(message: ResetStateSpec): unknown {
-    const obj: any = {};
-    if (message.cookies !== undefined) {
-      obj.cookies = message.cookies;
-    }
-    if (message.pageContext !== undefined) {
-      obj.pageContext = message.pageContext;
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<ResetStateSpec>, I>>(base?: I): ResetStateSpec {
-    return ResetStateSpec.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<ResetStateSpec>, I>>(object: I): ResetStateSpec {
-    const message = createBaseResetStateSpec();
-    message.cookies = object.cookies ?? undefined;
-    message.pageContext = object.pageContext ?? undefined;
     return message;
   },
 };
@@ -1972,12 +1885,10 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
     viewport: undefined,
     operationDelayMs: undefined,
     trace: undefined,
-    cache: 0,
     devicePixelRatios: [],
     fullPage: undefined,
     behaviors: undefined,
-    resetStateEnabled: undefined,
-    resetStateSpec: undefined,
+    session: 0,
     maxResponseBytes: undefined,
   };
 }
@@ -2017,9 +1928,6 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.trace !== undefined) {
       writer.uint32(88).bool(message.trace);
     }
-    if (message.cache !== 0) {
-      writer.uint32(96).int32(message.cache);
-    }
     writer.uint32(162).fork();
     for (const v of message.devicePixelRatios) {
       writer.int32(v);
@@ -2031,11 +1939,8 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.behaviors !== undefined) {
       BehaviorSpec.encode(message.behaviors, writer.uint32(130).fork()).join();
     }
-    if (message.resetStateEnabled !== undefined) {
-      writer.uint32(136).bool(message.resetStateEnabled);
-    }
-    if (message.resetStateSpec !== undefined) {
-      ResetStateSpec.encode(message.resetStateSpec, writer.uint32(146).fork()).join();
+    if (message.session !== 0) {
+      writer.uint32(168).int32(message.session);
     }
     if (message.maxResponseBytes !== undefined) {
       writer.uint32(152).int64(message.maxResponseBytes);
@@ -2144,14 +2049,6 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
             message.trace = reader.bool();
             continue;
           }
-          case 12: {
-            if (tag !== 96) {
-              break;
-            }
-
-            message.cache = reader.int32() as any;
-            continue;
-          }
           case 20: {
             if (tag === 160) {
               message.devicePixelRatios.push(reader.int32());
@@ -2186,20 +2083,12 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
             message.behaviors = BehaviorSpec.decode(reader, reader.uint32());
             continue;
           }
-          case 17: {
-            if (tag !== 136) {
+          case 21: {
+            if (tag !== 168) {
               break;
             }
 
-            message.resetStateEnabled = reader.bool();
-            continue;
-          }
-          case 18: {
-            if (tag !== 146) {
-              break;
-            }
-
-            message.resetStateSpec = ResetStateSpec.decode(reader, reader.uint32());
+            message.session = reader.int32() as any;
             continue;
           }
           case 19: {
@@ -2259,7 +2148,6 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         ? globalThis.Number(object.operation_delay_ms)
         : undefined,
       trace: isSet(object.trace) ? globalThis.Boolean(object.trace) : undefined,
-      cache: isSet(object.cache) ? cacheModeFromJSON(object.cache) : 0,
       devicePixelRatios: globalThis.Array.isArray(object?.devicePixelRatios)
         ? object.devicePixelRatios.map((e: any) => globalThis.Number(e))
         : globalThis.Array.isArray(object?.device_pixel_ratios)
@@ -2271,16 +2159,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         ? globalThis.Boolean(object.full_page)
         : undefined,
       behaviors: isSet(object.behaviors) ? BehaviorSpec.fromJSON(object.behaviors) : undefined,
-      resetStateEnabled: isSet(object.resetStateEnabled)
-        ? globalThis.Boolean(object.resetStateEnabled)
-        : isSet(object.reset_state_enabled)
-        ? globalThis.Boolean(object.reset_state_enabled)
-        : undefined,
-      resetStateSpec: isSet(object.resetStateSpec)
-        ? ResetStateSpec.fromJSON(object.resetStateSpec)
-        : isSet(object.reset_state_spec)
-        ? ResetStateSpec.fromJSON(object.reset_state_spec)
-        : undefined,
+      session: isSet(object.session) ? sessionModeFromJSON(object.session) : 0,
       maxResponseBytes: isSet(object.maxResponseBytes)
         ? globalThis.Number(object.maxResponseBytes)
         : isSet(object.max_response_bytes)
@@ -2324,9 +2203,6 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.trace !== undefined) {
       obj.trace = message.trace;
     }
-    if (message.cache !== 0) {
-      obj.cache = cacheModeToJSON(message.cache);
-    }
     if (message.devicePixelRatios?.length) {
       obj.devicePixelRatios = message.devicePixelRatios.map((e) => Math.round(e));
     }
@@ -2336,11 +2212,8 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.behaviors !== undefined) {
       obj.behaviors = BehaviorSpec.toJSON(message.behaviors);
     }
-    if (message.resetStateEnabled !== undefined) {
-      obj.resetStateEnabled = message.resetStateEnabled;
-    }
-    if (message.resetStateSpec !== undefined) {
-      obj.resetStateSpec = ResetStateSpec.toJSON(message.resetStateSpec);
+    if (message.session !== 0) {
+      obj.session = sessionModeToJSON(message.session);
     }
     if (message.maxResponseBytes !== undefined) {
       obj.maxResponseBytes = Math.round(message.maxResponseBytes);
@@ -2370,16 +2243,12 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
       : undefined;
     message.operationDelayMs = object.operationDelayMs ?? undefined;
     message.trace = object.trace ?? undefined;
-    message.cache = object.cache ?? 0;
     message.devicePixelRatios = object.devicePixelRatios?.map((e) => e) || [];
     message.fullPage = object.fullPage ?? undefined;
     message.behaviors = (object.behaviors !== undefined && object.behaviors !== null)
       ? BehaviorSpec.fromPartial(object.behaviors)
       : undefined;
-    message.resetStateEnabled = object.resetStateEnabled ?? undefined;
-    message.resetStateSpec = (object.resetStateSpec !== undefined && object.resetStateSpec !== null)
-      ? ResetStateSpec.fromPartial(object.resetStateSpec)
-      : undefined;
+    message.session = object.session ?? 0;
     message.maxResponseBytes = object.maxResponseBytes ?? undefined;
     return message;
   },

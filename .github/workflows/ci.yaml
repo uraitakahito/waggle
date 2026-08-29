@@ -10,6 +10,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # vendored proto が submodule の proto と一致しているか。
+  #
+  # `proto:sync` は submodule から `proto/` へ cp するだけなので、submodule を上げても
+  # sync を忘れれば古い契約のまま喋る。実際に一度それで通り抜けている。
+  #
+  # `check` job とは別に切ってあるのは submodule が要るから —— BrowserHive は private
+  # なので既定の GITHUB_TOKEN では clone できず、App token を鋳造する手順が要る。
+  # それを毎 PR の全部の検査に背負わせるより、この 1 本だけに閉じるほうが安い。
+  #
+  # **検査であって修正ではない。** `pnpm run proto:generate` は頭で sync するが、
+  # ここで呼ぶのは `proto:diff` のほう。sync を通してから比べると、ずれを自分で直して
+  # しまって必ず緑になる (実際にその形で書いて、反証したら素通りした)。
+  proto-sync:
+    name: Proto sync check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # 手順の由来は docs.yaml の同じブロックを参照。App は repo をまたいで共有する
+      # 前提で名前が付いている。
+      - uses: actions/create-github-app-token@v3
+        id: submodule-token
+        with:
+          client-id: ${{ vars.SUBMODULE_CLIENT_ID }}
+          private-key: ${{ secrets.SUBMODULE_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            waggle
+            browserhive
+          permission-contents: read
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ steps.submodule-token.outputs.token }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Vendored proto matches the submodule
+        run: pnpm run proto:diff
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10

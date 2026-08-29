@@ -70,12 +70,23 @@ enum ErrorType {
   ERROR_TYPE_INTERNAL = 5;
 }
 
-// ブラウザ HTTP キャッシュの扱い。
-enum CacheMode {
-  CACHE_MODE_UNSPECIFIED = 0;
-  CACHE_MODE_DEFAULT = 1;
-  CACHE_MODE_BYPASS = 2;
-  CACHE_MODE_CLEAR = 3;
+// この取り込みが、前のタスクの残留物を持ち越すかどうか。
+//
+// 0 番に ISOLATED を置いているのは意図的で、この repo の他の enum が守っている
+// `_UNSPECIFIED = 0` の慣習を破っている。proto3 のスカラ enum は「未設定」と「0」を
+// 区別できないので、0 を ISOLATED にすれば「指定しなかった」と「隔離を頼んだ」が
+// 同じものになる —— つまり **「指定しなかったのに持ち越されていた」が表現できなく
+// なる**。かつて cache と reset_state という 3 つのつまみでそれを表そうとして、
+// どれも origin ストレージを覆っておらず、www.yahoo.co.jp のフィードが
+// アーカイブに入らないことに 1 年近く誰も気づかなかった。
+enum SessionMode {
+  // 既定。使い捨ての BrowserContext で取り込む。cookie / HTTP キャッシュ /
+  // localStorage / sessionStorage / IndexedDB / Service Worker がすべて空から始まる。
+  SESSION_MODE_ISOLATED = 0;
+  // worker が持ち回る BrowserContext とタブを使う。ログイン後の連続取り込みなど、
+  // 持ち越すことが目的のときだけ選ぶ。同じ worker に載った **無関係なタスクにも
+  // 状態が漏れる** ことを承知の上で。後始末は一切しない。
+  SESSION_MODE_SHARED = 1;
 }
 
 // -- リクエスト側 ----------------------------------------------------------
@@ -104,12 +115,6 @@ message DismissSpec {
   repeated string exclude_frameworks = 3;
   optional DismissHeuristicSpec heuristic = 4;
   optional bool fail_on_error = 5;
-}
-
-// task 間の初期化を軸ごとに制御する。省略時はサーバ既定。
-message ResetStateSpec {
-  optional bool cookies = 1;
-  optional bool page_context = 2;
 }
 
 // viewport の指定。
@@ -228,15 +233,21 @@ message SubmitCaptureRequest {
   // 待ちの手段ではないので上限が要る (1 操作ごとに効き、操作は十数回ある)。
   optional int32 operation_delay_ms = 10;
   optional bool trace = 11;
-  CacheMode cache = 12;
-  // 13 と 14 は archive_mode (enum) と device_scale_factor が使っていた。番号を
-  // 再利用しない —— 旧 client が送る archive_mode = ARCHIVE_MODE_MULTIPASS は
-  // 13 番の varint 2 で、そのまま repeated int32 として読むと
-  // device_pixel_ratios = [2] に化ける。「1 と 2 で読み込め」が「DPR 2 だけで
-  // 撮れ」になり、しかも誰も気づかない。予約しておけば未知のフィールドとして
-  // 捨てられ、サーバ既定に落ちる。
-  reserved 13, 14;
-  reserved "archive_mode", "device_scale_factor";
+  // 退役した番号。**再利用しない。**
+  //
+  // 13 と 14 は archive_mode (enum) と device_scale_factor が使っていた。旧 client が
+  // 送る archive_mode = ARCHIVE_MODE_MULTIPASS は 13 番の varint 2 で、そのまま
+  // repeated int32 として読むと device_pixel_ratios = [2] に化ける。「1 と 2 で
+  // 読み込め」が「DPR 2 だけで撮れ」になり、しかも誰も気づかない。
+  //
+  // 12・17・18 は cache と reset_state が使っていた。session に畳んで消したが、
+  // 番号は同じ理由で空けておく —— waggle は この .proto を vendoring していて
+  // (`proto:sync` が要る)、同期を忘れると古い番号のまま喋る。実際に一度起きている。
+  // 予約しておけば未知のフィールドとして捨てられ、サーバ既定 (= 隔離) に落ちる。
+  // 予約しなければ、同じ wire type の別フィールドとして黙って読まれる。
+  reserved 12, 13, 14, 17, 18;
+  reserved "cache", "archive_mode", "device_scale_factor",
+           "reset_state_enabled", "reset_state_spec";
 
   // 読み込む device pixel ratio を、読み込む順に。各要素は 1–3 の整数で
   // (2 が Retina、3 が現行の携帯端末の上)、同じ値を 2 度置くことはできない。
@@ -253,11 +264,8 @@ message SubmitCaptureRequest {
   optional bool full_page = 15;
   optional BehaviorSpec behaviors = 16;
 
-  // dismiss_banners と同じ理由の oneof。
-  oneof reset_state {
-    bool reset_state_enabled = 17;
-    ResetStateSpec reset_state_spec = 18;
-  }
+  // 前のタスクの残留物を持ち越すか。省略 = ISOLATED (使い捨ての context)。
+  SessionMode session = 21;
 
   // この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetStatus の
   // limits.max_response_bytes)。
