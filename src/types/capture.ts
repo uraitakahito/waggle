@@ -46,6 +46,18 @@ export interface CaptureSettings {
    */
   devicePixelRatios?: number[];
   operationDelayMs?: number;
+  /**
+   * この取り込みが、同じ worker の前のタスクから状態を持ち越すか。
+   *
+   *   isolated (既定) —— 使い捨ての BrowserContext。cookie / HTTP キャッシュ /
+   *                      localStorage / sessionStorage / IndexedDB が空から始まる。
+   *   shared          —— worker が持ち回る context とタブを使う。後始末は無い。
+   *
+   * BrowserHive v5.0.0 で `cache` と `resetState` を置き換えたもの。あの 3 つの
+   * つまみはどれも origin ストレージを覆っておらず、localStorage からフィードを
+   * 復元するページ (www.yahoo.co.jp) がアーカイブに入らないことに気づけなかった。
+   */
+  session?: "isolated" | "shared";
   behaviors?: {
     builtins?: string[];
     siteBehaviors?: boolean;

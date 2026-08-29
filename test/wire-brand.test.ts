@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { submitCapture } from "../src/rpc/calls.js";
 import { sealWire, type WireSubmitCapture } from "../src/rpc/wire.js";
 import {
-  CacheMode,
+  SessionMode,
   type SubmitCaptureRequest,
 } from "../src/rpc/generated/browserhive/v1/capture.js";
 
@@ -23,7 +23,7 @@ const send = (request: WireSubmitCapture): string => request.url;
 const valid: SubmitCaptureRequest = {
   url: "https://example.com/",
   labels: [],
-  cache: CacheMode.CACHE_MODE_UNSPECIFIED,
+  session: SessionMode.SESSION_MODE_ISOLATED,
   devicePixelRatios: [],
 };
 

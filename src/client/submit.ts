@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { submitCapture } from "../rpc/calls.js";
-import { CacheMode, type Behavior } from "../rpc/generated/browserhive/v1/capture.js";
+import { SessionMode, type Behavior } from "../rpc/generated/browserhive/v1/capture.js";
 import { sealWire, type WireSubmitCapture } from "../rpc/wire.js";
 import type { DataEntry } from "../data/url-source.js";
 import type { CaptureSettings } from "../types/capture.js";
@@ -49,9 +49,10 @@ const extractErrorMessage = (raw: unknown): string | undefined => {
  *
  * ここの 2 つの形は、選んだ結果ではなく proto3 の都合:
  *
- *   - `cache` は素の enum field なので、不在になれない。`*_UNSPECIFIED` (0) が
- *     「呼ぶ側は何も言わなかった」の綴りで、BrowserHive がそれを自分の既定値に
- *     戻す。
+ *   - `session` は素の enum field なので、不在になれない。ただしこちらは 0 番が
+ *     `SESSION_MODE_ISOLATED` で、「何も言わなかった」と「隔離を頼んだ」が
+ *     **同じ値**になる —— BrowserHive が意図してそう設計している。
+ *     「指定しなかったのに前のタスクの状態を持ち越していた」が表現できない。
  *   - `devicePixelRatios` は `repeated` で、これも不在になれず、空のリストと
  *     省略を区別できない。だから `[]` が「呼ぶ側は何も言わなかった」の綴りで、
  *     BrowserHive は `--device-pixel-ratios` に落ちる。
@@ -96,7 +97,10 @@ const buildRequest = (
     correlationId,
     captureFormats: settings.captureFormats,
     dismissBannersEnabled: settings.dismissBanners,
-    cache: CacheMode.CACHE_MODE_UNSPECIFIED,
+    session:
+      settings.session === "shared"
+        ? SessionMode.SESSION_MODE_SHARED
+        : SessionMode.SESSION_MODE_ISOLATED,
     ...(settings.acceptLanguage !== undefined && { acceptLanguage: settings.acceptLanguage }),
     devicePixelRatios: settings.devicePixelRatios ?? [],
     ...(settings.operationDelayMs !== undefined && {

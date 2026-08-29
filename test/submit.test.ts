@@ -2,7 +2,7 @@ import { status } from "@grpc/grpc-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { submitRequest } from "../src/client/submit.js";
 import {
-  CacheMode,
+  SessionMode,
   type SubmitCaptureRequest,
   type SubmitCaptureResponse,
 } from "../src/rpc/generated/browserhive/v1/capture.js";
@@ -198,11 +198,11 @@ describe("submitRequest", () => {
     for (const key of ["operationDelayMs", "behaviors"]) {
       expect(request).not.toHaveProperty(key);
     }
-    // `cache` と `devicePixelRatios` は例外で、選んだ結果ではない: proto3 の
-    // enum field は不在になれず、repeated も同じ。UNSPECIFIED (0) と `[]` が
-    // 「呼ぶ側は何も言わなかった」の綴りで、BrowserHive はどちらも自分の既定値に
-    // 戻す —— なのでここは不在ではなく値のほうを主張している。
-    expect(request.cache).toBe(CacheMode.CACHE_MODE_UNSPECIFIED);
+    // `session` と `devicePixelRatios` は例外で、選んだ結果ではない: proto3 の
+    // enum field は不在になれず、repeated も同じ。`[]` は「呼ぶ側は何も言わなかった」の
+    // 綴りで BrowserHive が既定値に戻すが、`session` は違う —— 0 番が ISOLATED
+    // そのもので、「何も言わなかった」と「隔離を頼んだ」が同じ値になる。
+    expect(request.session).toBe(SessionMode.SESSION_MODE_ISOLATED);
     expect(request.devicePixelRatios).toEqual([]);
   });
 });
