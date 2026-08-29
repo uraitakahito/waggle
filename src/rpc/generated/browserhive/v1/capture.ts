@@ -527,7 +527,7 @@ export interface SubmitCaptureRequest {
   /** 前のタスクの残留物を持ち越すか。省略 = ISOLATED (使い捨ての context)。 */
   session: SessionMode;
   /**
-   * この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetStatus の
+   * この取り込みに限って本文の上限を締める。省略時はサーバ既定 (GetServerStatus の
    * limits.max_response_bytes)。
    *
    * 動くのは締める方向だけで、既定より大きい値は既定に丸める。上限は資源を守る
@@ -543,7 +543,7 @@ export interface GetCaptureRequest {
   taskId: string;
 }
 
-export interface GetStatusRequest {
+export interface GetServerStatusRequest {
   /**
    * 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
    * 既定を当てるのも範囲の検査も handler の仕事。
@@ -737,7 +737,7 @@ export interface ServerLimits {
   maxPendingRequests: number;
 }
 
-export interface GetStatusResponse {
+export interface GetServerStatusResponse {
   pending: number;
   processing: number;
   succeeded: number;
@@ -2354,19 +2354,19 @@ export const GetCaptureRequest: MessageFns<GetCaptureRequest> = {
   },
 };
 
-function createBaseGetStatusRequest(): GetStatusRequest {
+function createBaseGetServerStatusRequest(): GetServerStatusRequest {
   return { pendingLimit: undefined };
 }
 
-export const GetStatusRequest: MessageFns<GetStatusRequest> = {
-  encode(message: GetStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const GetServerStatusRequest: MessageFns<GetServerStatusRequest> = {
+  encode(message: GetServerStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.pendingLimit !== undefined) {
       writer.uint32(8).int32(message.pendingLimit);
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): GetStatusRequest {
+  decode(input: BinaryReader | Uint8Array, length?: number): GetServerStatusRequest {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -2375,7 +2375,7 @@ export const GetStatusRequest: MessageFns<GetStatusRequest> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetStatusRequest();
+      const message = createBaseGetServerStatusRequest();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
@@ -2399,7 +2399,7 @@ export const GetStatusRequest: MessageFns<GetStatusRequest> = {
     }
   },
 
-  fromJSON(object: any): GetStatusRequest {
+  fromJSON(object: any): GetServerStatusRequest {
     return {
       pendingLimit: isSet(object.pendingLimit)
         ? globalThis.Number(object.pendingLimit)
@@ -2409,7 +2409,7 @@ export const GetStatusRequest: MessageFns<GetStatusRequest> = {
     };
   },
 
-  toJSON(message: GetStatusRequest): unknown {
+  toJSON(message: GetServerStatusRequest): unknown {
     const obj: any = {};
     if (message.pendingLimit !== undefined) {
       obj.pendingLimit = Math.round(message.pendingLimit);
@@ -2417,11 +2417,11 @@ export const GetStatusRequest: MessageFns<GetStatusRequest> = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<GetStatusRequest>, I>>(base?: I): GetStatusRequest {
-    return GetStatusRequest.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<GetServerStatusRequest>, I>>(base?: I): GetServerStatusRequest {
+    return GetServerStatusRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<GetStatusRequest>, I>>(object: I): GetStatusRequest {
-    const message = createBaseGetStatusRequest();
+  fromPartial<I extends Exact<DeepPartial<GetServerStatusRequest>, I>>(object: I): GetServerStatusRequest {
+    const message = createBaseGetServerStatusRequest();
     message.pendingLimit = object.pendingLimit ?? undefined;
     return message;
   },
@@ -5334,7 +5334,7 @@ export const ServerLimits: MessageFns<ServerLimits> = {
   },
 };
 
-function createBaseGetStatusResponse(): GetStatusResponse {
+function createBaseGetServerStatusResponse(): GetServerStatusResponse {
   return {
     pending: 0,
     processing: 0,
@@ -5351,8 +5351,8 @@ function createBaseGetStatusResponse(): GetStatusResponse {
   };
 }
 
-export const GetStatusResponse: MessageFns<GetStatusResponse> = {
-  encode(message: GetStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
+  encode(message: GetServerStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.pending !== 0) {
       writer.uint32(8).int32(message.pending);
     }
@@ -5392,7 +5392,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): GetStatusResponse {
+  decode(input: BinaryReader | Uint8Array, length?: number): GetServerStatusResponse {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -5401,7 +5401,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetStatusResponse();
+      const message = createBaseGetServerStatusResponse();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
@@ -5513,7 +5513,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     }
   },
 
-  fromJSON(object: any): GetStatusResponse {
+  fromJSON(object: any): GetServerStatusResponse {
     return {
       pending: isSet(object.pending) ? globalThis.Number(object.pending) : 0,
       processing: isSet(object.processing) ? globalThis.Number(object.processing) : 0,
@@ -5548,7 +5548,7 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     };
   },
 
-  toJSON(message: GetStatusResponse): unknown {
+  toJSON(message: GetServerStatusResponse): unknown {
     const obj: any = {};
     if (message.pending !== 0) {
       obj.pending = Math.round(message.pending);
@@ -5589,11 +5589,11 @@ export const GetStatusResponse: MessageFns<GetStatusResponse> = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<GetStatusResponse>, I>>(base?: I): GetStatusResponse {
-    return GetStatusResponse.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<GetServerStatusResponse>, I>>(base?: I): GetServerStatusResponse {
+    return GetServerStatusResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<GetStatusResponse>, I>>(object: I): GetStatusResponse {
-    const message = createBaseGetStatusResponse();
+  fromPartial<I extends Exact<DeepPartial<GetServerStatusResponse>, I>>(object: I): GetServerStatusResponse {
+    const message = createBaseGetServerStatusResponse();
     message.pending = object.pending ?? 0;
     message.processing = object.processing ?? 0;
     message.succeeded = object.succeeded ?? 0;
@@ -5656,15 +5656,22 @@ export const CaptureServiceService = {
     responseSerialize: (value: GetCaptureResponse): Buffer => Buffer.from(GetCaptureResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): GetCaptureResponse => GetCaptureResponse.decode(value),
   },
-  /** キューと coordinator の現在。 */
-  getStatus: {
-    path: "/browserhive.v1.CaptureService/GetStatus" as const,
+  /**
+   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
+   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
+   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
+   * だけで補っていた。
+   */
+  getServerStatus: {
+    path: "/browserhive.v1.CaptureService/GetServerStatus" as const,
     requestStream: false as const,
     responseStream: false as const,
-    requestSerialize: (value: GetStatusRequest): Buffer => Buffer.from(GetStatusRequest.encode(value).finish()),
-    requestDeserialize: (value: Buffer): GetStatusRequest => GetStatusRequest.decode(value),
-    responseSerialize: (value: GetStatusResponse): Buffer => Buffer.from(GetStatusResponse.encode(value).finish()),
-    responseDeserialize: (value: Buffer): GetStatusResponse => GetStatusResponse.decode(value),
+    requestSerialize: (value: GetServerStatusRequest): Buffer =>
+      Buffer.from(GetServerStatusRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetServerStatusRequest => GetServerStatusRequest.decode(value),
+    responseSerialize: (value: GetServerStatusResponse): Buffer =>
+      Buffer.from(GetServerStatusResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetServerStatusResponse => GetServerStatusResponse.decode(value),
   },
 } as const;
 
@@ -5679,8 +5686,13 @@ export interface CaptureServiceServer extends UntypedServiceImplementation {
    * report は空。
    */
   getCapture: handleUnaryCall<GetCaptureRequest, GetCaptureResponse>;
-  /** キューと coordinator の現在。 */
-  getStatus: handleUnaryCall<GetStatusRequest, GetStatusResponse>;
+  /**
+   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
+   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
+   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
+   * だけで補っていた。
+   */
+  getServerStatus: handleUnaryCall<GetServerStatusRequest, GetServerStatusResponse>;
 }
 
 export interface CaptureServiceClient extends Client {
@@ -5722,21 +5734,26 @@ export interface CaptureServiceClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: GetCaptureResponse) => void,
   ): ClientUnaryCall;
-  /** キューと coordinator の現在。 */
-  getStatus(
-    request: GetStatusRequest,
-    callback: (error: ServiceError | null, response: GetStatusResponse) => void,
+  /**
+   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
+   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
+   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
+   * だけで補っていた。
+   */
+  getServerStatus(
+    request: GetServerStatusRequest,
+    callback: (error: ServiceError | null, response: GetServerStatusResponse) => void,
   ): ClientUnaryCall;
-  getStatus(
-    request: GetStatusRequest,
+  getServerStatus(
+    request: GetServerStatusRequest,
     metadata: Metadata,
-    callback: (error: ServiceError | null, response: GetStatusResponse) => void,
+    callback: (error: ServiceError | null, response: GetServerStatusResponse) => void,
   ): ClientUnaryCall;
-  getStatus(
-    request: GetStatusRequest,
+  getServerStatus(
+    request: GetServerStatusRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
-    callback: (error: ServiceError | null, response: GetStatusResponse) => void,
+    callback: (error: ServiceError | null, response: GetServerStatusResponse) => void,
   ): ClientUnaryCall;
 }
 
