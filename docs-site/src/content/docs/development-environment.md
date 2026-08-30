@@ -24,12 +24,30 @@ nvm use
 pnpm install
 sudo container system dns create waggle   # once per machine
 ./setup.sh          # submodules + .env
-pnpm run check       # typecheck + lint + format:check + tests
+pnpm run check       # typecheck + lint + format:check + env + tests
 ```
 
 `setup.sh` is mandatory before any `container-compose` invocation: it
 initialises the `.upstream/browserhive` submodule that every build context
 points at, and refuses to continue if the `waggle` DNS domain is missing.
+
+### Environment variables
+
+The code reads **25** of them, through three different mechanisms:
+`required()`/`optional()` in `src/config/`, commander's `.env()` (so they also
+show up in `--help`), and plain `process.env[…]` — the last of which reaches
+into `scripts/` too. Seven are mandatory.
+
+`.env.example` is the single list. `setup.sh` copies it to `.env` and
+substitutes your username into `WAGGLE_DEV_SUBJECT`; nothing else generates
+`.env`, because a second list drifts from the first. The two OpenFGA ids stay
+empty until `pnpm run fga:deploy` prints them — see
+[Archive ledger](/waggle/archive-ledger/#setup).
+
+`scripts/check-env.mjs` (part of `pnpm run check`, and a step of its own in CI)
+compares the names the code reads against the names `.env.example` declares, in
+both directions. A stale template is worse than no template: it gets trusted,
+so when something is missing there is nothing left to suspect.
 
 ## Daily commands
 

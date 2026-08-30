@@ -23,12 +23,29 @@ nvm use
 pnpm install
 sudo container system dns create waggle   # マシンごとに 1 回
 ./setup.sh          # submodule 初期化 + .env
-pnpm run check       # typecheck + lint + format:check + テスト
+pnpm run check       # typecheck + lint + format:check + env + テスト
 ```
 
 `setup.sh` は `container-compose` を叩く前に必須です。すべての build context が
 指す `.upstream/browserhive` submodule を初期化し、`waggle` DNS ドメインが
 未登録なら止まります。
+
+### 環境変数
+
+コードが読む環境変数は **25 個**あり、読み取りの仕組みは 3 つに分かれています。
+`src/config/` の `required()`/`optional()`、commander の `.env()`（こちらは
+`--help` にも出ます）、そして素の `process.env[…]`（これは `scripts/` にもあります）。
+必須は 7 個です。
+
+一覧は `.env.example` の 1 か所だけです。`setup.sh` はこれを `.env` に写し、
+`WAGGLE_DEV_SUBJECT` を実行者の名前に置き換えます。`.env` を作るものは他にありません
+—— 一覧が 2 つあれば必ずずれるからです。OpenFGA の 2 つの ID は
+`pnpm run fga:deploy` が出力するまで空のままです
+（[アーカイブ台帳](/waggle/ja/archive-ledger/#セットアップ)を参照）。
+
+`scripts/check-env.mjs`（`pnpm run check` に含まれ、CI では独立したステップ）が、
+コードの読み取りと `.env.example` の宣言を両方向で突き合わせます。古い雛形は
+雛形が無いより悪い —— 信用して使われるので、足りないときに疑う先が残りません。
 
 ## 日々のコマンド
 

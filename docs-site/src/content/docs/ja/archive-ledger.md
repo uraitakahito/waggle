@@ -111,6 +111,10 @@ pnpm run api                  # host 側。スタックに waggle-api のサー�
 open http://127.0.0.1:7070/
 ```
 
+これには中身の入った `.env` が要ります（[セットアップ](#セットアップ)を参照）。
+`WAGGLE_DEV_IDENTITY=1` が無くても API は起動しますが、resolver が誰も通さないので
+picker は `401` で空のままになります。
+
 picker が replay に渡すのは `objectKey` だけ:
 
 ```
@@ -266,12 +270,19 @@ pnpm run fga:deploy  # モデルを投入し、固定すべき ID を出力
 ## セットアップ
 
 ```sh
+./setup.sh                    # .env.example から .env を作る（25 個）
 container-compose up -d -b
 pnpm run fga:migrate          # OpenFGA のスキーマ（下記参照）
 pnpm run db:migrate
-pnpm run fga:deploy           # → 出力された 2 つの ID を export
+pnpm run fga:deploy           # → 出力された 2 つの ID を .env に貼る
 pnpm run api
 ```
+
+どれも `.env` を読みます（`pnpm run` の各スクリプトが
+`--env-file-if-exists=.env` を渡しています）。必須は 7 個で、うち 2 個
+（`WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID`）は `fga:deploy` を走らせるまで
+存在しません。この手順が `api` より前にあるのはそのためです。`.env.example` が
+実際の読み取りとずれていないかは `scripts/check-env.mjs` が見ています。
 
 :::caution[`fga:migrate` が独立した手順である理由]
 `openfga` イメージは distroless なので、seaweedfs のように entrypoint で

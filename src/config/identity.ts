@@ -12,7 +12,7 @@
  * `register.ts` も変わらない。`api/identity.ts` が既に述べている「継ぎ目であって
  * 実装ではない」を、CLI 側にも広げたもの。
  */
-import { optional, required } from "./env.js";
+import { collectEnv, optional, type Need } from "./env.js";
 
 export interface Identity {
   subject: string;
@@ -32,7 +32,9 @@ const splitList = (value: string): string[] =>
  * `WAGGLE_DEV_` という接頭辞は意図的。本物が入ったとき、grep で残骸を全部
  * 見つけられる。
  */
-export const devIdentity = (): Identity => ({
-  subject: required("WAGGLE_DEV_SUBJECT"),
+export const identityFrom = (need: Need): Identity => ({
+  subject: need("WAGGLE_DEV_SUBJECT"),
   organizations: splitList(optional("WAGGLE_DEV_ORGANIZATIONS", "")),
 });
+
+export const devIdentity = (): Identity => collectEnv(identityFrom);

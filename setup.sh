@@ -6,7 +6,7 @@
 #   1. Apple Container の道具が入っているかを見る。
 #   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
 #   3. submodule を初期化する。
-#   4. host 側の接続文字列と、開発用の仮 identity を .env に書く。
+#   4. .env.example を写して .env を作る (subject は実行者の名前にする)。
 #
 
 set -e
@@ -62,20 +62,24 @@ git submodule update --init --recursive
 git submodule status --recursive | sed 's/^/  /'
 
 # --- .env を書く ----------------------------------------------------------
-# host 側が必要とするものだけ: waggle は host で動き、スタックへはプラット
-# フォームの DNS を通って届く。サービス間の配線は docker-compose.yml に在る。
+# 一覧はここに持たず、.env.example を写す。**独自の一覧を持つと必ずずれる** ——
+# 以前ここは heredoc で 5 個だけ書いていて、`required` な 7 個のうち 4 個
+# (WAGGLE_S3_*) が最初から欠けた .env が出来ていた。docs が案内するとおりに
+# 進めた人が `pnpm run api` で落ちる、という形で表に出る。
+#
+# 雛形の側は scripts/check-env.mjs が src/ と scripts/ の実際の読み取りと
+# 突き合わせているので、変数が増えればここも自動的に追随する。
 #
 # WAGGLE_DEV_* は認証ではない。誰が投げたかを記録に残すための足場で、
 # 検証は一切されない —— .env を書き換えれば誰にでも成りすませる。本物の
 # identity provider が決まるまでの繋ぎなので、そのつもりで扱うこと。
-cat > .env <<EOF
-DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=browserhive.waggle:50051
-LOG_LEVEL=info
-WAGGLE_DEV_SUBJECT=${USER:-dev}
-WAGGLE_DEV_ORGANIZATIONS=acme
-EOF
-echo "Created .env"
+cp .env.example .env
+
+# subject だけは実行者の名前にする。雛形には中立な `dev` が入っている。
+# `sed -i` の書式が BSD と GNU で違うので、一時ファイルを経由する。
+sed "s/^WAGGLE_DEV_SUBJECT=.*/WAGGLE_DEV_SUBJECT=${USER:-dev}/" .env > .env.tmp
+mv .env.tmp .env
+echo "Created .env (from .env.example)"
 
 cat <<'EOF'
 
@@ -91,4 +95,10 @@ name:
   pnpm install
   pnpm run db:migrate && pnpm run db:seed
   pnpm run dev --webp --limit 3
+
+The archive API additionally needs the two OpenFGA ids, which do not exist
+until the model has been deployed. Paste them into .env:
+
+  pnpm run fga:migrate && pnpm run fga:deploy   # prints store id and model id
+  pnpm run api                                  # then http://127.0.0.1:7070/
 EOF
