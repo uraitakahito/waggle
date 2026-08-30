@@ -16,6 +16,7 @@ import { drainOutbox } from "../fga/outbox-worker.js";
 import { createS3Client } from "../archive/s3.js";
 import { resolveIdentityResolver } from "./identity.js";
 import { registerRoutes } from "./routes.js";
+import { registerPicker, replayOriginFromEnv } from "./picker.js";
 import { logger } from "../logger.js";
 
 const DEFAULT_PORT = 7070;
@@ -50,6 +51,7 @@ const start = async (options: ServerOptions): Promise<void> => {
 
   const app = Fastify({ logger: false });
   registerRoutes(app, { db, fga, s3, resolveIdentity });
+  registerPicker(app, replayOriginFromEnv());
 
   const drainTimer = setInterval(() => {
     void drainOutbox(db, fga).catch((err: unknown) => {
