@@ -71,11 +71,22 @@ export function captureStatusToJSON(object: CaptureStatus): string {
   }
 }
 
-/** GetCapture の進行。 */
+/**
+ * GetCapture の進行。
+ * タスクがいまどこにいるか。GetCapture と GetCaptureProgress は **同じ瞬間に同じ値**
+ * を返す —— どちらを呼んだかで意味が変わらないように。
+ *
+ * PENDING と PROCESSING を分けるのは、PENDING が「キューで待っている」という具体的な
+ * 意味を持つ値だから。worker が既に抱えているタスクにそう答えるのは、粗いのではなく
+ * 事実と違う。
+ */
 export enum CaptureState {
   CAPTURE_STATE_UNSPECIFIED = 0,
+  /** CAPTURE_STATE_PENDING - キューで順番を待っている。 */
   CAPTURE_STATE_PENDING = 1,
+  /** CAPTURE_STATE_PROCESSING - worker が抱えて走らせている (リトライ中もここ)。 */
   CAPTURE_STATE_PROCESSING = 2,
+  /** CAPTURE_STATE_DONE - 終わった。GetCapture なら report が付く。 */
   CAPTURE_STATE_DONE = 3,
   UNRECOGNIZED = -1,
 }
@@ -638,7 +649,8 @@ export interface GetCaptureResponse {
   state: CaptureState;
   /**
    * 触る前に `state == DONE` を確かめること。`state != PENDING` では足りない ——
-   * PENDING と PROCESSING はどちらも「まだ終わっていない」側。
+   * PENDING と PROCESSING はどちらも「まだ終わっていない」側で、**この RPC は
+   * その両方を返す**。
    *
    * 確かめずに読むと status = 0 (CAPTURE_STATUS_UNSPECIFIED) を掴む。言語によっては
    * 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
@@ -656,10 +668,15 @@ export interface CaptureProgress {
   queuedMs: number;
   /**
    * 何度目の試行か。0 のまま増えなければ順調。増えていれば、前の試行が
-   * task_total_ms を使い切っている —— これが「詰まっている」の信号。
+   * 持ち時間を使い切った —— これが「詰まっている」の信号。あと何回やり直せるかは
+   * attempts_remaining が持つ (上限そのものは wire に出ていない)。
    */
   retryCount: number;
-  /** PROCESSING のときだけ。task_total_ms に対してどこまで来たかが分かる。 */
+  /**
+   * PROCESSING のときだけ。いまの試行が始まってからの経過。どこまで来たかは
+   * これ単体では分からない —— 1 回の試行に与えられている時間は wire に出ていない。
+   * 「あとどれだけか」は worst_case_remaining_ms を見ること。
+   */
   elapsedMs?: number | undefined;
   workerIndex?:
     | number
@@ -669,7 +686,33 @@ export interface CaptureProgress {
    * 深くても正しい (GetServerStatus の pending_tasks は pending_limit で
    * 切られるので、そこからは数えられない)。
    */
-  queuePosition?: number | undefined;
+  queuePosition?:
+    | number
+    | undefined;
+  /**
+   * PROCESSING のときだけ。許される限りすべてが悪く進んでも、これだけ待てば
+   * 終端 (DONE) に至る。「いまの試行の残り」+「残りの試行 × 1 回ぶんの持ち時間」。
+   *
+   * **見積もりではない** —— server が自分に課している上限そのもの。これを超えても
+   * DONE が来ないなら、遅い取り込みではなく server の異常。client 側に
+   * 「だいたいこれくらい」という定数を置く必要は無くなる。
+   *
+   * ただし厳密な上界ではない: 上限が掛かるのは取り込み処理の部分で、dequeue から
+   * 成果物のアップロードまでの全体ではない。実測では試行 1 回あたり 300ms 弱を
+   * 超過する。猶予を詰めすぎると、正常な取り込みを異常と判定する。
+   *
+   * PENDING には付かない。順番待ちの長さは他人の仕事の量で決まり、server は
+   * そこに上限を課していない。数字を入れれば、それは予報になる。
+   */
+  worstCaseRemainingMs?:
+    | number
+    | undefined;
+  /**
+   * PROCESSING のときだけ。あと何回やり直せるか。0 なら、この試行が最後。
+   *
+   * retry_count からは導けない —— 上限 (max_retry_count) は wire に出ていない。
+   */
+  attemptsRemaining?: number | undefined;
 }
 
 export interface GetCaptureProgressResponse {
@@ -3947,7 +3990,15 @@ export const GetCaptureResponse: MessageFns<GetCaptureResponse> = {
 };
 
 function createBaseCaptureProgress(): CaptureProgress {
-  return { queuedMs: 0, retryCount: 0, elapsedMs: undefined, workerIndex: undefined, queuePosition: undefined };
+  return {
+    queuedMs: 0,
+    retryCount: 0,
+    elapsedMs: undefined,
+    workerIndex: undefined,
+    queuePosition: undefined,
+    worstCaseRemainingMs: undefined,
+    attemptsRemaining: undefined,
+  };
 }
 
 export const CaptureProgress: MessageFns<CaptureProgress> = {
@@ -3966,6 +4017,12 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
     }
     if (message.queuePosition !== undefined) {
       writer.uint32(40).int32(message.queuePosition);
+    }
+    if (message.worstCaseRemainingMs !== undefined) {
+      writer.uint32(48).int32(message.worstCaseRemainingMs);
+    }
+    if (message.attemptsRemaining !== undefined) {
+      writer.uint32(56).int32(message.attemptsRemaining);
     }
     return writer;
   },
@@ -4023,6 +4080,22 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
             message.queuePosition = reader.int32();
             continue;
           }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.worstCaseRemainingMs = reader.int32();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.attemptsRemaining = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4062,6 +4135,16 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
         : isSet(object.queue_position)
         ? globalThis.Number(object.queue_position)
         : undefined,
+      worstCaseRemainingMs: isSet(object.worstCaseRemainingMs)
+        ? globalThis.Number(object.worstCaseRemainingMs)
+        : isSet(object.worst_case_remaining_ms)
+        ? globalThis.Number(object.worst_case_remaining_ms)
+        : undefined,
+      attemptsRemaining: isSet(object.attemptsRemaining)
+        ? globalThis.Number(object.attemptsRemaining)
+        : isSet(object.attempts_remaining)
+        ? globalThis.Number(object.attempts_remaining)
+        : undefined,
     };
   },
 
@@ -4082,6 +4165,12 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
     if (message.queuePosition !== undefined) {
       obj.queuePosition = Math.round(message.queuePosition);
     }
+    if (message.worstCaseRemainingMs !== undefined) {
+      obj.worstCaseRemainingMs = Math.round(message.worstCaseRemainingMs);
+    }
+    if (message.attemptsRemaining !== undefined) {
+      obj.attemptsRemaining = Math.round(message.attemptsRemaining);
+    }
     return obj;
   },
 
@@ -4095,6 +4184,8 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
     message.elapsedMs = object.elapsedMs ?? undefined;
     message.workerIndex = object.workerIndex ?? undefined;
     message.queuePosition = object.queuePosition ?? undefined;
+    message.worstCaseRemainingMs = object.worstCaseRemainingMs ?? undefined;
+    message.attemptsRemaining = object.attemptsRemaining ?? undefined;
     return message;
   },
 };

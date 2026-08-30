@@ -51,10 +51,19 @@ enum CaptureStatus {
 }
 
 // GetCapture の進行。
+// タスクがいまどこにいるか。GetCapture と GetCaptureProgress は **同じ瞬間に同じ値**
+// を返す —— どちらを呼んだかで意味が変わらないように。
+//
+// PENDING と PROCESSING を分けるのは、PENDING が「キューで待っている」という具体的な
+// 意味を持つ値だから。worker が既に抱えているタスクにそう答えるのは、粗いのではなく
+// 事実と違う。
 enum CaptureState {
   CAPTURE_STATE_UNSPECIFIED = 0;
+  // キューで順番を待っている。
   CAPTURE_STATE_PENDING = 1;
+  // worker が抱えて走らせている (リトライ中もここ)。
   CAPTURE_STATE_PROCESSING = 2;
+  // 終わった。GetCapture なら report が付く。
   CAPTURE_STATE_DONE = 3;
 }
 
@@ -405,7 +414,8 @@ message GetCaptureResponse {
   CaptureState state = 1;
 
   // 触る前に `state == DONE` を確かめること。`state != PENDING` では足りない ——
-  // PENDING と PROCESSING はどちらも「まだ終わっていない」側。
+  // PENDING と PROCESSING はどちらも「まだ終わっていない」側で、**この RPC は
+  // その両方を返す**。
   //
   // 確かめずに読むと status = 0 (CAPTURE_STATUS_UNSPECIFIED) を掴む。言語によっては
   // 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
@@ -420,10 +430,13 @@ message CaptureProgress {
   int32 queued_ms = 1;
 
   // 何度目の試行か。0 のまま増えなければ順調。増えていれば、前の試行が
-  // task_total_ms を使い切っている —— これが「詰まっている」の信号。
+  // 持ち時間を使い切った —— これが「詰まっている」の信号。あと何回やり直せるかは
+  // attempts_remaining が持つ (上限そのものは wire に出ていない)。
   int32 retry_count = 2;
 
-  // PROCESSING のときだけ。task_total_ms に対してどこまで来たかが分かる。
+  // PROCESSING のときだけ。いまの試行が始まってからの経過。どこまで来たかは
+  // これ単体では分からない —— 1 回の試行に与えられている時間は wire に出ていない。
+  // 「あとどれだけか」は worst_case_remaining_ms を見ること。
   optional int32 elapsed_ms = 3;
   optional int32 worker_index = 4;
 
@@ -431,6 +444,26 @@ message CaptureProgress {
   // 深くても正しい (GetServerStatus の pending_tasks は pending_limit で
   // 切られるので、そこからは数えられない)。
   optional int32 queue_position = 5;
+
+  // PROCESSING のときだけ。許される限りすべてが悪く進んでも、これだけ待てば
+  // 終端 (DONE) に至る。「いまの試行の残り」+「残りの試行 × 1 回ぶんの持ち時間」。
+  //
+  // **見積もりではない** —— server が自分に課している上限そのもの。これを超えても
+  // DONE が来ないなら、遅い取り込みではなく server の異常。client 側に
+  // 「だいたいこれくらい」という定数を置く必要は無くなる。
+  //
+  // ただし厳密な上界ではない: 上限が掛かるのは取り込み処理の部分で、dequeue から
+  // 成果物のアップロードまでの全体ではない。実測では試行 1 回あたり 300ms 弱を
+  // 超過する。猶予を詰めすぎると、正常な取り込みを異常と判定する。
+  //
+  // PENDING には付かない。順番待ちの長さは他人の仕事の量で決まり、server は
+  // そこに上限を課していない。数字を入れれば、それは予報になる。
+  optional int32 worst_case_remaining_ms = 6;
+
+  // PROCESSING のときだけ。あと何回やり直せるか。0 なら、この試行が最後。
+  //
+  // retry_count からは導けない —— 上限 (max_retry_count) は wire に出ていない。
+  optional int32 attempts_remaining = 7;
 }
 
 message GetCaptureProgressResponse {

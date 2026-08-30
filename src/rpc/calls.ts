@@ -9,8 +9,11 @@ import { status, type ServiceError } from "@grpc/grpc-js";
 import { getClient } from "./client.js";
 import type { WireSubmitCapture } from "./wire.js";
 import type {
+  GetCaptureProgressRequest,
+  GetCaptureProgressResponse,
   GetCaptureRequest,
   GetCaptureResponse,
+  GetServerStatusResponse,
   SubmitCaptureResponse,
 } from "./generated/browserhive/v1/capture.js";
 
@@ -25,6 +28,39 @@ export const submitCapture = (request: WireSubmitCapture): Promise<SubmitCapture
 export const getCapture = (request: GetCaptureRequest): Promise<GetCaptureResponse> =>
   new Promise((resolve, reject) => {
     getClient().getCapture(request, (error, response) => {
+      if (error) reject(error);
+      else resolve(response);
+    });
+  });
+
+/**
+ * いまどこにいるか。待っている間に引くのはこちら。
+ *
+ * `GetCapture` でも「終わったか」は分かるが、あちらは結果を運ぶための RPC で、
+ * **待ち時間の予算 (`worstCaseRemainingMs`) を運ばない**。締切を自分で決めずに
+ * 済ませるには、こちらが要る。
+ */
+export const getCaptureProgress = (
+  request: GetCaptureProgressRequest,
+): Promise<GetCaptureProgressResponse> =>
+  new Promise((resolve, reject) => {
+    getClient().getCaptureProgress(request, (error, response) => {
+      if (error) reject(error);
+      else resolve(response);
+    });
+  });
+
+/**
+ * サーバ全体の様子。**待っている間には引かない。**
+ *
+ * 全 worker とキュー全体を返すので、待ち client が繰り返し引くと
+ * 待ち client 数 × キューの長さでコストが効く。ここで使うのは
+ * 「PENDING のまま動かない」を報告する瞬間の 1 回だけ ——
+ * 「混んでいる」と「誰も取りに来ない」を分けられる情報が、他に無いため。
+ */
+export const getServerStatus = (): Promise<GetServerStatusResponse> =>
+  new Promise((resolve, reject) => {
+    getClient().getServerStatus({}, (error, response) => {
       if (error) reject(error);
       else resolve(response);
     });
