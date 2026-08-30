@@ -107,6 +107,37 @@ would hand out a URL valid for its whole lifetime. The list does not: appearing
 in a list grants nothing, since fetching any of them still has to pass the
 strongly consistent check.
 
+## Picking an archive in a browser
+
+`waggle-api` also serves a picker at `/` — the list above, rendered, with each
+row opening the archive in [replay](https://github.com/uraitakahito/replay).
+
+```sh
+pnpm run api                  # host-side; the stack has no waggle-api service
+open http://127.0.0.1:7070/
+```
+
+The picker hands replay the `objectKey` and nothing else:
+
+```
+http://127.0.0.1:8899/?source=/wacz/<objectKey>
+```
+
+Not the signed URL. A signed URL points straight at S3, which is a different
+origin from the viewer, so the browser would need CORS on the bucket. The
+object key goes through replay's own upstream, so **replay needs no change at
+all**.
+
+:::caution[The list is filtered; the read is not]
+`can_view` decides what appears in the picker. It does **not** guard
+`/wacz/<key>` — anyone who knows a key can read it, because that path is served
+by the bucket's anonymous read. The filtering decides what you are shown, not
+what you could fetch.
+
+Closing that gap means handing out the signed URL instead and setting CORS on
+the bucket, which is a separate change.
+:::
+
 ## Identity
 
 Authenticating the caller is a separate problem from authorizing them, and the

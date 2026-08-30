@@ -15,13 +15,22 @@
 # では黙って失敗する。
 #
 # 上流のソースは git URL からではなく .upstream/ の submodule から来る ——
-# `container build` は context のディレクトリしか受け取らないため。2 本ある:
+# `container build` は context のディレクトリしか受け取らないため。3 本ある:
 #
 #   .upstream/browserhive   本体と、それが動作確認された版の chromium-server-docker
 #   .upstream/seaweedfs     object store の起動設定
+#   .upstream/replay        WACZ のビューア
 #
 # 分けてあるのは、S3 が欲しいだけのときに browserhive 全体を要求しないため。
 # 以前は browserhive/etc/seaweedfs を mount していて、そうなっていた。
+#
+# **browserhive のスタックと同時には立てられない** —— 8333 / 8899 / 50051 を
+# どちらも publish するので port がぶつかる。
+#
+# アーカイブを選ぶ画面 (picker) は waggle-api が配る。これは compose に入れず
+# host 側で動かす: `pnpm run api`。OpenFGA の store/model の ID が起動後にしか
+# 決まらない (`pnpm run fga:deploy` が出力して .env に入れる) ため、compose に
+# 書けない。
 
 # project 名を固定する。指定しないと container-compose はディレクトリ名から導くが、
 # ここでは project 名が そのまま DNS ドメインになる: `container system dns create <name>`
@@ -114,6 +123,10 @@ services:
       - S3_ACCESS_KEY_ID=browserhive
       - S3_SECRET_ACCESS_KEY=browserhive
       - S3_BUCKET=browserhive
+      # replay が資格情報を持たずに /wacz/ を読むために要る。与えるのは Read だけで、
+      # 一覧も書き込みもできない。**この穴は広げても何も言わない**ので、
+      # 触るときは browserhive の test/e2e/s3-anonymous.e2e.test.ts を見ること。
+      - S3_ANONYMOUS_READ=true
     # host 側の道具のために publish している。browserhive は名前で届くが、waggle は
     # host 上で動いていて、いまは結果の manifest を読み、URL の署名もここに対して
     # 行う —— 8333 が S3 API、8888 が filer の UI。
@@ -169,6 +182,28 @@ services:
     depends_on:
       - seaweedfs
       - chromium-1
+
+  # WACZ のビューア。picker がここへ ?source=/wacz/<key> で渡す。
+  #
+  # picker を配る waggle-api は **host 側で動かす** (`pnpm run api`) —— waggle 自身と
+  # 同じ。compose に入れられないのは、OpenFGA の store/model の ID が起動後にしか
+  # 決まらないため (`pnpm run fga:deploy` が出力し、.env に入れる)。
+  #
+  # browserhive のスタックの replay では代用できない —— replay は内部の DNS 名で
+  # 上流を引くので、あちらは browserhive の seaweedfs を見る。成果物があるのは
+  # こちらの seaweedfs なので、waggle 用のものが要る。
+  replay:
+    build:
+      context: ./.upstream/replay
+    environment:
+      # 上流は複合値で渡す。素のサービス名を値に書くと container-compose が
+      # その IP に書き換えてしまい、読みが全部 403 になる (browserhive で実測)。
+      - S3_BUCKET_URL=http://seaweedfs.waggle:8333/browserhive
+    ports:
+      # loopback であることが要件。Service Worker は secure context (https か
+      # loopback) でしか登録できないので、DNS 名で開くと **ページは出るのに
+      # アーカイブが永久に開かない**。公開範囲の話ではない。
+      - "127.0.0.1:8899:8080"
 
 volumes:
   postgres-data:
