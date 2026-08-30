@@ -201,7 +201,7 @@ export const createProgram = (): Command => {
     )
     .option(
       "--capture-timeout-ms <ms>",
-      "How long to wait for one capture before leaving it to fga:reconcile",
+      "Cap the wait for one capture, overriding the budget the server declares (default: wait as long as the server says it may take)",
       parsePositiveInt,
     )
     .addOption(
