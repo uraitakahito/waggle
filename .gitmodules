@@ -1,3 +1,6 @@
 [submodule ".upstream/browserhive"]
 	path = .upstream/browserhive
 	url = https://github.com/uraitakahito/browserhive.git
+[submodule ".upstream/seaweedfs"]
+	path = .upstream/seaweedfs
+	url = git@github.com:uraitakahito/seaweedfs.git

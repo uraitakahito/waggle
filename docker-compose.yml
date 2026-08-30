@@ -14,10 +14,14 @@
 # 方式に落ちる。そしてその方式は、ここに居る非 root のコンテナ (browserhive, chromium)
 # では黙って失敗する。
 #
-# 上流のソースは git URL からではなく .upstream/browserhive の submodule から来る ——
-# `container build` は context のディレクトリしか受け取らないため。submodule には
-# browserhive 本体、それが動作確認された版の chromium-server-docker、そして SeaweedFS の
-# 設定が入っているので、上流を固定する箇所はちょうど 1 つ —— submodule のポインタだけ。
+# 上流のソースは git URL からではなく .upstream/ の submodule から来る ——
+# `container build` は context のディレクトリしか受け取らないため。2 本ある:
+#
+#   .upstream/browserhive   本体と、それが動作確認された版の chromium-server-docker
+#   .upstream/seaweedfs     object store の起動設定
+#
+# 分けてあるのは、S3 が欲しいだけのときに browserhive 全体を要求しないため。
+# 以前は browserhive/etc/seaweedfs を mount していて、そうなっていた。
 
 # project 名を固定する。指定しないと container-compose はディレクトリ名から導くが、
 # ここでは project 名が そのまま DNS ドメインになる: `container system dns create <name>`
@@ -105,9 +109,11 @@ services:
     # 気にしてやる必要のある、使い捨ての init コンテナは別に無い。
     entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
     environment:
-      - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
-      - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
-      - BROWSERHIVE_S3_BUCKET=browserhive
+      # bucket 名は browserhive のまま —— waggle は browserhive が置いた成果物を
+      # 読む側なので、名前が一致していないと manifest の鍵が引けない。
+      - S3_ACCESS_KEY_ID=browserhive
+      - S3_SECRET_ACCESS_KEY=browserhive
+      - S3_BUCKET=browserhive
     # host 側の道具のために publish している。browserhive は名前で届くが、waggle は
     # host 上で動いていて、いまは結果の manifest を読み、URL の署名もここに対して
     # 行う —— 8333 が S3 API、8888 が filer の UI。
@@ -115,10 +121,11 @@ services:
       - "127.0.0.1:8333:8333"
       - "127.0.0.1:8888:8888"
     volumes:
-      # setup.sh がコピーしてくるのではなく、submodule から直接 mount している:
-      # 固定した版の browserhive が同梱しているものが、そのまま動く。上流で足された
-      # ファイルを取りこぼすことがない。
-      - ./.upstream/browserhive/etc/seaweedfs:/etc/seaweedfs:ro
+      # seaweedfs は browserhive とは **別の** submodule。proto の同期と chromium /
+      # browserhive 自身の build のために browserhive は持ち続けるが、object store の
+      # ためには持たない —— 以前は browserhive/etc/seaweedfs を mount していて、
+      # 「S3 が欲しいだけなのに browserhive 全体に依存する」形になっていた。
+      - ./.upstream/seaweedfs/etc:/etc/seaweedfs:ro
       - seaweedfs-data:/data
 
   chromium-1: &worker
