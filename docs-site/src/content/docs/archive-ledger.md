@@ -117,6 +117,10 @@ pnpm run api                  # host-side; the stack has no waggle-api service
 open http://127.0.0.1:7070/
 ```
 
+This needs a filled-in `.env` — see [Setup](#setup). Without
+`WAGGLE_DEV_IDENTITY=1` the API still starts, but the resolver denies everyone
+and the picker stays empty on a `401`.
+
 The picker hands replay the `objectKey` and nothing else:
 
 ```
@@ -281,12 +285,19 @@ that switch deliberate.
 ## Setup
 
 ```sh
+./setup.sh                    # writes .env from .env.example (25 variables)
 container-compose up -d -b
 pnpm run fga:migrate          # OpenFGA's schema (see below)
 pnpm run db:migrate
-pnpm run fga:deploy           # → export the two ids it prints
+pnpm run fga:deploy           # → paste the two ids it prints into .env
 pnpm run api
 ```
+
+Everything reads `.env` — the `pnpm run` scripts pass
+`--env-file-if-exists=.env`. Seven variables are mandatory and two of them
+(`WAGGLE_FGA_STORE_ID`, `WAGGLE_FGA_MODEL_ID`) do not exist until `fga:deploy`
+has run, which is why that step comes before `api`. `scripts/check-env.mjs`
+keeps `.env.example` in step with what the code actually reads.
 
 :::caution[`fga:migrate` is a separate step]
 The `openfga` image is distroless, so it cannot run a shell retry loop as its

@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 import { getCaptureSettings, logClientConfig, type ClientOptions } from "../config/cli-options.js";
-import { storageConfig } from "../config/env.js";
-import { devIdentity, type Identity } from "../config/identity.js";
+import { collectEnv, storageFrom, type StorageConfig } from "../config/env.js";
+import { identityFrom, type Identity } from "../config/identity.js";
 import { loadUrls, type DataEntry } from "../data/url-source.js";
 import { createPool } from "../db/pool.js";
 import { createKyselyClient } from "../db/kysely.js";
@@ -118,8 +118,8 @@ const collectResults = async (
   results: SubmitResult[],
   options: ClientOptions,
   identity: Identity,
+  storage: StorageConfig,
 ): Promise<void> => {
-  const storage = storageConfig();
   const s3 = createS3Client(storage);
   const accepted = results.filter((r) => r.accepted);
 
@@ -148,8 +148,19 @@ const collectResults = async (
 export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
 
-  // 実行の主体。ここが唯一の入口で、以降は identity を持ち回る。
-  const identity = devIdentity();
+  // 環境変数はここで一度に検査する。**取り込みを投げる前に。** 以前は
+  // storageConfig() が collectResults の中、つまり submitAll のあとに在ったので、
+  // S3 の設定を忘れていると「全部投げ終わってから落ちる」ことになっていた。
+  //
+  // identity と storage を 1 つの collectEnv にまとめてあるので、両方欠けていても
+  // 報告は 1 回で済む。
+  const collecting = options.collect !== false;
+  const { identity, storage } = collectEnv((need) => ({
+    // 実行の主体。ここが唯一の入口で、以降は identity を持ち回る。
+    identity: identityFrom(need),
+    // 集めないなら S3 には触らないので、要求もしない。
+    storage: collecting ? storageFrom(need) : undefined,
+  }));
 
   logClientConfig(options);
   configureClient(options.server, options.tlsCaCert);
@@ -195,8 +206,9 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
     const db = createKyselyClient(options.databaseUrl);
     try {
       await recordSubmissions(db, results, identity);
-      if (options.collect !== false) {
-        await collectResults(db, results, options, identity);
+      // `storage !== undefined` は `collecting` と同値。型を狭めるために書いている。
+      if (storage !== undefined) {
+        await collectResults(db, results, options, identity, storage);
       }
     } finally {
       await db.destroy();

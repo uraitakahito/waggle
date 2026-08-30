@@ -16,7 +16,7 @@ import { createFgaClient } from "./client.js";
 import { drainOutbox } from "./outbox-worker.js";
 import { createS3Client } from "../archive/s3.js";
 import { reconcile } from "../archive/reconcile.js";
-import { logger } from "../logger.js";
+import { fatal, logger } from "../logger.js";
 
 const databaseUrlOption = new Option("--database-url <url>", "Postgres connection string")
   .env("DATABASE_URL")
@@ -64,7 +64,4 @@ program
     await runReconcile(opts.databaseUrl);
   });
 
-program.parseAsync(process.argv).catch((error: unknown) => {
-  logger.fatal({ err: error }, "Fatal error");
-  process.exit(1);
-});
+program.parseAsync(process.argv).catch(fatal);

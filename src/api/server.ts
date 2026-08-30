@@ -9,7 +9,7 @@
  */
 import Fastify from "fastify";
 import { Command, Option } from "commander";
-import { fgaConfig, storageConfig } from "../config/env.js";
+import { collectEnv, fgaFrom, storageFrom } from "../config/env.js";
 import { createKyselyClient } from "../db/kysely.js";
 import { createFgaClient } from "../fga/client.js";
 import { drainOutbox } from "../fga/outbox-worker.js";
@@ -17,7 +17,7 @@ import { createS3Client } from "../archive/s3.js";
 import { resolveIdentityResolver } from "./identity.js";
 import { registerRoutes } from "./routes.js";
 import { registerPicker, replayOriginFromEnv } from "./picker.js";
-import { logger } from "../logger.js";
+import { fatal, logger } from "../logger.js";
 
 const DEFAULT_PORT = 7070;
 const DEFAULT_DRAIN_INTERVAL_MS = 5_000;
@@ -37,9 +37,15 @@ const parsePort = (value: string): number => {
 };
 
 const start = async (options: ServerOptions): Promise<void> => {
-  const storage = storageConfig();
+  // S3 と OpenFGA を **1 つの collectEnv の中で** 建てる。別々に呼ぶと 1 つ目が
+  // 投げた時点で 2 つ目は評価されないので、S3 の 4 個を直したあとに FGA の 2 個が
+  // 出てきて往復が 2 回になる。
+  const { storage, fgaSettings } = collectEnv((need) => ({
+    storage: storageFrom(need),
+    fgaSettings: fgaFrom(need),
+  }));
   const db = createKyselyClient(options.databaseUrl);
-  const fga = createFgaClient(fgaConfig());
+  const fga = createFgaClient(fgaSettings);
   const s3 = createS3Client(storage);
   const resolveIdentity = resolveIdentityResolver();
 
@@ -96,7 +102,4 @@ const program = new Command()
   .showHelpAfterError(true);
 
 program.parse(process.argv);
-start(program.opts<ServerOptions>()).catch((error: unknown) => {
-  logger.fatal({ err: error }, "Fatal error");
-  process.exit(1);
-});
+start(program.opts<ServerOptions>()).catch(fatal);
