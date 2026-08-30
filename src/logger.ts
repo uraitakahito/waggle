@@ -5,6 +5,7 @@
  * 上流の BrowserHive `src/logger.ts` からの移植。
  */
 import pino from "pino";
+import { MissingEnvError } from "./config/env.js";
 
 export type Logger = pino.Logger;
 export type LoggerBindings = pino.Bindings;
@@ -23,4 +24,23 @@ export const logger = pino({
  */
 export const createChildLogger = (bindings: LoggerBindings): Logger => {
   return logger.child(bindings);
+};
+
+/**
+ * 致命的な失敗の出口。3 つのエントリ点 (submit-captures / ledger-commands /
+ * api/server) が同じ形で使う。
+ *
+ * `MissingEnvError` だけは logger を通さず stderr にそのまま書く。**pino の
+ * 出力は JSON なので、改行を含むメッセージは `\n` に潰れて 1 行の中に埋まる。**
+ * 足りない変数を並べて読ませるのが目的なのに、それが読めなくなる —— 反証で
+ * 実際にそうなった。設定を直す人はまだ何も動かせていないので、機械可読な
+ * ログ行より、そのまま読める文章のほうが役に立つ。
+ */
+export const fatal = (error: unknown): never => {
+  if (error instanceof MissingEnvError) {
+    process.stderr.write(`${error.message}\n`);
+  } else {
+    logger.fatal({ err: error }, "Fatal error");
+  }
+  process.exit(1);
 };

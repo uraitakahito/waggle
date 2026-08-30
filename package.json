@@ -34,6 +34,7 @@
     "proto:diff": "diff -u proto/browserhive/v1/capture.proto .upstream/browserhive/src/rpc/proto/browserhive/v1/capture.proto",
     "proto:check": "buf generate && git diff --exit-code -- src/rpc/generated",
     "proto:check-deps": "node scripts/check-generated-deps.mjs",
+    "check-env": "node scripts/check-env.mjs",
     "proto:sync": "cp .upstream/browserhive/src/rpc/proto/browserhive/v1/capture.proto proto/browserhive/v1/capture.proto",
     "site:dev": "pnpm --filter waggle-docs-site run dev",
     "site:build": "pnpm --filter waggle-docs-site run build",
@@ -49,7 +50,7 @@
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",
     "db:seed": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js up",
     "db:seed:down": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js down",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm test"
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
