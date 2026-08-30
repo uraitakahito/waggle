@@ -4,3 +4,6 @@
 [submodule ".upstream/seaweedfs"]
 	path = .upstream/seaweedfs
 	url = git@github.com:uraitakahito/seaweedfs.git
+[submodule ".upstream/replay"]
+	path = .upstream/replay
+	url = git@github.com:uraitakahito/replay.git

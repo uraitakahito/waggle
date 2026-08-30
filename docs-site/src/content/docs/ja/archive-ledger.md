@@ -101,6 +101,35 @@ S3 は署名しか見ないので、URL を署名した瞬間に判断は確定�
 一覧はそうしません。一覧に出ること自体は何の権限も与えず、
 実際に取得するには上の強整合な Check を通る必要があるからです。
 
+## ブラウザからアーカイブを選ぶ
+
+`waggle-api` は `/` に picker も出す —— 上の一覧を画面にしたもので、行をクリックすると
+[replay](https://github.com/uraitakahito/replay) で開く。
+
+```sh
+pnpm run api                  # host 側。スタックに waggle-api のサービスは無い
+open http://127.0.0.1:7070/
+```
+
+picker が replay に渡すのは `objectKey` だけ:
+
+```
+http://127.0.0.1:8899/?source=/wacz/<objectKey>
+```
+
+署名付き URL は使わない。あれは S3 を直接指すので viewer から見て別 origin になり、
+bucket に CORS が要る。object key なら読みは replay 自身の上流を通るので、
+**replay は一切変えなくてよい**。
+
+:::caution[絞っているのは一覧だけで、読みではない]
+`can_view` が決めるのは picker に出るかどうか。`/wacz/<key>` を**守ってはいない** ——
+その経路は bucket の匿名 read で配られるので、鍵を知っていれば誰でも読める。
+絞り込みが決めるのは「何を見せるか」であって「何を取れるか」ではない。
+
+ここを閉じるなら署名付き URL を渡し、bucket に CORS を設定することになる。
+それは別の変更。
+:::
+
 ## 身元
 
 呼び出し元の**認証**は認可とは別の問題で、まだ IdP が決まっていません。
