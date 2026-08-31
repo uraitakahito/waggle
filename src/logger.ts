@@ -32,9 +32,9 @@ export const createChildLogger = (bindings: LoggerBindings): Logger => {
  *
  * `MissingEnvError` だけは logger を通さず stderr にそのまま書く。**pino の
  * 出力は JSON なので、改行を含むメッセージは `\n` に潰れて 1 行の中に埋まる。**
- * 足りない変数を並べて読ませるのが目的なのに、それが読めなくなる —— 反証で
- * 実際にそうなった。設定を直す人はまだ何も動かせていないので、機械可読な
- * ログ行より、そのまま読める文章のほうが役に立つ。
+ * 足りない変数を並べて読ませるのが目的なのに、それが読めなくなる。設定を直す人は
+ * まだ何も動かせていないので、機械可読なログ行より、そのまま読める文章のほうが
+ * 役に立つ。
  */
 export const fatal = (error: unknown): never => {
   if (error instanceof MissingEnvError) {
