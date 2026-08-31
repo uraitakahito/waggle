@@ -18,8 +18,11 @@ sudo container system dns create waggle
 The project name is the DNS domain: containers become `<service>.waggle`,
 resolvable from each other **and from the host** — which is what lets waggle
 itself run on the host against this stack. Without it, container-compose falls
-back to patching `/etc/hosts`, which fails silently for the non-root containers
-here.
+back to appending to the `/etc/hosts` **inside each container** via
+`container exec` (your Mac's own `/etc/hosts` is never touched). That write
+fails for the non-root containers here, and container-compose neither checks
+the exit status nor prints anything — so only some services lose name
+resolution, which is a hard symptom to trace back.
 
 ## 2. Generate the local files
 

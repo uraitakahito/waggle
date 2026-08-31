@@ -17,8 +17,11 @@ sudo container system dns create waggle
 プロジェクト名がそのまま DNS ドメインになります。コンテナは `<service>.waggle`
 という名前になり、**コンテナ間からもホストからも**解決できます — waggle 自身を
 ホストで動かしてこのスタックに繋げられるのはこのためです。登録が無いと
-container-compose は `/etc/hosts` を書き換える方式に退行し、このスタックの
-非 root コンテナでは無音で失敗します。
+container-compose は `container exec` で **各コンテナの中の** `/etc/hosts` に
+追記する方式に退行します（お使いの Mac の `/etc/hosts` は触りません）。その
+書き込みはこのスタックの非 root コンテナでは失敗しますが、container-compose は
+終了状態を見ず何も出力しないため、**一部のサービスだけ名前が引けない**という
+追いにくい症状になります。
 
 ## 2. ローカルファイルを生成する
 
