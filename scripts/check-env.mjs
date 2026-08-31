@@ -12,12 +12,12 @@
  *   3. 素の `process.env[...]`
  *
  * **読み取り関数の名前が、そのままこの検査の契約になっている。** 1 の名前を
- * 増やしたり変えたりしたら PATTERNS も直すこと。直し忘れると「もう誰も読まない」
- * が大量に出る —— collectEnv を入れたときに実際にそうなった。
+ * 増やしたり変えたりしたら PATTERNS も直すこと。直し忘れると、読まれている変数が
+ * 「もう誰も読まない」として大量に報告される。
  *
  * しかも 1 は `env.ts` の外 (`config/identity.ts`) でも使われ、3 は `scripts/`
- * でも使われる。だから「`env.ts` を読めば分かる」は成り立たない ——
- * この検査を書く前に手で数えたときは、25 個のうち 5 個を落とした。
+ * でも使われる。だから「`env.ts` を読めば分かる」は成り立たないし、
+ * 手で数えれば取りこぼす。
  *
  * 名前は必ずリテラルで書くこと。組み立てた名前はここに映らないので、黙って
  * 未文書になる。
@@ -31,7 +31,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // cwd に依存させない。scripts/ から走らせても repo の root から走らせても同じ
-// 結果になること —— 同じ形の検査が cwd 依存で壊れた前例がある。
+// 結果になること。相対パスで書くと、CI と手元で答えが変わりうる。
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 const SOURCE_DIRS = ["src", "scripts"];

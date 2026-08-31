@@ -67,10 +67,9 @@ git submodule update --init --recursive
 git submodule status --recursive | sed 's/^/  /'
 
 # --- .env を書く ----------------------------------------------------------
-# 一覧はここに持たず、.env.example を写す。**独自の一覧を持つと必ずずれる** ——
-# 以前ここは heredoc で 5 個だけ書いていて、`required` な 7 個のうち 4 個
-# (WAGGLE_S3_*) が最初から欠けた .env が出来ていた。docs が案内するとおりに
-# 進めた人が `pnpm run api` で落ちる、という形で表に出る。
+# 一覧はここに持たず、.env.example を写す。**独自の一覧を持てば必ずずれる** ——
+# ずれた側は「必須の変数が最初から欠けた .env」になり、docs のとおりに進めた人が
+# 起動時に落ちる。
 #
 # 雛形の側は scripts/check-env.mjs が src/ と scripts/ の実際の読み取りと
 # 突き合わせているので、変数が増えればここも自動的に追随する。

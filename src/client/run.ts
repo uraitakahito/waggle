@@ -148,9 +148,9 @@ const collectResults = async (
 export const runClient = async (options: ClientOptions): Promise<void> => {
   const startTime = Date.now();
 
-  // 環境変数はここで一度に検査する。**取り込みを投げる前に。** 以前は
-  // storageConfig() が collectResults の中、つまり submitAll のあとに在ったので、
-  // S3 の設定を忘れていると「全部投げ終わってから落ちる」ことになっていた。
+  // 環境変数はここで一度に検査する。**取り込みを投げる前に。** 検査を collectResults
+  // まで遅らせると、S3 の設定が欠けているときに「全部投げ終わってから落ちる」ことに
+  // なる。
   //
   // identity と storage を 1 つの collectEnv にまとめてあるので、両方欠けていても
   // 報告は 1 回で済む。

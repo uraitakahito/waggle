@@ -130,8 +130,8 @@ jobs:
       # ステップを並べる形なので、片方だけでは CI に入らない。
       #
       # 雛形が腐ると「これで全部だ」と信じて使われ、足りないときに疑う先が
-      # 残らない —— 実際 setup.sh は必須 7 個のうち 4 個を書かない .env を
-      # 作り続けていて、docs のとおりに進めた人が `pnpm run api` で落ちていた。
+      # 残らない。setup.sh はこの雛形を写して .env を作るので、ずれはそのまま
+      # 「必須の変数が欠けた .env」になって配られる。
       - name: Environment variable check
         run: pnpm run check-env
 
