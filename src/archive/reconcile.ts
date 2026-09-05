@@ -94,7 +94,7 @@ export const reconcile = async (
       continue;
     }
 
-    const raw = await getJsonObject<unknown>(s3, bucket, key);
+    const raw = await getJsonObject(s3, bucket, key);
     if (raw === undefined) {
       // さっき listing に在ったものが、もう無い。書き留める以外にできることは無い。
       log.warn({ key }, "Manifest disappeared between listing and read");

@@ -83,6 +83,17 @@ curl -X POST http://localhost:7070/api/archives/<id>/url
 curl http://localhost:7070/api/archives
 ```
 
+どちらのリクエストも形は route の JSON Schema で決まっています。説明ではなく
+検査そのものが契約です。
+
+|                              |          |                                                     |
+| ---------------------------- | -------- | --------------------------------------------------- |
+| `POST /api/archives/:id/url` | `id`     | UUID。違えば **400**（認可より前に落ちる）          |
+| `GET /api/archives`          | `before` | ISO 8601 の日時。違えば **400**。省略すると最新から |
+
+`before` はカーソルで、直前に受け取った最後の行の `capturedAt` を渡します。
+知らないクエリパラメータは拒否ではなく削除されます。
+
 読んではいけない相手には **403 ではなく 404** を返します。403 は
 「その ID のアーカイブは実在する」ことを confirm してしまい、これは
 OWASP API1:2023 (Broken Object Level Authorization) が警告する列挙の
