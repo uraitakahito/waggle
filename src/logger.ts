@@ -5,7 +5,7 @@
  * 上流の BrowserHive `src/logger.ts` からの移植。
  */
 import pino from "pino";
-import { MissingEnvError } from "./config/env.js";
+import { MissingEnvError, optional } from "./config/env.js";
 
 export type Logger = pino.Logger;
 export type LoggerBindings = pino.Bindings;
@@ -13,9 +13,14 @@ export type LoggerBindings = pino.Bindings;
 /**
  * root の logger インスタンス。
  * ログレベルは環境変数 LOG_LEVEL で変えられる。
+ *
+ * `optional()` で読むこと。**この行は module body で走る** ので、起動時の検査が
+ * どこに置かれていても間に合わない —— 空文字が来たら pino が
+ * `default level: must be included in custom levels` で落ちる。
+ * `optional()` は空を「無い」と見るので、読み口の側で塞いでいる。
  */
 export const logger = pino({
-  level: process.env["LOG_LEVEL"] ?? "info",
+  level: optional("LOG_LEVEL", "info"),
 });
 
 /**
@@ -32,9 +37,9 @@ export const createChildLogger = (bindings: LoggerBindings): Logger => {
  *
  * `MissingEnvError` だけは logger を通さず stderr にそのまま書く。**pino の
  * 出力は JSON なので、改行を含むメッセージは `\n` に潰れて 1 行の中に埋まる。**
- * 足りない変数を並べて読ませるのが目的なのに、それが読めなくなる —— 反証で
- * 実際にそうなった。設定を直す人はまだ何も動かせていないので、機械可読な
- * ログ行より、そのまま読める文章のほうが役に立つ。
+ * 足りない変数を並べて読ませるのが目的なのに、それが読めなくなる。設定を直す人は
+ * まだ何も動かせていないので、機械可読なログ行より、そのまま読める文章のほうが
+ * 役に立つ。
  */
 export const fatal = (error: unknown): never => {
   if (error instanceof MissingEnvError) {

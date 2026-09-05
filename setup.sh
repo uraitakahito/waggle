@@ -44,9 +44,14 @@ done
 
 # --- DNS ドメイン ---------------------------------------------------------
 # docker-compose.yml の project 名が、そのまま DNS ドメインになる。登録されて
-# いないと container-compose は /etc/hosts を書き換える方式に落ちるが、これは
-# このスタックの非 root コンテナ (browserhive、chromium) では黙って失敗する ——
-# 症状が「名前がなぜか解決しない」になるので、ここで大きな音を立てて止める。
+# いないと container-compose は、起動後に `container exec` で **各コンテナの中の**
+# /etc/hosts へ相手の行を追記する方式に落ちる (ホスト側の /etc/hosts は触らない)。
+#
+# その追記は非 root のコンテナ (browserhive=uid 1000、chromium=uid 999) では
+# 書き込めずに失敗するが、container-compose は exec の終了状態を見ず stderr も
+# 捨てるので **何も言わない**。しかも root のコンテナ (postgres、seaweedfs、
+# replay) では成功するため、「一部のサービスだけ名前が引けない」という追いにくい
+# 症状になる。だからここで大きな音を立てて止める。
 if ! container system dns ls 2>/dev/null | grep -qx "waggle"; then
   echo "ERROR: the 'waggle' DNS domain is not registered." >&2
   echo "" >&2
@@ -62,10 +67,9 @@ git submodule update --init --recursive
 git submodule status --recursive | sed 's/^/  /'
 
 # --- .env を書く ----------------------------------------------------------
-# 一覧はここに持たず、.env.example を写す。**独自の一覧を持つと必ずずれる** ——
-# 以前ここは heredoc で 5 個だけ書いていて、`required` な 7 個のうち 4 個
-# (WAGGLE_S3_*) が最初から欠けた .env が出来ていた。docs が案内するとおりに
-# 進めた人が `pnpm run api` で落ちる、という形で表に出る。
+# 一覧はここに持たず、.env.example を写す。**独自の一覧を持てば必ずずれる** ——
+# ずれた側は「必須の変数が最初から欠けた .env」になり、docs のとおりに進めた人が
+# 起動時に落ちる。
 #
 # 雛形の側は scripts/check-env.mjs が src/ と scripts/ の実際の読み取りと
 # 突き合わせているので、変数が増えればここも自動的に追随する。

@@ -16,10 +16,13 @@
  * そのまま採用するので、これを再実行しても安全。
  */
 import { spawnSync } from "node:child_process";
+import { guardEnv, optional } from "./env.mjs";
 
-const API_URL = process.env["WAGGLE_FGA_API_URL"] ?? "http://localhost:8090";
-const API_TOKEN = process.env["WAGGLE_FGA_API_TOKEN"] ?? "dev-key";
-const STORE_NAME = process.env["WAGGLE_FGA_STORE_NAME"] ?? "waxlens";
+guardEnv();
+
+const API_URL = optional("WAGGLE_FGA_API_URL", "http://localhost:8090");
+const API_TOKEN = optional("WAGGLE_FGA_API_TOKEN", "dev-key");
+const STORE_NAME = optional("WAGGLE_FGA_STORE_NAME", "waxlens");
 
 const fga = (args) => {
   const result = spawnSync("fga", args, {

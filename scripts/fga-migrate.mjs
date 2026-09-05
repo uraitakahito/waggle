@@ -16,11 +16,15 @@
  * セットアップのスクリプトからも CI からも安全に呼べる。
  */
 import { spawnSync } from "node:child_process";
+import { guardEnv, optional } from "./env.mjs";
 
-const IMAGE = process.env["WAGGLE_FGA_IMAGE"] ?? "docker.io/openfga/openfga:v1.10.2";
-const URI =
-  process.env["WAGGLE_FGA_DATASTORE_URI"] ??
-  "postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable";
+guardEnv();
+
+const IMAGE = optional("WAGGLE_FGA_IMAGE", "docker.io/openfga/openfga:v1.10.2");
+const URI = optional(
+  "WAGGLE_FGA_DATASTORE_URI",
+  "postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable",
+);
 
 /** 試行回数 × 間隔で、まだ initdb 中の冷えた `openfga-db` を待ち切れるようにする。 */
 const ATTEMPTS = 30;

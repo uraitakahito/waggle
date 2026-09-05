@@ -10,9 +10,10 @@
 # 入る: コンテナは <service>.waggle という名前になり、プラットフォームの DNS に
 # 登録され、他のコンテナからも **host からも** 引ける —— waggle 自身を host 側で
 # 動かしてこのスタックに繋げられるのは、これのおかげ。
-# container_name: を足してはならない —— DNS の命名が抑止され、/etc/hosts を書き換える
-# 方式に落ちる。そしてその方式は、ここに居る非 root のコンテナ (browserhive, chromium)
-# では黙って失敗する。
+# container_name: を足してはならない —— DNS の命名が抑止され、`container exec` で
+# **各コンテナの中の** /etc/hosts を書き換える方式に落ちる (ホストの /etc/hosts は
+# 触らない)。そしてその書き込みは、ここに居る非 root のコンテナ (browserhive,
+# chromium) では権限が無くて失敗し、しかも container-compose は何も言わない。
 #
 # 上流のソースは git URL からではなく .upstream/ の submodule から来る ——
 # `container build` は context のディレクトリしか受け取らないため。3 本ある:
