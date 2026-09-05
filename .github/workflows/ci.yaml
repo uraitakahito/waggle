@@ -26,6 +26,22 @@ jobs:
     name: Proto sync check
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Dependabot が出した PR では走らせない。
+    #
+    # この job は browserhive の submodule を読むために GitHub App の鍵を要るが、
+    # **Dependabot の PR は Actions secrets を読めない** (Dependabot は独立した
+    # secret 置き場を持つ)。したがって `secrets.SUBMODULE_APP_KEY` は空文字になり、
+    # create-github-app-token が "The 'private-key' input must be set to a
+    # non-empty string" で落ちる —— 変更の中身とは無関係に、必ず。
+    #
+    # 飛ばして失うものは無い。この job が見るのは「vendor した proto が submodule と
+    # 一致するか」で、Dependabot の PR は lockfile しか触らないので、どちらも動かない。
+    # しかも develop に入った直後の push で同じ job が (secrets 付きで) 走るため、
+    # 検査そのものは消えない —— 前倒しでなくなるだけ。
+    #
+    # 前倒しのまま保ちたいなら、repo の **Dependabot secrets** に
+    # SUBMODULE_APP_KEY を置けばこの if は外せる。
+    if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read
     steps:
