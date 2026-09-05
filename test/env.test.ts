@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { collectEnv, fgaFrom, MissingEnvError, storageFrom, type Need } from "../src/config/env.js";
+import {
+  blankOptionalEnv,
+  collectEnv,
+  fgaFrom,
+  MissingEnvError,
+  OPTIONAL_ENV,
+  REQUIRED_ENV,
+  storageFrom,
+  type Need,
+} from "../src/config/env.js";
 import { identityFrom } from "../src/config/identity.js";
 
 /**
@@ -139,5 +148,60 @@ describe("collectEnv", () => {
       modelId: "model",
       apiToken: "dev-key",
     });
+  });
+});
+
+/**
+ * 「設定されているが空」の検査。
+ *
+ * `guardEnv()` は module body で `process.exit` するのでテストから直接は呼べない。
+ * 判定そのものは `blankOptionalEnv()` に切り出してあるので、そちらを見る。
+ */
+describe("blankOptionalEnv", () => {
+  const saved = new Map<string, string | undefined>();
+  const touch = (name: string, value: string | undefined): void => {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  };
+
+  afterEach(() => {
+    for (const [name, value] of saved) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    saved.clear();
+  });
+
+  it("reports an optional variable that is set but empty", () => {
+    touch("LOG_LEVEL", "");
+    expect(blankOptionalEnv()).toContain("LOG_LEVEL");
+  });
+
+  it("says nothing about an optional variable that is absent", () => {
+    touch("LOG_LEVEL", undefined);
+    expect(blankOptionalEnv()).not.toContain("LOG_LEVEL");
+  });
+
+  // **二重報告をしないこと。** required が空なのは collectEnv の担当で、
+  // ここが同じ誤りをもう一度言うと、どちらを直せばよいのか分からなくなる。
+  it("leaves an empty required variable to collectEnv", () => {
+    touch("WAGGLE_S3_BUCKET", "");
+    expect(blankOptionalEnv()).not.toContain("WAGGLE_S3_BUCKET");
+    expect(() => collectEnv(storageFrom)).toThrow(MissingEnvError);
+  });
+
+  it("reports only the optional half when both are empty", () => {
+    touch("WAGGLE_S3_BUCKET", "");
+    touch("LOG_LEVEL", "");
+    expect(blankOptionalEnv()).toEqual(["LOG_LEVEL"]);
+  });
+
+  // 両方に載っている名前があると、報告する側が二重になる。
+  it("keeps the required and optional lists disjoint", () => {
+    const overlap = REQUIRED_ENV.filter((name) =>
+      (OPTIONAL_ENV as readonly string[]).includes(name),
+    );
+    expect(overlap).toEqual([]);
   });
 });
