@@ -37,6 +37,39 @@ interface WritePayload {
   deletes?: TupleKey[];
 }
 
+const isTupleKey = (value: unknown): value is TupleKey =>
+  typeof value === "object" &&
+  value !== null &&
+  ["user", "relation", "object"].every(
+    (field) => typeof (value as Record<string, unknown>)[field] === "string",
+  );
+
+const isTupleKeys = (value: unknown): value is TupleKey[] =>
+  Array.isArray(value) && value.every(isTupleKey);
+
+/**
+ * outbox の 1 行の payload を解析する。
+ *
+ * 中身は自分で書いた JSONB だが、書いた時期と読む時期は同じとは限らない ——
+ * 形を変えた配備をまたいで残っている行は、`as` で名乗らせると型が嘘になる。
+ *
+ * 投げるのは呼ぶ側の try の中。**1 行の失敗で batch 全体を落としてはいけない**
+ * ので、既存の「その行だけ attempts を増やして lastError を残す」経路に乗せる。
+ */
+const parseWritePayload = (raw: unknown): WritePayload => {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error(`outbox payload is not an object: ${typeof raw}`);
+  }
+  const { writes, deletes } = raw as { writes?: unknown; deletes?: unknown };
+  if (writes !== undefined && !isTupleKeys(writes)) {
+    throw new Error("outbox payload has a malformed `writes`");
+  }
+  if (deletes !== undefined && !isTupleKeys(deletes)) {
+    throw new Error("outbox payload has a malformed `deletes`");
+  }
+  return { ...(writes && { writes }), ...(deletes && { deletes }) };
+};
+
 /**
  * outbox の 1 行分の tuple を配送する。既に在るものは許容する。
  *
@@ -104,9 +137,8 @@ export const drainOutbox = async (
       .execute();
 
     for (const row of rows) {
-      const payload = row.payload as WritePayload;
       try {
-        await writePayload(fga, payload);
+        await writePayload(fga, parseWritePayload(row.payload));
       } catch (cause) {
         failed += 1;
         await trx

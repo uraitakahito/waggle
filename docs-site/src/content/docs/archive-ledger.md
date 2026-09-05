@@ -89,6 +89,17 @@ curl -X POST http://localhost:7070/api/archives/<id>/url
 curl http://localhost:7070/api/archives
 ```
 
+The shape of both requests is a JSON Schema on the route, so the checking is
+the contract rather than a description of it:
+
+|                              |          |                                                                                    |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `POST /api/archives/:id/url` | `id`     | a UUID — anything else is **400**, before authorization runs                       |
+| `GET /api/archives`          | `before` | an ISO 8601 timestamp — anything else is **400**. Omit it to start from the newest |
+
+`before` is a cursor: pass the `capturedAt` of the last row you were given.
+Unknown query parameters are dropped rather than rejected.
+
 A caller who may not read an archive gets **404, not 403**. A 403 would confirm
 that the id names a real archive — the enumeration leak OWASP API1:2023
 (Broken Object Level Authorization) warns about. "You may not see it" and "it

@@ -121,7 +121,7 @@ const readManifestFallback = async (
   options: WatchOptions,
 ): Promise<CaptureResultReport | undefined> => {
   const key = manifestKey(taskId, correlationId, labels);
-  const raw = await getJsonObject<unknown>(options.s3, options.bucket, key);
+  const raw = await getJsonObject(options.s3, options.bucket, key);
   if (raw !== undefined) {
     log.debug({ taskId, key }, "result was evicted from the cache; read the manifest");
     return readManifest(raw);
