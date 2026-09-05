@@ -11,8 +11,84 @@
  */
 
 /**
+ * この repo が読む環境変数の全体。**`guardEnv` の検査対象そのもの** なので、
+ * 変数を足したらここにも足すこと —— `scripts/check-env.mjs` が `src/` の実際の
+ * 読み取りと突き合わせ、漏れていれば CI が落ちる。
+ *
+ * required と optional を分けているのは、空文字の扱いが違うから。required の
+ * 空は `collectEnv` が「不足」として報告するので、`guardEnv` は見ない。
+ * 同じ誤りを 2 か所から報告すると、どちらを直せばよいのか分からなくなる。
+ *
+ * `scripts/` だけが読む変数はここには入らない (`scripts/env.mjs` の SCRIPT_ENV)。
+ */
+export const REQUIRED_ENV = [
+  "WAGGLE_S3_ENDPOINT",
+  "WAGGLE_S3_BUCKET",
+  "WAGGLE_S3_ACCESS_KEY_ID",
+  "WAGGLE_S3_SECRET_ACCESS_KEY",
+  "WAGGLE_FGA_STORE_ID",
+  "WAGGLE_FGA_MODEL_ID",
+  "WAGGLE_DEV_SUBJECT",
+] as const;
+
+export const OPTIONAL_ENV = [
+  "WAGGLE_S3_REGION",
+  "WAGGLE_S3_FORCE_PATH_STYLE",
+  "WAGGLE_FGA_API_URL",
+  "WAGGLE_FGA_API_TOKEN",
+  "WAGGLE_DEV_ORGANIZATIONS",
+  "WAGGLE_DEV_IDENTITY",
+  "DATABASE_URL",
+  "BROWSERHIVE_SERVER",
+  "BROWSERHIVE_TLS_CA_CERT",
+  "LOG_LEVEL",
+  "REPLAY_ORIGIN",
+  "MIGRATION_FOLDER",
+  "SEED_FOLDER",
+  "WAGGLE_API_PORT",
+  "WAGGLE_DRAIN_INTERVAL_MS",
+] as const;
+
+/**
+ * 「空で設定されている」optional な変数を返す。副作用は持たないので、
+ * テストから直接呼べる。
+ */
+export const blankOptionalEnv = (): string[] =>
+  OPTIONAL_ENV.filter((name) => process.env[name] === "");
+
+/**
+ * 空で設定されている optional な変数があれば、起動時に落とす。
+ *
+ * 空文字は無害ではない。`DATABASE_URL=` は commander の
+ * `makeOptionMandatory` を **通り**、API は起動し、`/healthz` は 200 を返し、
+ * 最初のクエリでようやく SASL のエラーになる —— 変数名がどこにも出ない形で。
+ * 行ごと消せば即座に名指しで落ちるので、**空文字は「無い」より悪い**。
+ *
+ * **module body で呼ぶ。** 読み手の多くは module body で env を読むので、
+ * 関数の中から呼ぶ形にすると間に合わない。commander の `.env()` が読むのは
+ * `program.parse()` のとき、つまりすべての import の後なので、ここで走れば
+ * 確実に先回りできる。
+ */
+const guardEnv = (): void => {
+  const blank = blankOptionalEnv();
+  if (blank.length === 0) return;
+  process.stderr.write(
+    `空で設定されている環境変数:\n${blank.map((name) => `  - ${name}`).join("\n")}\n\n` +
+      "  値を書くか、行ごと消すこと。空文字は既定値を潰します。\n" +
+      "  .env.example では、生の空行を書いてよいのは必須の変数だけです。\n",
+  );
+  process.exit(1);
+};
+
+guardEnv();
+
+/**
  * `identity.ts` も同じ方針 (既定値に落とさず throw) を使うので export している。
  * この 2 つは env.ts の外へ広く配るためのものではない。
+ *
+ * どちらも空文字を「無い」と同じに扱う。POSIX の `${VAR:-word}` 側の意味で、
+ * `??` (`${VAR-word}` 側) は使わないこと —— この repo では読み口をこちらに
+ * 揃えてある。
  */
 export const required = (name: string): string => {
   const value = process.env[name];

@@ -5,7 +5,7 @@
  * 上流の BrowserHive `src/logger.ts` からの移植。
  */
 import pino from "pino";
-import { MissingEnvError } from "./config/env.js";
+import { MissingEnvError, optional } from "./config/env.js";
 
 export type Logger = pino.Logger;
 export type LoggerBindings = pino.Bindings;
@@ -13,9 +13,14 @@ export type LoggerBindings = pino.Bindings;
 /**
  * root の logger インスタンス。
  * ログレベルは環境変数 LOG_LEVEL で変えられる。
+ *
+ * `optional()` で読むこと。**この行は module body で走る** ので、起動時の検査が
+ * どこに置かれていても間に合わない —— 空文字が来たら pino が
+ * `default level: must be included in custom levels` で落ちる。
+ * `optional()` は空を「無い」と見るので、読み口の側で塞いでいる。
  */
 export const logger = pino({
-  level: process.env["LOG_LEVEL"] ?? "info",
+  level: optional("LOG_LEVEL", "info"),
 });
 
 /**

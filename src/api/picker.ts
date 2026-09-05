@@ -23,6 +23,7 @@
  * (`POST /api/archives/:id/url`) と CORS へ進むことになる。
  */
 import type { FastifyInstance } from "fastify";
+import { optional } from "../config/env.js";
 
 /**
  * replay の場所。picker が組み立てるのは replay 内の相対パスなので、
@@ -31,8 +32,7 @@ import type { FastifyInstance } from "fastify";
  * env にしてあるのは、replay を別の場所で動かす自由を残すため。replay は
  * waggle 専用ではない。
  */
-export const replayOriginFromEnv = (): string =>
-  process.env["REPLAY_ORIGIN"] ?? "http://127.0.0.1:8899";
+export const replayOriginFromEnv = (): string => optional("REPLAY_ORIGIN", "http://127.0.0.1:8899");
 
 const html = (replayOrigin: string): string => `<!doctype html>
 <html lang="ja">

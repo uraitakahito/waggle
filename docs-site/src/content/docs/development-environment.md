@@ -49,6 +49,34 @@ compares the names the code reads against the names `.env.example` declares, in
 both directions. A stale template is worse than no template: it gets trusted,
 so when something is missing there is nothing left to suspect.
 
+### An empty value is not the same as no value
+
+`FOO=` in a `.env` file sets `FOO` to the empty string; omitting the line leaves
+it unset. Those are different states, and POSIX gives them different syntax —
+`${FOO:-default}` falls back on either, `${FOO-default}` only on unset.
+
+This repo picks the first meaning everywhere: **empty means absent**. Read env
+through `optional()` (or `need()`), never through `process.env[…] ?? default`,
+which is the second meaning and would keep the empty string.
+
+Because a variable that is _set to empty_ is almost always a typo rather than an
+intent, the startup guard in `src/config/env.ts` **refuses to run** and names it,
+rather than quietly falling back. That is worth doing: an empty value used to be
+strictly worse than a missing one — `DATABASE_URL=` passed commander's mandatory
+check, the API started, `/healthz` answered 200, and the first query failed with
+a SASL error that never mentioned `DATABASE_URL`.
+
+So `.env.example` has only two kinds of line:
+
+```sh
+NAME=value     # pass a value
+#NAME=value    # show the default; uncomment and edit to use it
+```
+
+A bare `NAME=` is allowed **only for the seven required variables**, whose
+emptiness is reported as "missing" by `collectEnv`. `check-env.mjs` enforces
+that rule too.
+
 ## Daily commands
 
 | Command                                   | What it does                                                         |
