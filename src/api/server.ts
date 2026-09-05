@@ -7,7 +7,7 @@
  * インスタンスが複数あっても、手で叩く `waggle-ledger drain` が加わっても、
  * 互いを踏まない。
  */
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import { Command, Option } from "commander";
 import { collectEnv, fgaFrom, storageFrom } from "../config/env.js";
 import { createKyselyClient } from "../db/kysely.js";
@@ -56,6 +56,25 @@ const start = async (options: ServerOptions): Promise<void> => {
   }
 
   const app = Fastify({ logger: false });
+
+  /**
+   * 予期しない失敗の中身を client に出さない。
+   *
+   * Fastify の既定は 500 でも `err.message` と `err.code` をそのまま返す。
+   * Postgres のエラーはそこに列の型と値の成れの果てを載せてくるので、
+   * client 側の誤りが **サーバ内部の形を教える窓** になる。
+   *
+   * 4xx は素通しする —— あれは client に向けて書かれた文言で、隠す理由が無い。
+   * 500 の詳細は logger に残るので、調査する側は何も失わない。
+   */
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error.statusCode !== undefined && error.statusCode < 500) {
+      return reply.send(error);
+    }
+    logger.error({ err: error, url: request.url }, "Unhandled error");
+    return reply.code(500).send({ error: "internal error" });
+  });
+
   registerRoutes(app, { db, fga, s3, resolveIdentity });
   registerPicker(app, replayOriginFromEnv());
 

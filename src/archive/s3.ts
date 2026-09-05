@@ -25,16 +25,18 @@ export const createS3Client = (config: StorageConfig): S3Client =>
  * いないかもしれないものを求める) なので、エラーではない。それ以外 —— 資格情報、
  * ネットワーク、壊れた JSON —— は今までどおり throw する。
  */
-export const getJsonObject = async <T>(
+export const getJsonObject = async (
   s3: S3Client,
   bucket: string,
   key: string,
-): Promise<T | undefined> => {
+): Promise<unknown> => {
   try {
     const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     const body = await result.Body?.transformToString();
     if (body === undefined) return undefined;
-    return JSON.parse(body) as T;
+    // 解析は呼ぶ側の仕事 (readManifest など)。ここで型を名乗らせない ——
+    // 名乗れるようにすると、いつか誰かが検査せずに名乗る。
+    return JSON.parse(body);
   } catch (cause) {
     if (isNotFound(cause)) return undefined;
     throw cause;

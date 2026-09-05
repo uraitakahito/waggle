@@ -6,7 +6,7 @@
  * 他の検査はすべて助言でしかない。ここでは、直前に Check を置かずに URL を配って
  * はならない。
  */
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { OpenFgaClient } from "@openfga/sdk";
 import { ConsistencyPreference } from "@openfga/sdk";
@@ -54,50 +54,64 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
    * OWASP API1:2023 (Broken Object Level Authorization) が警告している漏れ。
    * 「見てはいけない」と「存在しない」は区別が付いてはならない。
    */
-  app.post("/api/archives/:id/url", async (request: FastifyRequest, reply: FastifyReply) => {
-    const identity = await resolveIdentity(request);
-    if (!identity) return unauthorized(reply);
-
-    const { id } = request.params as { id: string };
-
-    const { allowed } = await fga.check(
-      {
-        user: `user:${identity.subject}`,
-        relation: "can_view",
-        object: `archive:${id}`,
-        contextualTuples: membershipTuples(identity),
-        context: { current_time: new Date().toISOString() },
+  app.post<{ Params: { id: string } }>(
+    "/api/archives/:id/url",
+    {
+      // 形式の検査は認可より前。UUID でない id は FGA が結果的に弾いていたが、
+      // それは認可の副作用であって入力の検査ではない —— モデルを変えれば消える。
+      schema: {
+        params: {
+          type: "object",
+          properties: { id: { type: "string", format: "uuid" } },
+          required: ["id"],
+        },
       },
-      {
-        // 古い答えが許されない唯一の場所。ここでキャッシュされた許可は、寿命の
-        // 間ずっと有効な URL を配ってしまうので、1 秒前に入った取り消しが既に
-        // 見えていなければならない。
-        consistency: ConsistencyPreference.HigherConsistency,
-      },
-    );
+    },
+    async (request, reply) => {
+      const identity = await resolveIdentity(request);
+      if (!identity) return unauthorized(reply);
 
-    if (allowed !== true) {
-      log.info({ subject: identity.subject, archiveId: id }, "Denied");
-      return reply.code(404).send({ error: "not found" });
-    }
+      const { id } = request.params;
 
-    const location = await db
-      .selectFrom("archives")
-      .select(["bucket", "objectKey"])
-      .where("id", "=", id)
-      .executeTakeFirst();
+      const { allowed } = await fga.check(
+        {
+          user: `user:${identity.subject}`,
+          relation: "can_view",
+          object: `archive:${id}`,
+          contextualTuples: membershipTuples(identity),
+          context: { current_time: new Date().toISOString() },
+        },
+        {
+          // 古い答えが許されない唯一の場所。ここでキャッシュされた許可は、寿命の
+          // 間ずっと有効な URL を配ってしまうので、1 秒前に入った取り消しが既に
+          // 見えていなければならない。
+          consistency: ConsistencyPreference.HigherConsistency,
+        },
+      );
 
-    // モデル上は許されているが台帳に無い: tuple がアーカイブより長生きした場合。
-    // 同じ 404 —— 署名する相手が無い。
-    if (!location) {
-      log.warn({ archiveId: id }, "Check allowed an archive that is not in the ledger");
-      return reply.code(404).send({ error: "not found" });
-    }
+      if (allowed !== true) {
+        log.info({ subject: identity.subject, archiveId: id }, "Denied");
+        return reply.code(404).send({ error: "not found" });
+      }
 
-    const signed = await presignArchive(s3, location);
-    log.info({ subject: identity.subject, archiveId: id }, "Signed URL issued");
-    return reply.code(200).send(signed);
-  });
+      const location = await db
+        .selectFrom("archives")
+        .select(["bucket", "objectKey"])
+        .where("id", "=", id)
+        .executeTakeFirst();
+
+      // モデル上は許されているが台帳に無い: tuple がアーカイブより長生きした場合。
+      // 同じ 404 —— 署名する相手が無い。
+      if (!location) {
+        log.warn({ archiveId: id }, "Check allowed an archive that is not in the ledger");
+        return reply.code(404).send({ error: "not found" });
+      }
+
+      const signed = await presignArchive(s3, location);
+      log.info({ subject: identity.subject, archiveId: id }, "Signed URL issued");
+      return reply.code(200).send(signed);
+    },
+  );
 
   /**
    * この呼び出し元が見てよいアーカイブを、新しい順に並べる。
@@ -109,49 +123,65 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
    * 一貫性は既定のまま —— ここではキャッシュで構わない。一覧に出ることは何も
    * 与えない: どれかを取りに行くには、上の強一貫な Check を通る必要がある。
    */
-  app.get("/api/archives", async (request: FastifyRequest, reply: FastifyReply) => {
-    const identity = await resolveIdentity(request);
-    if (!identity) return unauthorized(reply);
+  app.get<{ Querystring: { before?: string } }>(
+    "/api/archives",
+    {
+      // カーソルは「いま出した最後の行の capturedAt」。形式が違えば 400 ——
+      // new Date() は不正な文字列でも投げず Invalid Date を返すので、ここで
+      // 落とさないと SQL のパラメータになり、Postgres が拒んで 500 になる。
+      schema: {
+        querystring: {
+          type: "object",
+          properties: { before: { type: "string", format: "date-time" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const identity = await resolveIdentity(request);
+      if (!identity) return unauthorized(reply);
 
-    const { before } = request.query as { before?: string };
-    let query = db
-      .selectFrom("archives")
-      // objectKey は picker が replay へ渡す鍵。bucket は返さない —— replay は
-      // 自分の S3_BUCKET_URL で既に持っていて、両方返すと「どちらが正か」が
-      // 2 つになる。
-      .select(["id", "taskId", "sourceUrl", "labels", "waczComplete", "capturedAt", "objectKey"])
-      .orderBy("capturedAt", "desc")
-      .limit(PAGE_SIZE);
-    if (before !== undefined) query = query.where("capturedAt", "<", new Date(before));
-    const page = await query.execute();
+      const { before } = request.query;
+      let query = db
+        .selectFrom("archives")
+        // objectKey は picker が replay へ渡す鍵。bucket は返さない —— replay は
+        // 自分の S3_BUCKET_URL で既に持っていて、両方返すと「どちらが正か」が
+        // 2 つになる。
+        .select(["id", "taskId", "sourceUrl", "labels", "waczComplete", "capturedAt", "objectKey"])
+        .orderBy("capturedAt", "desc")
+        .limit(PAGE_SIZE);
+      if (before !== undefined) query = query.where("capturedAt", "<", new Date(before));
+      const page = await query.execute();
 
-    if (page.length === 0) return reply.code(200).send({ archives: [] });
+      if (page.length === 0) return reply.code(200).send({ archives: [] });
 
-    const now = new Date().toISOString();
-    const contextualTuples = membershipTuples(identity);
-    const result = await fga.batchCheck({
-      checks: page.map((archive) => ({
-        user: `user:${identity.subject}`,
-        relation: "can_view",
-        object: `archive:${archive.id}`,
-        // batchCheck は contextual tuple を `tuple_keys` で包む。上の単発の
-        // `check` は素の配列を取る。概念は同じで、形が違う。
-        contextualTuples: { tuple_keys: contextualTuples },
-        context: { current_time: now },
-        // 応答とリクエストを対応付けるためのもの —— 順序は保証されない。
-        // BrowserHive の取り込みの `correlationId` とは無関係で、名前が同じだけの
-        // 別概念。
-        correlationId: archive.id.replace(/-/g, ""),
-      })),
-    });
+      const now = new Date().toISOString();
+      const contextualTuples = membershipTuples(identity);
+      const result = await fga.batchCheck({
+        checks: page.map((archive) => ({
+          user: `user:${identity.subject}`,
+          relation: "can_view",
+          object: `archive:${archive.id}`,
+          // batchCheck は contextual tuple を `tuple_keys` で包む。上の単発の
+          // `check` は素の配列を取る。概念は同じで、形が違う。
+          contextualTuples: { tuple_keys: contextualTuples },
+          context: { current_time: now },
+          // 応答とリクエストを対応付けるためのもの —— 順序は保証されない。
+          // BrowserHive の取り込みの `correlationId` とは無関係で、名前が同じだけの
+          // 別概念。
+          correlationId: archive.id.replace(/-/g, ""),
+        })),
+      });
 
-    const allowed = new Set(
-      result.result.filter((entry) => entry.allowed === true).map((entry) => entry.request.object),
-    );
-    return reply
-      .code(200)
-      .send({ archives: page.filter((archive) => allowed.has(`archive:${archive.id}`)) });
-  });
+      const allowed = new Set(
+        result.result
+          .filter((entry) => entry.allowed === true)
+          .map((entry) => entry.request.object),
+      );
+      return reply
+        .code(200)
+        .send({ archives: page.filter((archive) => allowed.has(`archive:${archive.id}`)) });
+    },
+  );
 
   app.get("/healthz", (_request, reply) => reply.code(200).send({ status: "ok" }));
 };
