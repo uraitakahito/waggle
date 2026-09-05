@@ -66,6 +66,14 @@ jobs:
     name: Docs sync guard
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Dependabot が出した PR では走らせない。理由は ci.yaml の proto-sync と同じ ——
+    # **Dependabot の PR は Actions secrets を読めない** ので、下の
+    # create-github-app-token が private-key 空で必ず落ちる。変更の中身とは無関係に。
+    #
+    # 飛ばして失うものは無い。この job が見るのは docs とコードの一致で、
+    # Dependabot の PR は lockfile しか触らない。develop に入った直後の push で
+    # 同じ job が secrets 付きで走るので、検査自体は消えない。
+    if: github.actor != 'dependabot[bot]'
     steps:
       # BrowserHive is a private repository, so the default GITHUB_TOKEN cannot
       # clone the .upstream/browserhive submodule ("Repository not found" —
