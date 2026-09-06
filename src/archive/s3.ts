@@ -64,11 +64,20 @@ export const listAllKeys = async (s3: S3Client, bucket: string): Promise<string[
     const page = await s3.send(
       new ListObjectsV2Command({
         Bucket: bucket,
+        // 応答は XML で、XML 1.0 は ASCII 0-8 などを表せない。付けないと、
+        // 制御文字を含む鍵は **オブジェクトが在るのに一覧に出てこない**。
+        // 付けた以上、下で復号する必要がある (SDK v3 は復号してくれない)。
+        //
+        // 注意: これは `Delimiter` / `Prefix` / `StartAfter` にも掛かる ——
+        // 下の「日付の prefix を入れる」をやるときに踏む。
+        EncodingType: "url",
         ...(continuationToken !== undefined && { ContinuationToken: continuationToken }),
       }),
     );
     for (const item of page.Contents ?? []) {
-      if (item.Key !== undefined) keys.push(item.Key);
+      // EncodingType を付けたので percent-encoded で返る。復号しないと
+      // BrowserHive が組む名前と突き合わせられない。
+      if (item.Key !== undefined) keys.push(decodeURIComponent(item.Key));
     }
     continuationToken = page.IsTruncated === true ? page.NextContinuationToken : undefined;
   } while (continuationToken !== undefined);
