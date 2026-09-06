@@ -99,9 +99,13 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * listing でオブジェクトを見つけてしまうので、ログにも結果にも出ない。
  * だから test/manifest-key.test.ts は BrowserHive と同じケースを並べてある。
  *
+ * `\p{Cc}` (制御文字) を逃がすのは、鍵が ListObjectsV2 の **XML** で返るため。
+ * XML 1.0 は ASCII 0-8 などを表せないので、残すと「オブジェクトは在るのに
+ * 一覧に出てこない」になる。`\s` は CR/LF/TAB しか覆わない。
+ *
  * 本体は browserhive の src/capture/artifact-name.ts (generateFilename)。
  */
-const ESCAPED = /[%_.<>:"/\\|?*\s]/g;
+const ESCAPED = /[%_.<>:"/\\|?*\s\p{Cc}]/gu;
 
 /** 逃がすのは 1 回の走査で。順に replace を重ねると二重符号化する。 */
 const encodeField = (value: string): string =>
