@@ -44,7 +44,12 @@ describe("listAllKeys", () => {
    */
   it("URL 符号化された鍵を復号して返す", async () => {
     const { s3 } = fakeS3([
-      { Contents: [{ Key: "task_corr_a%01b.result.json" }, { Key: "%E3%83%A4%E3%83%95%E3%83%BC.wacz" }] },
+      {
+        Contents: [
+          { Key: "task_corr_a%01b.result.json" },
+          { Key: "%E3%83%A4%E3%83%95%E3%83%BC.wacz" },
+        ],
+      },
     ]);
 
     const keys = await listAllKeys(s3, "archives");
