@@ -70,4 +70,21 @@ describe("manifestKey", () => {
   it("日本語はそのまま残る", () => {
     expect(manifestKey(TASK, undefined, ["ヤフー"])).toBe(`${TASK}__ヤフー.result.json`);
   });
+
+  /**
+   * 鍵に制御文字が残らないこと。
+   *
+   * **この 1 本だけは写しではない。** 上の一連は BrowserHive と同じケースを
+   * 並べて突き合わせているが、それが捕まえるのは「ずれ」だけで、両方が同じ穴を
+   * 持っていれば緑のままになる。実際そうだった —— どちらの `ESCAPED` にも
+   * 制御文字が入っておらず、11 本すべてが緑のまま素通ししていた。
+   *
+   * だからこれは waggle 側で **独立に成り立つべき性質** として置く。鍵は
+   * ListObjectsV2 の XML で返り、XML 1.0 は ASCII 0-8 などを表せないので、
+   * 制御文字が残ると reconciler が成果物を見つけられなくなる。
+   */
+  it("鍵に制御文字が残らない", () => {
+    expect(manifestKey(TASK, undefined, ["a\u0001b"])).not.toMatch(/\p{Cc}/u);
+    expect(manifestKey(TASK, "a\u007Fb", [])).not.toMatch(/\p{Cc}/u);
+  });
 });
