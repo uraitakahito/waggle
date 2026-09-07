@@ -17,7 +17,7 @@
  * リクエストを送る前に書くので、直後に waggle が死んでも、BrowserHive が受理した
  * 取り込みの帰属は必ず言える。
  *
- * ## `urls.org_id`
+ * ## `capture_targets.org_id`
  *
  * ある URL がどの組織のために撮られるかは、成果物の性質ではなく取り込みへの入力
  * なので、URL の隣に属する。既存の行には `default` が入る —— 組織のディレクトリは
@@ -29,7 +29,7 @@ import { sql } from "kysely";
 
 export const up = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema
-    .alterTable("urls")
+    .alterTable("capture_targets")
     .addColumn("org_id", "text", (col) => col.notNull().defaultTo("default"))
     .execute();
 
@@ -50,5 +50,5 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
   await db.schema.dropTable("capture_submissions").execute();
-  await db.schema.alterTable("urls").dropColumn("org_id").execute();
+  await db.schema.alterTable("capture_targets").dropColumn("org_id").execute();
 };

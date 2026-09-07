@@ -12,7 +12,7 @@
  */
 import type { ColumnType, Generated, GeneratedAlways } from "kysely";
 
-export interface UrlsTable {
+export interface CaptureTargetsTable {
   // BIGSERIAL —— node-pg は精度を落とさないために int8 を `string` で返す。
   id: Generated<string>;
   url: string;
@@ -70,7 +70,7 @@ export interface CaptureSubmissionsTable {
 }
 
 export interface Database {
-  urls: UrlsTable;
+  captureTargets: CaptureTargetsTable;
   archives: ArchivesTable;
   fgaOutbox: FgaOutboxTable;
   captureSubmissions: CaptureSubmissionsTable;

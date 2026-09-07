@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Bring the Compose stack up, seed the urls table, and submit your first capture.
+description: Bring the Compose stack up, seed the capture_targets table, and submit your first capture.
 ---
 
 The stack brings up everything waggle needs — Postgres, SeaweedFS, two headless
@@ -67,7 +67,7 @@ name — `.env` already holds the connection strings:
 
 ```sh
 pnpm install         # first time only
-pnpm run db:migrate  # create the urls table
+pnpm run db:migrate  # create the capture_targets table
 pnpm run db:seed     # load the five sample URLs
 ```
 

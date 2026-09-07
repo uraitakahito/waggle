@@ -21,9 +21,9 @@ submission time is the only source.
 ```
 what waggle knows          what BrowserHive knows
 ─────────────────          ──────────────────────
-urls.org_id       ──┐      taskId
-                    │      where the artifacts are
-                    └──→   (no idea about organizations)
+capture_targets.org_id ──┐      taskId
+                         │      where the artifacts are
+                         └──→   (no idea about organizations)
               capture_submissions
               maps task_id → org_id
 ```
@@ -65,7 +65,7 @@ read taskId from .result.json
 | `task_id`      | **Primary key.** BrowserHive's id, the join back to the result report                                                   |
 | `org_id`       | `not null`. **The reason this table exists**                                                                            |
 | `submitted_by` | The user who asked, when there was one. **NULL for scheduled runs that belong to an organization rather than a person** |
-| `source_url`   | Not a foreign key to `urls` — the row survives the URL being removed                                                    |
+| `source_url`   | Not a foreign key to `capture_targets` — the row survives the URL being removed                                         |
 | `submitted_at` | Default `now()`                                                                                                         |
 
 :::caution[`submitted_by` is not the result of authentication]

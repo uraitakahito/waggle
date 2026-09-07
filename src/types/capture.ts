@@ -15,12 +15,12 @@ export interface CaptureFormats {
 }
 
 /**
- * 1 回の実行が **どう** 撮るか。**何を** 撮るか (URL。`urls` テーブルから来る) の
+ * 1 回の実行が **どう** 撮るか。**何を** 撮るか (URL。`capture_targets` テーブルから来る) の
  * 反対側。
  *
  * URL ごとではなく実行ごとの設定で、これは `dismissBanners` と `acceptLanguage` が
  * 元からそうだったのに合わせている: CLI が意図を 1 度述べ、その実行の全エントリが
- * それを継ぐ。1 回の実行の中で URL ごとに変えたくなったら、その設定は `urls`
+ * それを継ぐ。1 回の実行の中で URL ごとに変えたくなったら、その設定は `capture_targets`
  * テーブルのほうに属する。
  *
  * ここの optional な field はどれも server 側に既定値があるので、設定しない field は
