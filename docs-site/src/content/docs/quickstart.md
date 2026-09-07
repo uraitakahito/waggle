@@ -71,7 +71,26 @@ pnpm run db:migrate  # create the capture_targets table
 pnpm run db:seed     # load the five sample URLs
 ```
 
-## 5. Submit a capture
+## 5. Prepare authorization
+
+The archive API and the picker go through OpenFGA. **The store and model ids do
+not exist until the model is deployed**, so they cannot live in compose. Run the
+two commands and paste the result into `.env`:
+
+```sh
+pnpm run fga:migrate  # create the OpenFGA datastore
+pnpm run fga:deploy   # push the model; prints the store id and model id
+```
+
+Copy the two printed lines into `WAGGLE_FGA_STORE_ID` and `WAGGLE_FGA_MODEL_ID`
+in `.env`.
+
+:::note[Skip this if you only want to submit a capture]
+This step is only needed for the API and picker in §7. `pnpm run capture` does
+not go through OpenFGA.
+:::
+
+## 6. Submit a capture
 
 ```sh
 pnpm run capture --wacz --limit 1
@@ -86,11 +105,36 @@ Each accepted URL produces one log line, and the run ends with a summary:
 
 `accepted` means BrowserHive queued the work — not that the capture finished.
 
-## 6. See what came out
+## 7. See what came out
 
-waggle exposes no endpoint for that; the capture is asynchronous and the result
-belongs to BrowserHive. Ask BrowserHive about the task, using a `taskId` from
-the run above:
+The listing and the picker are served by `waggle-api`, which **runs on the
+host** — the stack has no such service, for the same reason as §5: the OpenFGA
+ids do not exist until after startup.
+
+```sh
+pnpm run api
+open http://127.0.0.1:7070/
+```
+
+Clicking a row opens it in [replay](https://github.com/uraitakahito/replay). The
+listing comes from the ledger (the `archives` table) and is **filtered by
+OpenFGA's `can_view`**. You can also call the API directly:
+
+```sh
+curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  http://127.0.0.1:7070/api/archives | jq '.archives[0]'
+```
+
+An empty listing usually means `WAGGLE_DEV_IDENTITY=1` is missing from `.env` —
+without it the resolver admits nobody and the picker stays empty with `401`.
+See [Archive ledger](/waggle/archive-ledger/) for the whole surface.
+
+### While it is still running
+
+**A capture reaches the ledger only after it finishes.** If it is not in the
+picker it is either still being taken or it failed. **Progress lives only in
+BrowserHive** — that is the system of record; what waggle holds is a copy of
+finished facts.
 
 ```sh
 grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
@@ -99,18 +143,14 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
   | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
 ```
 
-A `state` of `CAPTURE_STATE_PENDING` or `_PROCESSING` means it is still
-running — ask again. The same report is also written to
-the bucket as `<taskId>_<correlationId>[_<labels>].result.json`, which is the one to read if
-missing a result is not acceptable. See
-Capture results.
+`CAPTURE_STATE_PENDING` or `_PROCESSING` means it is still working.
 
-Artifacts land in the bundled SeaweedFS bucket (`browserhive`). How they are
-named and what a WACZ contains is documented on
-BrowserHive's storage page.
+Artifacts land in the bundled SeaweedFS bucket (`browserhive`). Naming and WACZ
+contents are on BrowserHive's storage page.
 
 ## Next
 
+- Serve and share archives → [Archive ledger](/waggle/archive-ledger/)
 - Add your own URLs → [URL source](/waggle/url-source/)
 - Change how pages are captured → [Capture options](/waggle/capture-options/)
 - Work without Compose → [Development environment](/waggle/development-environment/)
