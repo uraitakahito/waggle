@@ -1,14 +1,14 @@
-# Assertions for fga/model.fga, run by `pnpm run fga:test` (OpenFGA CLI).
+# fga/model.fga に対する assertion。`pnpm run fga:test` (OpenFGA CLI) が走らせる。
 #
-# These are the questions the signing endpoint asks. If any of them flips, a
-# WACZ becomes visible to someone who should not see it — so this file is the
-# regression net for the whole authorization design, not a formality.
-name: waxlens authorization model
+# ここに並ぶのは、署名の endpoint が実際に投げている問いそのもの。どれか 1 つでも
+# 裏返れば、見えてはいけない相手に WACZ が見える。つまりこのファイルは形式ではなく、
+# 認可の設計全体に対する回帰の網。
+name: waggle authorization model
 model_file: ./model.fga
 
-# Stored state. Note what is NOT here: user→organization membership. That
-# arrives as a contextual tuple from the caller's token, so the tests below
-# supply it the same way production does.
+# 保存される状態。**ここに無いもの**に注意 —— user → organization の所属が無い。
+# あれは呼び出し元のトークンから contextual tuple として届くので、下の試験も
+# 本番と同じ渡し方をしている。
 tuples:
   - user: user:alice
     relation: owner
@@ -20,7 +20,7 @@ tuples:
     relation: parent
     object: archive:arch-1
 
-  # A second organization's archive, to prove isolation.
+  # 隔離を示すための、もう 1 つの組織のアーカイブ。
   - user: organization:contoso
     relation: parent
     object: capture_job:job-2
@@ -29,7 +29,7 @@ tuples:
     object: archive:arch-2
 
 tests:
-  - name: the owner of the job can view what it produced
+  - name: ジョブの owner は、そこから生まれたものを見られる
     check:
       - user: user:alice
         object: archive:arch-1
@@ -37,8 +37,8 @@ tests:
           can_view: true
           can_delete: true
 
-  - name: a member of the owning organization can view but not delete
-    # Membership supplied contextually, exactly as the API does from the JWT.
+  - name: 所有する組織の member は、見られるが消せない
+    # 所属は contextual に渡す —— API が JWT から渡すのとまったく同じ形。
     tuples:
       - user: user:bob
         relation: member
@@ -50,7 +50,7 @@ tests:
           can_view: true
           can_delete: false
 
-  - name: an unrelated user sees nothing
+  - name: 無関係な利用者には何も見えない
     check:
       - user: user:mallory
         object: archive:arch-1
@@ -58,7 +58,7 @@ tests:
           can_view: false
           can_delete: false
 
-  - name: membership in another organization grants nothing
+  - name: 別の組織に属していても何も得られない
     tuples:
       - user: user:carol
         relation: member
@@ -73,7 +73,7 @@ tests:
         assertions:
           can_view: true
 
-  - name: a direct share is visible inside its window
+  - name: 直接の共有は、その窓の内側では見える
     tuples:
       - user: user:dave
         relation: viewer
@@ -91,7 +91,7 @@ tests:
         assertions:
           can_view: true
 
-  - name: the same share has lapsed after its window
+  - name: 同じ共有が、窓を過ぎれば切れている
     tuples:
       - user: user:dave
         relation: viewer
@@ -109,7 +109,7 @@ tests:
         assertions:
           can_view: false
 
-  - name: a shared archive still cannot be deleted by the recipient
+  - name: 共有されたアーカイブも、受け取った側は消せない
     tuples:
       - user: user:dave
         relation: viewer
