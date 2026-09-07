@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { FastifyRequest } from "fastify";
+import { SignJWT, generateKeyPair } from "jose";
 import {
   denyAllResolver,
   devIdentityResolver,
+  jwtIdentityResolver,
   resolveIdentityResolver,
 } from "../src/api/identity.js";
 
@@ -65,5 +67,96 @@ describe("resolveIdentityResolver", () => {
     expect(resolveIdentityResolver()).toBe(denyAllResolver);
     process.env["WAGGLE_DEV_IDENTITY"] = "1";
     expect(resolveIdentityResolver()).toBe(devIdentityResolver);
+  });
+});
+
+/**
+ * JWT を検証する resolver。
+ *
+ * **これが案 1 (ヘッダを信じる) では書けなかった試験**。署名・issuer・audience・
+ * 期限は、本物の IdP を繋いだ日に初めて動くコードだった。ここで毎日動かす。
+ *
+ * 鍵を引数で受け取る形にしてあるので、issuer を立てずに試せる。本番は
+ * `createRemoteJWKSet(...)` を渡し、ここでは作ったばかりの鍵を渡す ——
+ * `jose` の `jwtVerify` がどちらも受ける。
+ */
+const ISSUER = "http://127.0.0.1:9099";
+const AUDIENCE = "waggle";
+
+// describe の中では await できないので、module の頭で作る。
+const keys = await generateKeyPair("RS256");
+const other = await generateKeyPair("RS256");
+
+describe("jwtIdentityResolver", () => {
+  const token = async (
+    claims: Record<string, unknown>,
+    opts: { key?: CryptoKey; issuer?: string; audience?: string; expires?: string } = {},
+  ): Promise<string> =>
+    new SignJWT(claims)
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(opts.issuer ?? ISSUER)
+      .setAudience(opts.audience ?? AUDIENCE)
+      .setIssuedAt()
+      .setExpirationTime(opts.expires ?? "1h")
+      .sign(opts.key ?? keys.privateKey);
+
+  const resolve = jwtIdentityResolver(keys.publicKey, {
+    issuer: ISSUER,
+    audience: AUDIENCE,
+  });
+
+  const bearer = async (jwt: string): Promise<FastifyRequest> =>
+    request({ authorization: `Bearer ${jwt}` });
+
+  it("sub と組織のクレームを Identity に写す", async () => {
+    await expect(
+      resolve(await bearer(await token({ sub: "alice", organizations: ["acme"] }))),
+    ).resolves.toEqual({ subject: "alice", organizations: ["acme"] });
+  });
+
+  it("別の鍵で署名されたトークンを拒む", async () => {
+    await expect(
+      resolve(await bearer(await token({ sub: "mallory" }, { key: other.privateKey }))),
+    ).resolves.toBeUndefined();
+  });
+
+  it("issuer が合わないトークンを拒む", async () => {
+    await expect(
+      resolve(await bearer(await token({ sub: "alice" }, { issuer: "https://evil.example" }))),
+    ).resolves.toBeUndefined();
+  });
+
+  it("audience が合わないトークンを拒む", async () => {
+    await expect(
+      resolve(await bearer(await token({ sub: "alice" }, { audience: "someone-else" }))),
+    ).resolves.toBeUndefined();
+  });
+
+  it("期限切れのトークンを拒む", async () => {
+    await expect(
+      resolve(await bearer(await token({ sub: "alice" }, { expires: "-1h" }))),
+    ).resolves.toBeUndefined();
+  });
+
+  // 「どこにも属さない人」は表せる必要がある —— 組織が無いことは不正ではない。
+  it("組織のクレームが無ければ、組織は空になる", async () => {
+    await expect(resolve(await bearer(await token({ sub: "alice" })))).resolves.toEqual({
+      subject: "alice",
+      organizations: [],
+    });
+  });
+
+  it("sub が無いトークンを拒む", async () => {
+    await expect(resolve(await bearer(await token({})))).resolves.toBeUndefined();
+  });
+
+  it("Authorization ヘッダが無い要求を拒む", async () => {
+    await expect(resolve(request({}))).resolves.toBeUndefined();
+  });
+
+  it("Bearer でない Authorization ヘッダを拒む", async () => {
+    await expect(
+      resolve(request({ authorization: `Basic ${await token({ sub: "alice" })}` })),
+    ).resolves.toBeUndefined();
   });
 });
