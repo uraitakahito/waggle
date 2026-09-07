@@ -18,7 +18,7 @@ import { submitRequest, type SubmitResult } from "./submit.js";
  * 全エントリを並列に投げ、結果が届いた順にログへ出す。
  * すべての投稿が決着したら返る。
  */
-export const submitAll = async (
+const submitAll = async (
   entries: DataEntry[],
   settings: CaptureSettings,
 ): Promise<SubmitResult[]> => {
