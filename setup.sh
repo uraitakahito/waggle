@@ -98,7 +98,7 @@ name:
 
   pnpm install
   pnpm run db:migrate && pnpm run db:seed
-  pnpm run dev --webp --limit 3
+  pnpm run capture --webp --limit 3
 
 The archive API additionally needs the two OpenFGA ids, which do not exist
 until the model has been deployed. Paste them into .env:

@@ -81,7 +81,7 @@ that rule too.
 
 | Command                                   | What it does                                                         |
 | ----------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm run dev <args>`                     | Build, then run the CLI (`tsc` then `node dist/submit-captures.js`). |
+| `pnpm run capture <args>`                 | Build, then run the CLI (`tsc` then `node dist/submit-captures.js`). |
 | `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                   |
 | `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                   |
 | `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).       |
@@ -165,7 +165,7 @@ BROWSERHIVE_SERVER=https://browserhive.example/ \
 
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
 BROWSERHIVE_SERVER=https://browserhive.example/ \
-  pnpm run dev --webp --limit 3
+  pnpm run capture --webp --limit 3
 ```
 
 For TLS with a custom CA, set `NODE_EXTRA_CA_CERTS` to the CA file before
@@ -177,10 +177,10 @@ Postgres TLS, encode the parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
 
 waggle has two entry points for identity. **Both deny everyone by default.**
 
-| Path                 | Default | Dev header              | JWT                  |
-| -------------------- | ------- | ----------------------- | -------------------- |
-| API (`/api`, picker) | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
-| CLI (`pnpm run dev`) | fails   | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+| Path                     | Default | Dev header              | JWT                  |
+| ------------------------ | ------- | ----------------------- | -------------------- |
+| API (`/api`, picker)     | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| CLI (`pnpm run capture`) | fails   | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
 
 **The JWT path wins over the dev header.** When both are set, an environment must not
 fall back to the weaker one, where anyone who reaches the port can be anyone.
@@ -192,9 +192,9 @@ code production will run** — signature, `iss` / `aud`, expiry, and the JWKS fe
 real IdP is chosen, the bundled issuer stands in for one.
 
 ```bash
-pnpm run dev:issuer                                   # listens on :9099
+pnpm run oidc:issuer                                   # listens on :9099
 export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
-export WAGGLE_OIDC_TOKEN=$(pnpm run dev:token --subject alice --org acme)
+export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
 ```
 
 Changing `--subject` lets you produce **both "a person submitted this" and "a service

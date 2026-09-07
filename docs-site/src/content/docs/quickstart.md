@@ -74,7 +74,7 @@ pnpm run db:seed     # load the five sample URLs
 ## 5. Submit a capture
 
 ```sh
-pnpm run dev --wacz --limit 1
+pnpm run capture --wacz --limit 1
 ```
 
 Each accepted URL produces one log line, and the run ends with a summary:
