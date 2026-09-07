@@ -55,9 +55,9 @@
     "dev:token": "pnpm run build && node --env-file-if-exists=.env dist/dev/token.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1107.0",
-    "@aws-sdk/s3-request-presigner": "^3.1107.0",
-    "@bufbuild/protobuf": "^2.14.0",
+    "@aws-sdk/client-s3": "^3.1126.0",
+    "@aws-sdk/s3-request-presigner": "^3.1126.0",
+    "@bufbuild/protobuf": "^2.14.1",
     "@grpc/grpc-js": "^1.14.4",
     "@openfga/sdk": "^0.9.6",
     "commander": "^15.0.0",
