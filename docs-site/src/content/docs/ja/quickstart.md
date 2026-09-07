@@ -73,7 +73,7 @@ pnpm run db:seed     # サンプル 5 件を投入
 ## 5. キャプチャを投げる
 
 ```sh
-pnpm run dev --wacz --limit 1
+pnpm run capture --wacz --limit 1
 ```
 
 受理された URL ごとに 1 行、最後にサマリが出ます。

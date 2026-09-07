@@ -77,7 +77,7 @@ NAME=value     # 値を渡す
 
 | コマンド                                  | 内容                                                                    |
 | ----------------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm run dev <args>`                     | ビルドしてから CLI を実行 (`tsc` → `node dist/submit-captures.js`)。    |
+| `pnpm run capture <args>`                 | ビルドしてから CLI を実行 (`tsc` → `node dist/submit-captures.js`)。    |
 | `pnpm run build`                          | `tsconfig.build.json` で `dist/` に JS/d.ts を出力。                    |
 | `pnpm run typecheck`                      | `tsc --noEmit`。テストと `*.config.ts` も含む。                         |
 | `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked)。         |
@@ -160,7 +160,7 @@ BROWSERHIVE_SERVER=https://browserhive.example/ \
 
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
 BROWSERHIVE_SERVER=https://browserhive.example/ \
-  pnpm run dev --webp --limit 3
+  pnpm run capture --webp --limit 3
 ```
 
 独自 CA での TLS には、CLI を叩く前に `NODE_EXTRA_CA_CERTS` に CA ファイルを
@@ -172,10 +172,10 @@ BROWSERHIVE_SERVER=https://browserhive.example/ \
 
 waggle には身元の入口が 2 つあります。**どちらも既定では全員を拒みます。**
 
-| 経路                 | 既定   | 開発用ヘッダ            | JWT                  |
-| -------------------- | ------ | ----------------------- | -------------------- |
-| API (`/api`, picker) | 拒否   | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
-| CLI (`pnpm run dev`) | 落ちる | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+| 経路                     | 既定   | 開発用ヘッダ            | JWT                  |
+| ------------------------ | ------ | ----------------------- | -------------------- |
+| API (`/api`, picker)     | 拒否   | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| CLI (`pnpm run capture`) | 落ちる | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
 
 **JWT の経路が開発用ヘッダより優先されます。** 両方設定された環境で、
 そのポートに届く者が誰にでもなれるほうへ落ちてはいけないためです。
@@ -187,9 +187,9 @@ waggle には身元の入口が 2 つあります。**どちらも既定では�
 同梱の issuer を使います。
 
 ```bash
-pnpm run dev:issuer                                   # :9099 に立つ
+pnpm run oidc:issuer                                   # :9099 に立つ
 export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
-export WAGGLE_OIDC_TOKEN=$(pnpm run dev:token --subject alice --org acme)
+export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
 ```
 
 `--subject` を変えると **「人が投げた場合」と「サービスが投げた場合」の両方を

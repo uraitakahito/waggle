@@ -22,7 +22,7 @@ interface TokenOptions {
 }
 
 const program = new Command()
-  .name("waggle dev:token")
+  .name("waggle oidc:token")
   .description("開発用の issuer からアクセストークンを 1 つ取る")
   .requiredOption("--subject <subject>", "JWT の sub。submitted_by と owner tuple になる")
   .addOption(
@@ -52,7 +52,7 @@ export const main = async (argv: string[]): Promise<void> => {
     // issuer が動いていない場合がいちばん多いので、そう言う。
     program.error(
       `${opts.issuer} からトークンを取れなかった (${String(response.status)})。` +
-        ` \`pnpm run dev:issuer\` は動いているか?`,
+        ` \`pnpm run oidc:issuer\` は動いているか?`,
     );
   }
 
@@ -61,7 +61,7 @@ export const main = async (argv: string[]): Promise<void> => {
   if (typeof token !== "string") {
     program.error("応答に access_token が無い");
   }
-  // 標準出力にはトークンだけを出す。`TOKEN=$(pnpm run dev:token ...)` で使えるように。
+  // 標準出力にはトークンだけを出す。`TOKEN=$(pnpm run oidc:token ...)` で使えるように。
   process.stdout.write(`${token}\n`);
 };
 

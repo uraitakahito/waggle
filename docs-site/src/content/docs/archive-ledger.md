@@ -178,7 +178,7 @@ read there, so it takes two environment variables, `WAGGLE_DEV_SUBJECT` and
 `WAGGLE_DEV_ORGANIZATIONS` (written into `.env` by `setup.sh`):
 
 ```sh
-WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run dev --wacz
+WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run capture --wacz
 ```
 
 Nothing is verified here either — editing `.env` is enough to become anyone. It

@@ -169,7 +169,7 @@ CLI も同じ形の身元を持ちますが、経路が違います。ヘッダ�
 （`setup.sh` が `.env` に書きます）:
 
 ```sh
-WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run dev --wacz
+WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run capture --wacz
 ```
 
 こちらも**検証は一切しません**。`.env` を書き換えれば誰にでもなりすませます。
