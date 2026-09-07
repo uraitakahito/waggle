@@ -70,7 +70,26 @@ pnpm run db:migrate  # capture_targets テーブルを作成
 pnpm run db:seed     # サンプル 5 件を投入
 ```
 
-## 5. キャプチャを投げる
+## 5. 認可を準備する
+
+アーカイブ API と picker は OpenFGA を通します。**store と model の ID は
+デプロイして初めて決まる**ので、compose には書けません。手で叩いて `.env` に
+貼ります。
+
+```sh
+pnpm run fga:migrate  # OpenFGA の datastore を作る
+pnpm run fga:deploy   # model を送り、store id と model id を印字する
+```
+
+印字された 2 行を `.env` の `WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID` に
+書き写してください。
+
+:::note[取り込みを投げるだけなら飛ばせます]
+この段が要るのは §7 の API と picker です。`pnpm run capture` は OpenFGA を
+通りません。
+:::
+
+## 6. キャプチャを投げる
 
 ```sh
 pnpm run capture --wacz --limit 1
@@ -86,11 +105,35 @@ pnpm run capture --wacz --limit 1
 `accepted` は BrowserHive がキューに入れたという意味で、**キャプチャが完了した
 という意味ではありません**。
 
-## 6. 結果を見る
+## 7. 結果を見る
 
-waggle にそのためのエンドポイントはありません。キャプチャは非同期で、結果は
-BrowserHive のものだからです。上の実行で得た `taskId` で BrowserHive に
-問い合わせます。
+一覧と picker は `waggle-api` が出します。**host 側で動かします** —— スタックに
+そのサービスはありません（§5 と同じ理由で、OpenFGA の ID が起動後にしか
+決まらないため）。
+
+```sh
+pnpm run api
+open http://127.0.0.1:7070/
+```
+
+行をクリックすると [replay](https://github.com/uraitakahito/replay) で開きます。
+一覧は台帳（`archives` テーブル）から来ていて、**OpenFGA の `can_view` で
+絞ってあります**。API を直に叩くこともできます。
+
+```sh
+curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  http://127.0.0.1:7070/api/archives | jq '.archives[0]'
+```
+
+一覧が空なら `.env` の `WAGGLE_DEV_IDENTITY=1` を確かめてください。無いと
+resolver が誰も通さず、picker は `401` で空のままになります。詳しくは
+[アーカイブ台帳](/waggle/ja/archive-ledger/)。
+
+### まだ終わっていないとき
+
+**台帳に載るのは取り込みが終わった後**です。picker に出てこないなら、まだ
+撮っている最中か、失敗しています。**進行中の状態は BrowserHive にしか
+ありません** —— そちらが正本で、waggle が持っているのは終わった事実の写しです。
 
 ```sh
 grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
@@ -99,18 +142,14 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
   | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
 ```
 
-`state` が `CAPTURE_STATE_PENDING` か `_PROCESSING` ならまだ処理中なので、もう
-一度問い合わせてください。同じ内容は
-`<taskId>_<correlationId>[_<labels>].result.json` としてバケットにも書かれます。結果を
-取りこぼしてはいけない用途ではそちらを読みます。
-キャプチャ結果を参照。
+`state` が `CAPTURE_STATE_PENDING` か `_PROCESSING` ならまだ処理中です。
 
-成果物は同梱の SeaweedFS バケット (`browserhive`) に置かれます。命名規則や WACZ の
-中身は
-BrowserHive のストレージのページにあります。
+成果物は同梱の SeaweedFS バケット (`browserhive`) に置かれます。命名規則や
+WACZ の中身は BrowserHive のストレージのページにあります。
 
 ## 次に読むもの
 
+- アーカイブを配る・共有する → [アーカイブ台帳](/waggle/ja/archive-ledger/)
 - 自分の URL を追加する → [URL ソース](/waggle/ja/url-source/)
 - 撮り方を変える → [キャプチャオプション](/waggle/ja/capture-options/)
 - Compose を使わずに動かす → [開発環境](/waggle/ja/development-environment/)

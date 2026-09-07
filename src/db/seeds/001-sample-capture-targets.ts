@@ -19,11 +19,15 @@ export const up = async (db: Kysely<Database>): Promise<void> => {
   await db
     .insertInto("captureTargets")
     .values([
-      { url: "https://www.apple.com/", labels: ["Apple"] },
-      { url: "https://www.microsoft.com/", labels: ["Microsoft"] },
-      { url: "https://www.cloudflare.com/", labels: ["Cloudflare"] },
-      { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"] },
-      { url: "https://www.datadoghq.com/", labels: ["Datadog"] },
+      // `orgId` は列の既定 ("default") に任せない。`.env.example` が
+      // `WAGGLE_DEV_ORGANIZATIONS=acme` を配っていて、`pnpm run capture` は
+      // **自分が属さない組織の URL を投げない**。既定のままだと、書いてある
+      // とおりに setup した人が最初の取り込みで落ちる (実際に落ちた)。
+      { url: "https://www.apple.com/", labels: ["Apple"], orgId: "acme" },
+      { url: "https://www.microsoft.com/", labels: ["Microsoft"], orgId: "acme" },
+      { url: "https://www.cloudflare.com/", labels: ["Cloudflare"], orgId: "acme" },
+      { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"], orgId: "acme" },
+      { url: "https://www.datadoghq.com/", labels: ["Datadog"], orgId: "acme" },
     ])
     .execute();
 };
