@@ -20,6 +20,7 @@
  * トークンを短命にすべき理由がそれ。
  */
 import type { FastifyRequest } from "fastify";
+import { jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
 import type { Identity } from "../config/identity.js";
 
 export type { Identity };
@@ -48,6 +49,50 @@ export const devIdentityResolver: IdentityResolver = (request) => {
 
   return Promise.resolve({ subject, organizations });
 };
+
+/**
+ * 組織のクレームを取り出す。
+ *
+ * **本物の IdP ごとに綴りが違う** (`groups` / `roles` / 独自の名前) ので、
+ * 差し替えるのはここ 1 か所で済むように切ってある。
+ *
+ * 無いときは空。「どこにも属さない人」は表せる必要があり、不正ではない ——
+ * その人は自分の組織のアーカイブを 1 つも見られない、というだけ。
+ */
+const readOrganizations = (payload: JWTPayload): string[] => {
+  const claim = payload["organizations"];
+  if (!Array.isArray(claim)) return [];
+  return claim.filter((org): org is string => typeof org === "string" && org !== "");
+};
+
+/**
+ * JWT を検証する resolver。**本番でもこれを使う。**
+ *
+ * 鍵を引数で受け取るのは、単体試験で issuer を立てないため。本番は
+ * `createRemoteJWKSet(new URL(issuer + "/.well-known/jwks.json"))` を渡し、
+ * 試験はその場で作った鍵を渡す —— `jwtVerify` がどちらも受ける。
+ *
+ * **開発でだけ鍵をファイルから読む形にはしない。** そうするとこの行が本番と
+ * 別のものになり、「本番の経路を毎日動かす」という狙いがそこで崩れる。
+ */
+export const jwtIdentityResolver =
+  (
+    keys: JWTVerifyGetKey | CryptoKey,
+    options: { issuer: string; audience: string },
+  ): IdentityResolver =>
+  async (request) => {
+    const header = request.headers.authorization;
+    if (typeof header !== "string" || !header.startsWith("Bearer ")) return undefined;
+
+    try {
+      const { payload } = await jwtVerify(header.slice("Bearer ".length), keys, options);
+      if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
+      return { subject: payload.sub, organizations: readOrganizations(payload) };
+    } catch {
+      // 失敗の理由は呼び手に返さない。どこで落ちたかは総当たりの手がかりになる。
+      return undefined;
+    }
+  };
 
 /** 全員を拒む。これが既定なので、設定していない配備から漏れることはない。 */
 export const denyAllResolver: IdentityResolver = () => Promise.resolve(undefined);

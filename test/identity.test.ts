@@ -154,9 +154,15 @@ describe("jwtIdentityResolver", () => {
     await expect(resolve(request({}))).resolves.toBeUndefined();
   });
 
+  /**
+   * 前置きは **`Bearer ` と同じ 7 文字**にする。`Basic ` (6 文字) だと
+   * `slice(7)` がトークンの先頭を削って署名検証が落ちるので、
+   * `startsWith` を外しても試験が通ってしまった —— 偶然で守られていた。
+   * 同じ長さなら、防壁は `startsWith` 1 つだけになる。
+   */
   it("Bearer でない Authorization ヘッダを拒む", async () => {
     await expect(
-      resolve(request({ authorization: `Basic ${await token({ sub: "alice" })}` })),
+      resolve(request({ authorization: `Sneaky ${await token({ sub: "alice" })}` })),
     ).resolves.toBeUndefined();
   });
 });
