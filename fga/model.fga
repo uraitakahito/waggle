@@ -8,40 +8,37 @@ type organization
     define member: [user]
     define admin: [user]
 
-# One submitted capture. The unit of ownership: a job knows who asked for it
-# and which organization it was run for, and every artifact it produced
-# inherits from it.
+# 投げた取り込み 1 回。所有の単位でもある —— ジョブは誰が頼んだかと、どの組織の
+# ために走ったかを知っていて、そこから生まれた成果物はすべてそれを継ぐ。
 type capture_job
   relations
     define owner: [user]
     define parent: [organization]
-    # Re-exposes the owning organization's membership one level down.
-    # `from` traverses exactly one edge, so `archive` cannot reach
-    # `organization#member` through `archive#parent` (a capture_job) on its
-    # own — this relation is the missing hop.
+    # 所有する組織の member を 1 段下に出し直す。
+    # `from` は辺をちょうど 1 本しか辿らないので、`archive` は自力では
+    # `archive#parent` (capture_job) を通って `organization#member` に届かない ——
+    # この関係が、その足りない 1 ホップ。
     define member: member from parent
 
-# One WACZ produced by a capture_job.
+# capture_job が生んだ WACZ 1 つ。
 type archive
   relations
     define parent: [capture_job]
-    # Direct share with someone outside the owning organization. Only ever
-    # granted with an expiry — see the condition below.
+    # 所有する組織の外にいる誰かへの直接の共有。付与は必ず期限つきで行う ——
+    # 下の condition を参照。
     define viewer: [user with non_expired_grant, organization#member]
 
-    # The effective permission the signing endpoint checks. Membership is not
-    # stored as a tuple: it arrives as a contextual tuple built from the
-    # caller's token, so joining or leaving an organization never has to be
-    # synchronised into OpenFGA.
+    # 署名の endpoint が実際に確かめる権限。所属は tuple として保存しない ——
+    # 呼び出し元のトークンから組んだ contextual tuple として届くので、組織への
+    # 参加や離脱を OpenFGA へ同期する必要が一度も生じない。
     define can_view: viewer or owner from parent or member from parent
 
-    # Deleting is the owner's alone. A member of the organization can look but
-    # not destroy.
+    # 削除は owner だけのもの。組織の member は見られるが、壊せない。
     define can_delete: owner from parent
 
-# Time-boxed grant. `current_time` is supplied on every Check, so a share
-# lapses on its own — nothing has to sweep expired tuples, and a sweeper
-# falling behind cannot leave a hole open.
+# 期限で区切られた付与。`current_time` は Check のたびに渡されるので、共有は
+# ひとりでに切れる —— 期限切れの tuple を掃除する仕掛けが要らず、その掃除役が
+# 遅れて穴を開けたままにすることも起こらない。
 condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
   current_time < grant_time + grant_duration
 }
