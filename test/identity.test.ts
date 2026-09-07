@@ -68,6 +68,26 @@ describe("resolveIdentityResolver", () => {
     process.env["WAGGLE_DEV_IDENTITY"] = "1";
     expect(resolveIdentityResolver()).toBe(devIdentityResolver);
   });
+
+  /**
+   * issuer が設定されていれば JWT の resolver を選ぶ。**開発用ヘッダより優先する** ——
+   * 両方設定された環境で、弱いほう (そのポートに届く者が誰にでもなれる) へ
+   * 落ちてはいけない。
+   */
+  it("issuer が在れば、開発用ヘッダより JWT を優先する", async () => {
+    const originalIssuer = process.env["WAGGLE_OIDC_ISSUER"];
+    process.env["WAGGLE_DEV_IDENTITY"] = "1";
+    process.env["WAGGLE_OIDC_ISSUER"] = "http://127.0.0.1:9099";
+    try {
+      const resolve = resolveIdentityResolver();
+      expect(resolve).not.toBe(devIdentityResolver);
+      // ヘッダだけを渡しても、もう通らない。
+      await expect(resolve(request({ "x-waggle-subject": "mallory" }))).resolves.toBeUndefined();
+    } finally {
+      if (originalIssuer === undefined) delete process.env["WAGGLE_OIDC_ISSUER"];
+      else process.env["WAGGLE_OIDC_ISSUER"] = originalIssuer;
+    }
+  });
 });
 
 /**
@@ -105,49 +125,48 @@ describe("jwtIdentityResolver", () => {
     audience: AUDIENCE,
   });
 
-  const bearer = async (jwt: string): Promise<FastifyRequest> =>
-    request({ authorization: `Bearer ${jwt}` });
+  const bearer = (jwt: string): FastifyRequest => request({ authorization: `Bearer ${jwt}` });
 
   it("sub と組織のクレームを Identity に写す", async () => {
     await expect(
-      resolve(await bearer(await token({ sub: "alice", organizations: ["acme"] }))),
+      resolve(bearer(await token({ sub: "alice", organizations: ["acme"] }))),
     ).resolves.toEqual({ subject: "alice", organizations: ["acme"] });
   });
 
   it("別の鍵で署名されたトークンを拒む", async () => {
     await expect(
-      resolve(await bearer(await token({ sub: "mallory" }, { key: other.privateKey }))),
+      resolve(bearer(await token({ sub: "mallory" }, { key: other.privateKey }))),
     ).resolves.toBeUndefined();
   });
 
   it("issuer が合わないトークンを拒む", async () => {
     await expect(
-      resolve(await bearer(await token({ sub: "alice" }, { issuer: "https://evil.example" }))),
+      resolve(bearer(await token({ sub: "alice" }, { issuer: "https://evil.example" }))),
     ).resolves.toBeUndefined();
   });
 
   it("audience が合わないトークンを拒む", async () => {
     await expect(
-      resolve(await bearer(await token({ sub: "alice" }, { audience: "someone-else" }))),
+      resolve(bearer(await token({ sub: "alice" }, { audience: "someone-else" }))),
     ).resolves.toBeUndefined();
   });
 
   it("期限切れのトークンを拒む", async () => {
     await expect(
-      resolve(await bearer(await token({ sub: "alice" }, { expires: "-1h" }))),
+      resolve(bearer(await token({ sub: "alice" }, { expires: "-1h" }))),
     ).resolves.toBeUndefined();
   });
 
   // 「どこにも属さない人」は表せる必要がある —— 組織が無いことは不正ではない。
   it("組織のクレームが無ければ、組織は空になる", async () => {
-    await expect(resolve(await bearer(await token({ sub: "alice" })))).resolves.toEqual({
+    await expect(resolve(bearer(await token({ sub: "alice" })))).resolves.toEqual({
       subject: "alice",
       organizations: [],
     });
   });
 
   it("sub が無いトークンを拒む", async () => {
-    await expect(resolve(await bearer(await token({})))).resolves.toBeUndefined();
+    await expect(resolve(bearer(await token({})))).resolves.toBeUndefined();
   });
 
   it("Authorization ヘッダが無い要求を拒む", async () => {

@@ -50,7 +50,9 @@
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",
     "db:seed": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js up",
     "db:seed:down": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js down",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm test"
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm test",
+    "dev:issuer": "pnpm run build && node --env-file-if-exists=.env dist/dev/issuer-cli.js",
+    "dev:token": "pnpm run build && node --env-file-if-exists=.env dist/dev/token.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",

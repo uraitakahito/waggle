@@ -20,7 +20,8 @@
  * トークンを短命にすべき理由がそれ。
  */
 import type { FastifyRequest } from "fastify";
-import { jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
+import { optional } from "../config/env.js";
 import type { Identity } from "../config/identity.js";
 
 export type { Identity };
@@ -97,5 +98,24 @@ export const jwtIdentityResolver =
 /** 全員を拒む。これが既定なので、設定していない配備から漏れることはない。 */
 export const denyAllResolver: IdentityResolver = () => Promise.resolve(undefined);
 
-export const resolveIdentityResolver = (): IdentityResolver =>
-  process.env["WAGGLE_DEV_IDENTITY"] === "1" ? devIdentityResolver : denyAllResolver;
+/**
+ * 3 つのうちどれを使うか。**既定は拒否**。
+ *
+ * `WAGGLE_OIDC_ISSUER` が在れば JWT を検証する —— 開発用の issuer でも本物の IdP でも
+ * 同じ経路を通り、違うのは URL だけ。無ければ従来どおり `WAGGLE_DEV_IDENTITY=1` の
+ * ときにヘッダを信じ、それも無ければ全員を拒む。
+ *
+ * JWT が開発用ヘッダより優先されるのは、**両方設定されている環境で弱いほうへ
+ * 落ちない**ようにするため。
+ */
+export const resolveIdentityResolver = (): IdentityResolver => {
+  const issuer = optional("WAGGLE_OIDC_ISSUER", "");
+  if (issuer !== "") {
+    const audience = optional("WAGGLE_OIDC_AUDIENCE", "waggle");
+    return jwtIdentityResolver(createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`)), {
+      issuer,
+      audience,
+    });
+  }
+  return process.env["WAGGLE_DEV_IDENTITY"] === "1" ? devIdentityResolver : denyAllResolver;
+};
