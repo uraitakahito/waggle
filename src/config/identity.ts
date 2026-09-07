@@ -12,7 +12,7 @@
  * `register.ts` も変わらない。`api/identity.ts` が既に述べている「継ぎ目であって
  * 実装ではない」を、CLI 側にも広げたもの。
  */
-import { decodeJwt } from "jose";
+import { decodeJwt, type JWTPayload } from "jose";
 
 import { collectEnv, optional, type Need } from "./env.js";
 
@@ -21,34 +21,62 @@ export interface Identity {
   organizations: string[];
 }
 
-const splitList = (value: string): string[] =>
+/**
+ * 組織のクレームの綴り。**IdP ごとに違うのはここだけ** (`groups` / `roles` / 独自)。
+ *
+ * 定数にしてあるのは、試験が同じものを参照できるようにするため —— そうすると
+ * 名前を変えたときに API 側と CLI 側の試験が **同時に** 赤くなる。以前は 2 か所に
+ * 直書きしてあり、片方を変えても片方の試験しか落ちなかった。
+ */
+export const ORGANIZATIONS_CLAIM = "organizations";
+
+/**
+ * カンマ区切りから組織を読む。**開発用ヘッダと環境変数が共有する。**
+ *
+ * `X-Waggle-Organizations` と `WAGGLE_DEV_ORGANIZATIONS` は同じ綴りなので、
+ * 空白の落とし方が片方だけ変わってはいけない。
+ */
+export const organizationsFromList = (value: string): string[] =>
   value
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item !== "");
 
 /**
+ * 検証済みのクレームから主体を組む。**API と CLI が共有する。**
+ *
+ * **ここは検証しない。** 呼ぶ側が済ませている —— API は `jwtVerify` で、
+ * CLI は `decodeJwt` で「検証しない」と決めたうえで。この関数が答えるのは
+ * 「そのクレームが、どんな `Identity` を表すか」だけ。
+ *
+ * 組織が無いのは不正ではない。「どこにも属さない人」は表せる必要があり、
+ * その人は自分の組織のアーカイブを 1 つも見られない、というだけ。
+ */
+export const identityFromClaims = (payload: JWTPayload): Identity | undefined => {
+  if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
+  const claim = payload[ORGANIZATIONS_CLAIM];
+  return {
+    subject: payload.sub,
+    organizations: Array.isArray(claim)
+      ? claim.filter((org): org is string => typeof org === "string" && org !== "")
+      : [],
+  };
+};
+
+/**
  * トークンから主体を読む。
  *
  * **署名は検証しない。** CLI が持っているのは自分に配られたトークンで、
  * 検証するのは受け取る側 (API と、いずれ browserhive) の仕事 —— ここで検証しても
- * 「自分で自分を信じた」以上の意味を持たない。読むのは `sub` と組織のクレームだけで、
- * その値が本当に通るかどうかは、投げた先が判断する。
+ * 「自分で自分を信じた」以上の意味を持たない。その値が本当に通るかどうかは、
+ * 投げた先が判断する。
  *
  * 本番で device flow や client credentials を足すとき、差し替わるのは
  * 「トークンをどこから得るか」だけで、この読み取りは変わらない。
  */
 const identityFromToken = (token: string): Identity | undefined => {
   try {
-    const payload = decodeJwt(token);
-    if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
-    const claim = payload["organizations"];
-    return {
-      subject: payload.sub,
-      organizations: Array.isArray(claim)
-        ? claim.filter((org): org is string => typeof org === "string" && org !== "")
-        : [],
-    };
+    return identityFromClaims(decodeJwt(token));
   } catch {
     return undefined;
   }
@@ -76,7 +104,7 @@ export const identityFrom = (need: Need): Identity => {
   }
   return {
     subject: need("WAGGLE_DEV_SUBJECT"),
-    organizations: splitList(optional("WAGGLE_DEV_ORGANIZATIONS", "")),
+    organizations: organizationsFromList(optional("WAGGLE_DEV_ORGANIZATIONS", "")),
   };
 };
 
