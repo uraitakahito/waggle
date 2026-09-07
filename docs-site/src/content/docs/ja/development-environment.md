@@ -213,7 +213,8 @@ export WAGGLE_OIDC_TOKEN=$(pnpm run dev:token --subject alice --org acme)
 この節の手順を実際に通すことがその代わりになります。
 
 組織のクレームの綴りは IdP ごとに違います (`groups` / `roles` / 独自)。
-差し替えるのは `src/api/identity.ts` の `readOrganizations` 1 か所です。
+差し替えるのは `src/config/identity.ts` の `ORGANIZATIONS_CLAIM` 1 か所です ——
+API も CLI も `identityFromClaims` を通してそこを読みます。
 
 ## トラブルシュート
 

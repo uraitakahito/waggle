@@ -20,9 +20,9 @@
  * トークンを短命にすべき理由がそれ。
  */
 import type { FastifyRequest } from "fastify";
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { optional } from "../config/env.js";
-import type { Identity } from "../config/identity.js";
+import { identityFromClaims, organizationsFromList, type Identity } from "../config/identity.js";
 
 export type { Identity };
 
@@ -40,30 +40,10 @@ export const devIdentityResolver: IdentityResolver = (request) => {
   if (typeof subject !== "string" || subject === "") return Promise.resolve(undefined);
 
   const orgHeader = request.headers["x-waggle-organizations"];
-  const organizations =
-    typeof orgHeader === "string"
-      ? orgHeader
-          .split(",")
-          .map((org) => org.trim())
-          .filter((org) => org !== "")
-      : [];
+  // 綴りは環境変数の側と同じ。片方だけ空白の落とし方が変わってはいけない。
+  const organizations = organizationsFromList(typeof orgHeader === "string" ? orgHeader : "");
 
   return Promise.resolve({ subject, organizations });
-};
-
-/**
- * 組織のクレームを取り出す。
- *
- * **本物の IdP ごとに綴りが違う** (`groups` / `roles` / 独自の名前) ので、
- * 差し替えるのはここ 1 か所で済むように切ってある。
- *
- * 無いときは空。「どこにも属さない人」は表せる必要があり、不正ではない ——
- * その人は自分の組織のアーカイブを 1 つも見られない、というだけ。
- */
-const readOrganizations = (payload: JWTPayload): string[] => {
-  const claim = payload["organizations"];
-  if (!Array.isArray(claim)) return [];
-  return claim.filter((org): org is string => typeof org === "string" && org !== "");
 };
 
 /**
@@ -87,8 +67,9 @@ export const jwtIdentityResolver =
 
     try {
       const { payload } = await jwtVerify(header.slice("Bearer ".length), keys, options);
-      if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
-      return { subject: payload.sub, organizations: readOrganizations(payload) };
+      // クレームの読み方は CLI と共有する (config/identity.ts)。IdP ごとに違う
+      // クレーム名を差し替えるのは、そこ 1 か所。
+      return identityFromClaims(payload);
     } catch {
       // 失敗の理由は呼び手に返さない。どこで落ちたかは総当たりの手がかりになる。
       return undefined;

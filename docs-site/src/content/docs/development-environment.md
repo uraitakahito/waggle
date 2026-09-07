@@ -218,7 +218,8 @@ Note that **the JWKS-over-HTTP path cannot be covered by unit tests**. Swapping
 section is what guards it instead.
 
 The spelling of the organizations claim differs per IdP (`groups` / `roles` / something
-custom). There is one place to change: `readOrganizations` in `src/api/identity.ts`.
+custom). There is one place to change: `ORGANIZATIONS_CLAIM` in `src/config/identity.ts`,
+which both the API and the CLI read through `identityFromClaims`.
 
 ## Troubleshooting
 
