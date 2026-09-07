@@ -168,6 +168,53 @@ BROWSERHIVE_SERVER=https://browserhive.example/ \
 ログに出すためのものです。Postgres の TLS は `DATABASE_URL` にパラメータを
 書きます (例: `?sslmode=require`)。
 
+## ローカルで身元を用意する
+
+waggle には身元の入口が 2 つあります。**どちらも既定では全員を拒みます。**
+
+| 経路                 | 既定   | 開発用ヘッダ            | JWT                  |
+| -------------------- | ------ | ----------------------- | -------------------- |
+| API (`/api`, picker) | 拒否   | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| CLI (`pnpm run dev`) | 落ちる | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+
+**JWT の経路が開発用ヘッダより優先されます。** 両方設定された環境で、
+そのポートに届く者が誰にでもなれるほうへ落ちてはいけないためです。
+
+### 開発用の issuer
+
+`WAGGLE_OIDC_ISSUER` を設定すると、API も CLI も **本番と同じ検証コード** を通ります
+—— 署名、`iss` / `aud` の照合、有効期限、JWKS の取得。本物の IdP が決まるまでは
+同梱の issuer を使います。
+
+```bash
+pnpm run dev:issuer                                   # :9099 に立つ
+export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
+export WAGGLE_OIDC_TOKEN=$(pnpm run dev:token --subject alice --org acme)
+```
+
+`--subject` を変えると **「人が投げた場合」と「サービスが投げた場合」の両方を
+作れます**。後者は OpenFGA の owner tuple が `user:<サービス名>` になり、
+そのアーカイブを人が消せなくなる状態です —— 認証を入れるより前に、認可の設計を
+ここで踏めます。
+
+:::caution[開発用です]
+`POST /token` は誰にでもトークンを刷ります。起動時に警告を出すのはそのためです。
+鍵は issuer のプロセスの中だけに在り、**起動のたびに作り直されます** ——
+再起動すると前のトークンは通らなくなります。それが鍵の更新の再現になります。
+:::
+
+### 本物の IdP へ移るとき
+
+変わるのは `WAGGLE_OIDC_ISSUER` と `WAGGLE_OIDC_AUDIENCE` の値だけです。
+`jwtIdentityResolver` は 1 行も変わりません。
+
+ただし **JWKS を HTTP で取ってくる経路は単体試験では守れません**。
+`createRemoteJWKSet` をローカルの鍵に差し替えても試験は緑のままなので、
+この節の手順を実際に通すことがその代わりになります。
+
+組織のクレームの綴りは IdP ごとに違います (`groups` / `roles` / 独自)。
+差し替えるのは `src/api/identity.ts` の `readOrganizations` 1 か所です。
+
 ## トラブルシュート
 
 - **コンテナが上がらない** — `container ls` で起動状況、
