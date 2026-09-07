@@ -7,7 +7,8 @@ import {
   organizationsFromList,
 } from "../src/config/identity.js";
 
-const claims = (payload: Record<string, unknown>): JWTPayload => payload as JWTPayload;
+// JWTPayload は index signature を持つので、そのまま渡せる。
+const claims = (payload: Record<string, unknown>): JWTPayload => payload;
 
 /**
  * クレームから主体を組む規則。**API と CLI が共有する。**
