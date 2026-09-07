@@ -123,7 +123,7 @@ const parseNonEmpty = (value: string): string => {
   return trimmed;
 };
 
-export const createProgram = (): Command => {
+const createProgram = (): Command => {
   const program = new Command();
 
   program
