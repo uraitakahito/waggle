@@ -44,7 +44,7 @@ describe("loadUrls", () => {
     const { pool, query } = makePool([]);
     await loadUrls(pool, {});
     expect(query).toHaveBeenCalledWith(
-      "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC",
+      "SELECT url, labels, org_id FROM capture_targets WHERE enabled ORDER BY id ASC",
       [],
     );
   });
@@ -53,7 +53,7 @@ describe("loadUrls", () => {
     const { pool, query } = makePool([]);
     await loadUrls(pool, { limit: 3 });
     expect(query).toHaveBeenCalledWith(
-      "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1",
+      "SELECT url, labels, org_id FROM capture_targets WHERE enabled ORDER BY id ASC LIMIT $1",
       [3],
     );
   });

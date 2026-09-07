@@ -6,10 +6,10 @@ description: waggle と OpenFGA がそれぞれ持つ Postgres と、その中�
 waggle の開発スタックには **Postgres が 2 つ**あります。別々のものを入れる、
 別々のデータベースです。
 
-| コンテナ            | 中身                                             | 誰が SQL で触るか |
-| ------------------- | ------------------------------------------------ | ----------------- |
-| `postgres.waggle`   | `urls` / `archives` / `fga_outbox` ほか **8 表** | waggle            |
-| `openfga-db.waggle` | `tuple` / `authorization_model` ほか **6 表**    | OpenFGA だけ      |
+| コンテナ            | 中身                                                        | 誰が SQL で触るか |
+| ------------------- | ----------------------------------------------------------- | ----------------- |
+| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` ほか **8 表** | waggle            |
+| `openfga-db.waggle` | `tuple` / `authorization_model` ほか **6 表**               | OpenFGA だけ      |
 
 重なるテーブルは 1 つもありません。資格情報も相互に通らず、`openfga-db` は
 ポートを公開していないので、覗くには `container exec` が要ります。
@@ -29,7 +29,7 @@ waggle の開発スタックには **Postgres が 2 つ**あります。別々�
 
 | テーブル                                                           | 役割                                 |
 | ------------------------------------------------------------------ | ------------------------------------ |
-| [`urls`](/waggle/ja/databases/urls/)                               | 撮る対象の一覧                       |
+| [`capture_targets`](/waggle/ja/databases/capture-targets/)         | 撮る対象の一覧                       |
 | [`capture_submissions`](/waggle/ja/databases/capture-submissions/) | 投げた記録。組織を知る唯一の出どころ |
 | [`archives`](/waggle/ja/databases/archives/)                       | 台帳。アーカイブを生んだ取り込みだけ |
 | [`fga_outbox`](/waggle/ja/databases/fga-outbox/)                   | OpenFGA へ送る予定のタプル           |

@@ -1,6 +1,6 @@
 ---
 title: クイックスタート
-description: Compose スタックを立ち上げ、urls を seed し、最初のキャプチャを投げるまで。
+description: Compose スタックを立ち上げ、capture_targets を seed し、最初のキャプチャを投げるまで。
 ---
 
 スタックは waggle に必要なものを一式立ち上げます — Postgres、SeaweedFS、
@@ -66,7 +66,7 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 
 ```sh
 pnpm install         # 初回のみ
-pnpm run db:migrate  # urls テーブルを作成
+pnpm run db:migrate  # capture_targets テーブルを作成
 pnpm run db:seed     # サンプル 5 件を投入
 ```
 

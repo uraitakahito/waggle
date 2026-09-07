@@ -52,7 +52,7 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 
 | フラグ                 | 環境変数                  | 用途                                                                                              |
 | ---------------------- | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `--database-url <url>` | `DATABASE_URL`            | `urls` テーブルの場所。必須。                                                                     |
+| `--database-url <url>` | `DATABASE_URL`            | `capture_targets` テーブルの場所。必須。                                                          |
 | `--server <url>`       | `BROWSERHIVE_SERVER`      | BrowserHive のベース URL。省略時は生成 SDK に焼き込まれた値 (vendored spec の `servers[0].url`)。 |
 | `--tls-ca-cert <path>` | `BROWSERHIVE_TLS_CA_CERT` | ログに出すためのもの。Node の信頼ストアを設定するのは `NODE_EXTRA_CA_CERTS` で、そちらが本体。    |
 | `--limit <n>`          | —                         | 先頭 n 件だけ読む。動作確認用。                                                                   |

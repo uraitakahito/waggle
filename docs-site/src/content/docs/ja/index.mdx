@@ -14,7 +14,7 @@ hero:
 ## waggle とは
 
 waggle が答えるのは **「どの URL を撮るか」** の一点だけです。Postgres の
-`urls` テーブルから `enabled` な行を読み、1 行につき 1 回
+`capture_targets` テーブルから `enabled` な行を読み、1 行につき 1 回
 `SubmitCapture` を BrowserHive
 へ並列に投げます。
 

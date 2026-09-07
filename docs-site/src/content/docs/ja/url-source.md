@@ -1,10 +1,10 @@
 ---
 title: URL ソース
-description: waggle が読む urls テーブルと、その運用方法。
+description: waggle が読む capture_targets テーブルと、その運用方法。
 ---
 
 waggle の入力は Postgres のテーブル 1 つだけです。**waggle 自身は INSERT しません** —
-`urls` への投入は呼び出し側の責務で、手動 `INSERT` でも、外部パイプラインでも、
+`capture_targets` への投入は呼び出し側の責務で、手動 `INSERT` でも、外部パイプラインでも、
 同梱の seed でもかまいません。
 
 ## クエリ
@@ -12,7 +12,7 @@ waggle の入力は Postgres のテーブル 1 つだけです。**waggle 自身
 毎回の実行はこれだけです。
 
 ```sql
-SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC [LIMIT $1]
+SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
 ```
 
 `ORDER BY id ASC` なので**登録順に投げられ**、`--limit` は先頭 n 件を取ります。
@@ -20,7 +20,7 @@ SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC [LIMIT $1]
 
 ## スキーマ
 
-```ts file="src/db/migrations/001-create-urls.ts#urls-columns"
+```ts file="src/db/migrations/001-create-capture-targets.ts#capture-targets-columns"
 
 ```
 
@@ -30,10 +30,10 @@ SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC [LIMIT $1]
 | `url`                       | `CHECK (url <> '' AND url = btrim(url))` — 空文字と前後空白をデータベースが拒否するので、CLI 側で検査する必要がない。 |
 | `url_hash`                  | 生成列 `digest(url, 'sha256')` (pgcrypto) を stored 保存。ユニークインデックスの土台で、直接読むことはない。          |
 | `labels`                    | `TEXT[]`。そのまま BrowserHive に送られ、成果物のファイル名に組み込まれる。                                           |
-| `enabled`                   | ホットパスは `WHERE enabled` で、部分インデックス `urls_enabled_id_idx` が覆う。無効行はコストにならない。            |
+| `enabled`                   | ホットパスは `WHERE enabled` で、部分インデックス `capture_targets_enabled_id_idx` が覆う。無効行はコストにならない。 |
 | `created_at` / `updated_at` | `now()` 既定。自動更新トリガは今のところ無い。                                                                        |
 
-`urls_url_hash_key` はユニークなので、同じ URL を二重に登録できません。
+`capture_targets_url_hash_key` はユニークなので、同じ URL を二重に登録できません。
 
 ## labels の使い方
 
@@ -50,7 +50,7 @@ labels は自由形式で、成果物のファイル名に入ります。その�
 ## URL を追加する
 
 ```sql
-INSERT INTO urls (url, labels) VALUES
+INSERT INTO capture_targets (url, labels) VALUES
   ('https://example.com/', ARRAY['example']),
   ('https://example.org/', ARRAY['example', 'org'])
 ON CONFLICT (url_hash) DO NOTHING;

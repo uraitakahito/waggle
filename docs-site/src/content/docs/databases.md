@@ -6,10 +6,10 @@ description: The two Postgres instances behind waggle and OpenFGA, and the fourt
 The waggle dev stack runs **two Postgres instances**. They hold different things
 and are different databases.
 
-| Container           | Holds                                                        | Who touches it with SQL |
-| ------------------- | ------------------------------------------------------------ | ----------------------- |
-| `postgres.waggle`   | `urls` / `archives` / `fga_outbox` and 5 more — **8 tables** | waggle                  |
-| `openfga-db.waggle` | `tuple` / `authorization_model` and 4 more — **6 tables**    | OpenFGA only            |
+| Container           | Holds                                                                   | Who touches it with SQL |
+| ------------------- | ----------------------------------------------------------------------- | ----------------------- |
+| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` and 5 more — **8 tables** | waggle                  |
+| `openfga-db.waggle` | `tuple` / `authorization_model` and 4 more — **6 tables**               | OpenFGA only            |
 
 No table appears in both. The credentials do not cross either, and `openfga-db`
 publishes no port, so reaching it takes `container exec`.
@@ -29,7 +29,7 @@ what makes [`fga_outbox`](/waggle/databases/fga-outbox/) necessary.
 
 | Table                                                           | Role                                                 |
 | --------------------------------------------------------------- | ---------------------------------------------------- |
-| [`urls`](/waggle/databases/urls/)                               | What to capture                                      |
+| [`capture_targets`](/waggle/databases/capture-targets/)         | What to capture                                      |
 | [`capture_submissions`](/waggle/databases/capture-submissions/) | What was submitted; the only source of organizations |
 | [`archives`](/waggle/databases/archives/)                       | The ledger — captures that produced an archive       |
 | [`fga_outbox`](/waggle/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                      |

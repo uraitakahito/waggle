@@ -53,7 +53,7 @@ the environment.
 
 | Flag                   | Env                       | Purpose                                                                                                     |
 | ---------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--database-url <url>` | `DATABASE_URL`            | Where the `urls` table lives. Required.                                                                     |
+| `--database-url <url>` | `DATABASE_URL`            | Where the `capture_targets` table lives. Required.                                                          |
 | `--server <url>`       | `BROWSERHIVE_SERVER`      | BrowserHive base URL. Defaults to the SDK's baked-in value (`servers[0].url` of the vendored spec).         |
 | `--tls-ca-cert <path>` | `BROWSERHIVE_TLS_CA_CERT` | Logged for visibility. Node's trust store is set by `NODE_EXTRA_CA_CERTS`, which is the authoritative knob. |
 | `--limit <n>`          | —                         | Read only the first _n_ enabled rows. Useful for smoke tests.                                               |

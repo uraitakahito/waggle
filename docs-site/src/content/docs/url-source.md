@@ -1,10 +1,10 @@
 ---
 title: URL source
-description: The urls table waggle reads, and how to manage it.
+description: The capture_targets table waggle reads, and how to manage it.
 ---
 
 waggle's entire input is one Postgres table. **waggle never inserts into it** —
-populating `urls` is the caller's job, whether that is a manual `INSERT`, an
+populating `capture_targets` is the caller's job, whether that is a manual `INSERT`, an
 external pipeline, or the bundled seed.
 
 ## The query
@@ -12,7 +12,7 @@ external pipeline, or the bundled seed.
 Every run is this, and nothing more:
 
 ```sql
-SELECT url, labels FROM urls WHERE enabled ORDER BY id ASC [LIMIT $1]
+SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
 ```
 
 `ORDER BY id ASC` means rows are submitted in insertion order, and `--limit`
@@ -20,20 +20,20 @@ takes the first _n_ — so a smoke test always exercises the same URLs.
 
 ## Schema
 
-```ts file="src/db/migrations/001-create-urls.ts#urls-columns"
+```ts file="src/db/migrations/001-create-capture-targets.ts#capture-targets-columns"
 
 ```
 
-| Column                      | Notes                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `id`                        | `BIGSERIAL` primary key. Insertion order, preserved by the loader's `ORDER BY`.                                          |
-| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empty and untrimmed values, so the CLI does not have to. |
-| `url_hash`                  | Generated `digest(url, 'sha256')` (pgcrypto), stored. Backs the unique index; nothing reads it directly.                 |
-| `labels`                    | `TEXT[]`. Sent as-is to BrowserHive, which composes them into artifact filenames.                                        |
-| `enabled`                   | The hot path is `WHERE enabled`, covered by the partial index `urls_enabled_id_idx`. Disabled rows cost nothing.         |
-| `created_at` / `updated_at` | `now()` defaults. No auto-update trigger today.                                                                          |
+| Column                      | Notes                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | `BIGSERIAL` primary key. Insertion order, preserved by the loader's `ORDER BY`.                                             |
+| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empty and untrimmed values, so the CLI does not have to.    |
+| `url_hash`                  | Generated `digest(url, 'sha256')` (pgcrypto), stored. Backs the unique index; nothing reads it directly.                    |
+| `labels`                    | `TEXT[]`. Sent as-is to BrowserHive, which composes them into artifact filenames.                                           |
+| `enabled`                   | The hot path is `WHERE enabled`, covered by the partial index `capture_targets_enabled_id_idx`. Disabled rows cost nothing. |
+| `created_at` / `updated_at` | `now()` defaults. No auto-update trigger today.                                                                             |
 
-`urls_url_hash_key` is unique, so the same URL cannot be enqueued twice.
+`capture_targets_url_hash_key` is unique, so the same URL cannot be enqueued twice.
 
 ## Labels
 
@@ -52,7 +52,7 @@ alongside a company name:
 ## Adding URLs
 
 ```sql
-INSERT INTO urls (url, labels) VALUES
+INSERT INTO capture_targets (url, labels) VALUES
   ('https://example.com/', ARRAY['example']),
   ('https://example.org/', ARRAY['example', 'org'])
 ON CONFLICT (url_hash) DO NOTHING;

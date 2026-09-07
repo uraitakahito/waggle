@@ -7,7 +7,7 @@ description: How waggle, Postgres, BrowserHive and the artifact store fit togeth
 
 ```mermaid
 flowchart LR
-  PG[("Postgres<br/>urls table")] -->|SELECT url, labels| W
+  PG[("Postgres<br/>capture_targets table")] -->|SELECT url, labels| W
   subgraph W["waggle (Node 24 / TypeScript)"]
     direction TB
     US[url-source<br/>pg query] --> CO[cli-options<br/>flags → CaptureSettings]

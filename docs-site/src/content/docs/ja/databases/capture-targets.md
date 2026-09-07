@@ -1,12 +1,12 @@
 ---
-title: urls
+title: capture_targets
 description: 撮る対象の一覧。waggle が答える唯一の問いの答えが入るテーブル。
 ---
 
 **撮る対象の一覧。** waggle が答える唯一の問い「どの URL を撮るか」の答えがここに
 あります。
 
-```ts file="src/db/migrations/001-create-urls.ts#urls-columns"
+```ts file="src/db/migrations/001-create-capture-targets.ts#capture-targets-columns"
 
 ```
 
@@ -18,7 +18,7 @@ description: 撮る対象の一覧。waggle が答える唯一の問いの答え
 | `url`                       | `CHECK (url <> '' AND url = btrim(url))` — 空文字と前後空白をデータベースが拒否する          |
 | `url_hash`                  | **生成列**。`digest(url, 'sha256')` を stored 保存。ユニーク索引の土台で、直接読むことはない |
 | `labels`                    | `TEXT[]`。そのまま BrowserHive に送られ、成果物のファイル名に組み込まれる                    |
-| `enabled`                   | 部分索引 `urls_enabled_id_idx` が覆う。無効行はコストにならない                              |
+| `enabled`                   | 部分索引 `capture_targets_enabled_id_idx` が覆う。無効行はコストにならない                   |
 | `org_id`                    | この URL がどの組織のものか。`capture_submissions` まで持ち回られる                          |
 | `created_at` / `updated_at` | `now()` 既定。自動更新トリガは今のところ無い                                                 |
 
@@ -30,20 +30,20 @@ description: 撮る対象の一覧。waggle が答える唯一の問いの答え
 ## 索引
 
 ```sql
-urls_pkey            PRIMARY KEY (id)
-urls_url_hash_key    UNIQUE (url_hash)          -- 同じ URL は 2 度入らない
-urls_enabled_id_idx  (id) WHERE enabled         -- 部分索引
+capture_targets_pkey            PRIMARY KEY (id)
+capture_targets_url_hash_key    UNIQUE (url_hash)          -- 同じ URL は 2 度入らない
+capture_targets_enabled_id_idx  (id) WHERE enabled         -- 部分索引
 ```
 
-`urls_enabled_id_idx` が**部分索引**なのは、読み取りが必ず `WHERE enabled` を
+`capture_targets_enabled_id_idx` が**部分索引**なのは、読み取りが必ず `WHERE enabled` を
 伴うためです。無効な行まで索引に入れても場所の無駄になります。
 
 ## 行を足す
 
 ```sh
 container exec postgres.waggle psql -U waggle -d waggle -c \
-  "INSERT INTO urls (url, labels) VALUES ('https://example.com/', ARRAY['example'])"
+  "INSERT INTO capture_targets (url, labels) VALUES ('https://example.com/', ARRAY['example'])"
 ```
 
-同じ URL を 2 度入れようとすると `urls_url_hash_key` で弾かれます。詳しくは
+同じ URL を 2 度入れようとすると `capture_targets_url_hash_key` で弾かれます。詳しくは
 [URL ソース](/waggle/ja/url-source/)を参照してください。
