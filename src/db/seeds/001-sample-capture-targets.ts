@@ -1,5 +1,5 @@
 /**
- * 001-sample-urls
+ * 001-sample-capture-targets
  *
  * ローカルの開発と本番構成の smoke test が使うサンプルの URL。
  *
@@ -17,7 +17,7 @@ import type { Database } from "../database.js";
 
 export const up = async (db: Kysely<Database>): Promise<void> => {
   await db
-    .insertInto("urls")
+    .insertInto("captureTargets")
     .values([
       { url: "https://www.apple.com/", labels: ["Apple"] },
       { url: "https://www.microsoft.com/", labels: ["Microsoft"] },
@@ -29,5 +29,5 @@ export const up = async (db: Kysely<Database>): Promise<void> => {
 };
 
 export const down = async (db: Kysely<Database>): Promise<void> => {
-  await sql`TRUNCATE TABLE urls RESTART IDENTITY`.execute(db);
+  await sql`TRUNCATE TABLE capture_targets RESTART IDENTITY`.execute(db);
 };

@@ -21,9 +21,9 @@ URL と設定だけを渡し、返ってくるのは `taskId` です。
 ```
 waggle が知っている        BrowserHive が知っている
 ─────────────────          ─────────────────────
-urls.org_id       ──┐      taskId
-                    │      成果物の場所
-                    └──→   （組織は知らない）
+capture_targets.org_id ──┐      taskId
+                         │      成果物の場所
+                         └──→   （組織は知らない）
               capture_submissions
               task_id → org_id の対応
 ```
@@ -60,13 +60,13 @@ await db
 
 ## 列の要点
 
-| 列             | 要点                                                                  |
-| -------------- | --------------------------------------------------------------------- |
-| `task_id`      | **主キー。** BrowserHive が採番したもので、結果の報告へ戻る join の鍵 |
-| `org_id`       | `not null`。**この表が在る理由そのもの**                              |
-| `submitted_by` | それを求めた利用者。**人ではなく組織に属する定期実行では NULL**       |
-| `source_url`   | 投げた URL。`urls` への外部キーではない（後から URL が消えても残る）  |
-| `submitted_at` | `now()` 既定                                                          |
+| 列             | 要点                                                                            |
+| -------------- | ------------------------------------------------------------------------------- |
+| `task_id`      | **主キー。** BrowserHive が採番したもので、結果の報告へ戻る join の鍵           |
+| `org_id`       | `not null`。**この表が在る理由そのもの**                                        |
+| `submitted_by` | それを求めた利用者。**人ではなく組織に属する定期実行では NULL**                 |
+| `source_url`   | 投げた URL。`capture_targets` への外部キーではない（後から URL が消えても残る） |
+| `submitted_at` | `now()` 既定                                                                    |
 
 :::caution[`submitted_by` は認証の結果ではありません]
 この列を埋めているのは、CLI が `WAGGLE_DEV_SUBJECT` から読んだ値です

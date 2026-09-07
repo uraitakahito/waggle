@@ -5,7 +5,7 @@
  * `kysely_seed` / `kysely_seed_lock` に変えて使い回す。こうすると seed ファイルは
  * 環境ごとに高々 1 度しか当たらない。方向は位置引数 (`up` | `down`)。
  *
- * 実際の配備では `urls` を各自のパイプラインが埋める。この runner が在るのは
+ * 実際の配備では `capture_targets` を各自のパイプラインが埋める。この runner が在るのは
  * ローカルの開発と、本番構成の smoke test のため。
  *
  * `node dist/db/seed.js <up|down>` として起動する。

@@ -7,7 +7,7 @@ description: waggle・Postgres・BrowserHive・成果物ストアの関係。
 
 ```mermaid
 flowchart LR
-  PG[("Postgres<br/>urls テーブル")] -->|SELECT url, labels| W
+  PG[("Postgres<br/>capture_targets テーブル")] -->|SELECT url, labels| W
   subgraph W["waggle (Node 24 / TypeScript)"]
     direction TB
     US[url-source<br/>pg クエリ] --> CO[cli-options<br/>フラグ → CaptureSettings]

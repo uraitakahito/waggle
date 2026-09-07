@@ -35,7 +35,7 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
   // worker が最もよく通る道は「未処理のうち最も古いもの」。partial index にすると
   // 配送済みの行が入らないので、index の大きさは履歴ではなく滞留の大きさに保たれる
-  // —— `urls_enabled_id_idx` と同じ理屈。
+  // —— `capture_targets_enabled_id_idx` と同じ理屈。
   await db.schema
     .createIndex("fga_outbox_pending_idx")
     .on("fga_outbox")

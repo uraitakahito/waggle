@@ -1,8 +1,9 @@
 /**
  * Postgres を裏に持つ URL の出どころ。
  *
- * `db/migrations/0001_create_urls.sql` が作った `urls` テーブルから行を選ぶ。
- * よく通る道のクエリは `urls_enabled_id_idx` の partial index が覆っている。
+ * `db/migrations/001-create-capture-targets.ts` が作った `capture_targets` テーブルから
+ * 行を選ぶ。
+ * よく通る道のクエリは `capture_targets_enabled_id_idx` の partial index が覆っている。
  *
  * `labels` は `TEXT[]` の列 —— pg はこれを `string[]` で返し、`DataEntry.labels` と
  * ちょうど一致する。変換は要らない。
@@ -24,7 +25,7 @@ export interface UrlSourceQuery {
   limit?: number;
 }
 
-interface UrlRow {
+interface CaptureTargetRow {
   url: string;
   labels: string[];
   org_id: string;
@@ -33,9 +34,9 @@ interface UrlRow {
 export const loadUrls = async (pool: Pool, query: UrlSourceQuery): Promise<DataEntry[]> => {
   const sql =
     query.limit !== undefined
-      ? "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC LIMIT $1"
-      : "SELECT url, labels, org_id FROM urls WHERE enabled ORDER BY id ASC";
+      ? "SELECT url, labels, org_id FROM capture_targets WHERE enabled ORDER BY id ASC LIMIT $1"
+      : "SELECT url, labels, org_id FROM capture_targets WHERE enabled ORDER BY id ASC";
   const params = query.limit !== undefined ? [query.limit] : [];
-  const result = await pool.query<UrlRow>(sql, params);
+  const result = await pool.query<CaptureTargetRow>(sql, params);
   return result.rows.map((row) => ({ url: row.url, labels: row.labels, orgId: row.org_id }));
 };

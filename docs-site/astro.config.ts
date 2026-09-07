@@ -67,7 +67,7 @@ export default defineConfig({
               translations: { ja: "データベース" },
               items: [
                 { label: "Overview", translations: { ja: "全体像" }, slug: "databases" },
-                { label: "urls", slug: "databases/urls" },
+                { label: "capture_targets", slug: "databases/capture-targets" },
                 { label: "capture_submissions", slug: "databases/capture-submissions" },
                 { label: "archives", slug: "databases/archives" },
                 { label: "fga_outbox", slug: "databases/fga-outbox" },
