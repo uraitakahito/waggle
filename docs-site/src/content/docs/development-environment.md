@@ -173,6 +173,53 @@ invoking the CLI — that env var is the authoritative knob; `--tls-ca-cert` is
 logged for visibility but does not change Node's trust store on its own. For
 Postgres TLS, encode the parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
 
+## Setting up an identity locally
+
+waggle has two entry points for identity. **Both deny everyone by default.**
+
+| Path                 | Default | Dev header              | JWT                  |
+| -------------------- | ------- | ----------------------- | -------------------- |
+| API (`/api`, picker) | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| CLI (`pnpm run dev`) | fails   | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+
+**The JWT path wins over the dev header.** When both are set, an environment must not
+fall back to the weaker one, where anyone who reaches the port can be anyone.
+
+### The dev issuer
+
+Setting `WAGGLE_OIDC_ISSUER` makes both the API and the CLI run **the same verification
+code production will run** — signature, `iss` / `aud`, expiry, and the JWKS fetch. Until a
+real IdP is chosen, the bundled issuer stands in for one.
+
+```bash
+pnpm run dev:issuer                                   # listens on :9099
+export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
+export WAGGLE_OIDC_TOKEN=$(pnpm run dev:token --subject alice --org acme)
+```
+
+Changing `--subject` lets you produce **both "a person submitted this" and "a service
+submitted this"**. In the second case the OpenFGA owner tuple becomes
+`user:<service>`, and no person can delete the archive — you can walk into that
+authorization gap here, before real authentication exists.
+
+:::caution[Development only]
+`POST /token` mints a token for anyone who asks, which is why it warns on startup. The
+key lives only inside the issuer process and **is regenerated on every start** — restart it
+and previously minted tokens stop verifying. That is key rotation, reproduced.
+:::
+
+### Moving to a real IdP
+
+Only the values of `WAGGLE_OIDC_ISSUER` and `WAGGLE_OIDC_AUDIENCE` change.
+`jwtIdentityResolver` does not change at all.
+
+Note that **the JWKS-over-HTTP path cannot be covered by unit tests**. Swapping
+`createRemoteJWKSet` for a local key leaves the suite green, so walking through this
+section is what guards it instead.
+
+The spelling of the organizations claim differs per IdP (`groups` / `roles` / something
+custom). There is one place to change: `readOrganizations` in `src/api/identity.ts`.
+
 ## Troubleshooting
 
 - **A container will not come up** — `container ls` shows what is running and
