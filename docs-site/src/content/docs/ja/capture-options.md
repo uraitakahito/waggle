@@ -34,6 +34,25 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 | `--no-site-behaviors`          | `behaviors.siteBehaviors`     | BrowserHive: Behaviors        |
 | `--dismiss-banners`            | `dismissBanners`              | BrowserHive: Behaviors        |
 | `--accept-language <bcp47>`    | `acceptLanguage`              | BrowserHive: クイックスタート |
+| `--session <mode>`             | `session`                     | BrowserHive: セッション       |
+| `--signing`                    | `signing`                     | BrowserHive: WACZ への署名    |
+
+## `--signing` は署名を落とさず、取り込みを落とす
+
+署名は WACZ に付くものなので、`--signing` は `--wacz` を要求します。サーバに
+`INVALID_ARGUMENT` を言わせる前に、waggle 側で拒みます。
+
+**署名が得られなければ、その取り込みは失敗します。** BrowserHive は zip を書く
+前に落とすので、署名済みのはずのものが未署名で出ることはありません。これは意図した
+挙動ですが、運用上の帰結を明記しておきます —— 署名サービスの設定されていない配備で
+`--signing` を渡すと、その実行の**全件**が失敗します。
+
+フラグを省けば、判断はサーバの `--signing-policy` に委ねられます。`required` で
+動いている配備なら、waggle が何も言わなくても署名されます。
+
+結果は台帳に残ります。`archives.signed` は署名が付けば `true`、そもそも求めて
+いなければ `null` —— 「この実行は証拠として使える形のアーカイブを作ったか」に、
+zip を 1 つも開かずに答えられます。
 
 ## 指定しなければ「サーバ既定」
 
@@ -50,12 +69,14 @@ waggle 自身は何もキャプチャしないので、このページは**対�
 
 こちらは実行単位の意図ではなくデプロイ設定なので、環境変数からも読みます。
 
-| フラグ                 | 環境変数                  | 用途                                                                                              |
-| ---------------------- | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `--database-url <url>` | `DATABASE_URL`            | `capture_targets` テーブルの場所。必須。                                                          |
-| `--server <url>`       | `BROWSERHIVE_SERVER`      | BrowserHive のベース URL。省略時は生成 SDK に焼き込まれた値 (vendored spec の `servers[0].url`)。 |
-| `--tls-ca-cert <path>` | `BROWSERHIVE_TLS_CA_CERT` | ログに出すためのもの。Node の信頼ストアを設定するのは `NODE_EXTRA_CA_CERTS` で、そちらが本体。    |
-| `--limit <n>`          | —                         | 先頭 n 件だけ読む。動作確認用。                                                                   |
+| フラグ                      | 環境変数                  | 用途                                                                                           |
+| --------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `--database-url <url>`      | `DATABASE_URL`            | `capture_targets` テーブルの場所。必須。                                                       |
+| `--server <url>`            | `BROWSERHIVE_SERVER`      | BrowserHive のベース URL。省略時は `src/rpc/client.ts` の `DEFAULT_TARGET`。                   |
+| `--tls-ca-cert <path>`      | `BROWSERHIVE_TLS_CA_CERT` | ログに出すためのもの。Node の信頼ストアを設定するのは `NODE_EXTRA_CA_CERTS` で、そちらが本体。 |
+| `--limit <n>`               | —                         | 先頭 n 件だけ読む。動作確認用。                                                                |
+| `--no-collect`              | —                         | 投げて終わり、結果は後から `fga:reconcile` が bucket の manifest から拾う。                    |
+| `--capture-timeout-ms <ms>` | —                         | 1 件の待ち時間の上限。サーバが申告する予算を上書きする。                                       |
 
 ## 例
 

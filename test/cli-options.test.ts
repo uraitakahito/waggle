@@ -186,6 +186,33 @@ describe("getCaptureSettings", () => {
     expect(settings.behaviors).toEqual({ builtins: [] });
   });
 
+  it("--signing を --wacz 無しで渡したら落とす", () => {
+    // server は `signing` だけ来ても INVALID_ARGUMENT で拒む。往復を 1 回省いて、
+    // 拒む理由をこちらで言う。通してしまうと、利用者は「署名を頼んだのに
+    // エラーになった」としか分からない。
+    const exit = vi.spyOn(process, "exit").mockImplementation((): never => {
+      throw new Error("exited");
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(() =>
+        parseClientOptions(argv("--database-url", FAKE_DB_URL, "--png", "--signing")),
+      ).toThrow("exited");
+      expect(stderr.mock.calls.flat().join("")).toContain("--signing requires --wacz");
+    } finally {
+      exit.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  it("--wacz と一緒なら通り、設定に載る", () => {
+    const settings = getCaptureSettings(
+      parseClientOptions(argv("--database-url", FAKE_DB_URL, "--wacz", "--signing")),
+    );
+
+    expect(settings.signing).toBe(true);
+  });
+
   it("知らない behavior の id を弾く", () => {
     // 通してしまうと黙って何も走らない —— server 側の runner は id で登録済みの
     // クラスを探し、見つからなければ何も言わずに飛ばす。打ち間違いが「成功した
