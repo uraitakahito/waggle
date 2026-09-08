@@ -103,6 +103,7 @@ const buildRequest = (
         : SessionMode.SESSION_MODE_ISOLATED,
     ...(settings.acceptLanguage !== undefined && { acceptLanguage: settings.acceptLanguage }),
     devicePixelRatios: settings.devicePixelRatios ?? [],
+    ...(settings.signing !== undefined && { signing: settings.signing }),
     ...(settings.operationDelayMs !== undefined && {
       operationDelayMs: settings.operationDelayMs,
     }),

@@ -40,6 +40,8 @@ export interface ArchivesTable {
   sourceUrl: string;
   labels: ColumnType<string[], string[] | undefined, string[]>;
   waczComplete: boolean | null;
+  /** wacz-auth の署名を持って出たか。NULL は「求めていない」。`005` を見ること。 */
+  signed: boolean | null;
   capturedAt: ColumnType<Date, string, string>;
   createdAt: ColumnType<Date, string | undefined, never>;
 }

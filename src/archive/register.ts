@@ -29,6 +29,45 @@ export interface RegisterResult {
   reason?: "no-archive" | "already-known";
 }
 
+/**
+ * 取り込みの報告から、台帳の 1 行を組む。
+ *
+ * 挿入から切り出してあるのは、ここが**どの field を読むか**を決めている唯一の
+ * 場所だから。トランザクションと `onConflict` は配管で、Postgres を立てないと
+ * 触れない。写像だけなら立てずに確かめられる。
+ *
+ * `waczComplete` と `signed` はどちらも 3 状態を持つ (`true` / `false` / `null`)。
+ * `?? null` を落として `?.` だけにすると `undefined` が入り、Kysely は列を
+ * 省いて既定値に落とす —— 「報告が届かなかった」が「NULL」ではなく「既定」に
+ * 化けるので、両方とも明示する。
+ */
+export const archiveRow = (
+  report: CaptureResultReport,
+  location: { bucket: string; key: string },
+): {
+  taskId: string;
+  correlationId: string | null;
+  bucket: string;
+  objectKey: string;
+  sourceUrl: string;
+  labels: string[];
+  waczComplete: boolean | null;
+  signed: boolean | null;
+  capturedAt: string;
+} => ({
+  taskId: report.taskId,
+  correlationId: report.correlationId ?? null,
+  bucket: location.bucket,
+  objectKey: location.key,
+  sourceUrl: report.url,
+  labels: report.labels,
+  waczComplete: report.completeness?.complete ?? null,
+  // 署名を求めていない取り込みでは報告ごと来ないので `null`。「求めたが付かなかった」
+  // (`false`) とは別の主張で、後者は配備の異常を意味する。
+  signed: report.signature?.signed ?? null,
+  capturedAt: report.timestamp,
+});
+
 export const registerArchive = async (
   db: Kysely<Database>,
   report: CaptureResultReport,
@@ -70,16 +109,7 @@ export const registerArchive = async (
   return db.transaction().execute(async (trx) => {
     const inserted = await trx
       .insertInto("archives")
-      .values({
-        taskId: report.taskId,
-        correlationId: report.correlationId ?? null,
-        bucket,
-        objectKey: key,
-        sourceUrl: report.url,
-        labels: report.labels,
-        waczComplete: report.completeness?.complete ?? null,
-        capturedAt: report.timestamp,
-      })
+      .values(archiveRow(report, { bucket, key }))
       // poller と reconciler の両方が同じ取り込みに辿り着けるし、どちらも
       // 再実行されうる。unique index があるので、それは重複ではなく無操作になる。
       .onConflict((oc) => oc.columns(["bucket", "objectKey"]).doNothing())

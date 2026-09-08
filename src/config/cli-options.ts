@@ -40,6 +40,7 @@ export interface ClientOptions {
   behaviors?: string[];
   siteBehaviors?: boolean;
   session?: "isolated" | "shared";
+  signing?: boolean;
   /**
    * 受理された取り込みを 1 件ずつ待ち、成功したものを台帳に足す。
    * `--no-collect` は投げて終わり、結果は後から `waggle fga:reconcile` が
@@ -196,6 +197,12 @@ const createProgram = (): Command => {
       ).choices(["isolated", "shared"]),
     )
     .option(
+      "--signing",
+      "Require a wacz-auth signature on the archive. Needs --wacz. " +
+        "If the server cannot obtain a signature the capture fails, by design — " +
+        "an unsigned archive is never produced in its place",
+    )
+    .option(
       "--no-collect",
       "Submit and exit without waiting for results (fga:reconcile picks them up from the bucket later)",
     )
@@ -239,9 +246,17 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     behaviors?: string[];
     siteBehaviors?: boolean;
     session?: "isolated" | "shared";
+    signing?: boolean;
     collect?: boolean;
     captureTimeoutMs?: number;
   }>();
+
+  // 署名は WACZ に付くものなので、`--wacz` 無しでは server が INVALID_ARGUMENT で
+  // 拒む。往復を 1 回省いて、拒む理由をここで言う。`--behaviors` の id 検査と同じ
+  // 立て付け —— 呼ぶ側の言い間違いは、呼ぶ側で捕まえる。
+  if (opts.signing === true && opts.wacz !== true) {
+    program.error("--signing requires --wacz: the signature covers the WACZ archive");
+  }
 
   return {
     databaseUrl: opts.databaseUrl,
@@ -265,6 +280,7 @@ export const parseClientOptions = (argv: string[]): ClientOptions => {
     // 既定の `true` は「指定なし」の意味なので、wire に出してはならない。
     ...(opts.siteBehaviors === false && { siteBehaviors: false }),
     ...(opts.session !== undefined && { session: opts.session }),
+    ...(opts.signing !== undefined && { signing: opts.signing }),
   };
 };
 
@@ -304,6 +320,7 @@ export const getCaptureSettings = (options: ClientOptions): CaptureSettings => {
     ...(options.operationDelayMs !== undefined && { operationDelayMs: options.operationDelayMs }),
     ...(Object.keys(behaviors).length > 0 && { behaviors }),
     ...(options.session !== undefined && { session: options.session }),
+    ...(options.signing !== undefined && { signing: options.signing }),
   };
   // #endregion capture-settings
 };
