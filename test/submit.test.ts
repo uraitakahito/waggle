@@ -174,6 +174,20 @@ describe("submitRequest", () => {
     });
   });
 
+  it("署名を求めたら wire に載る", async () => {
+    // 載らなければ server は配備の既定 (`optional`) に落ち、**署名を求めた実行が
+    // 未署名のアーカイブを作って成功する**。台帳はそれを署名済みとして持たないが、
+    // 求めた側は求めた気になっている —— その食い違いをここで塞ぐ。
+    accepts("task-4c");
+
+    await submitRequest(
+      { url: "https://example.com/", labels: [], orgId: "acme" },
+      settings({ signing: true }),
+    );
+
+    expect(sentRequest().signing).toBe(true);
+  });
+
   it("空の builtins は「1 つも走らせない」として届く", async () => {
     // v4.0.0 より前は、これが server 既定に化けていた —— proto3 の repeated には
     // presence が無く、空と未指定を区別できなかったため。
@@ -195,7 +209,7 @@ describe("submitRequest", () => {
     await submitRequest({ url: "https://example.com/", labels: [], orgId: "acme" }, settings());
 
     const request = sentRequest();
-    for (const key of ["operationDelayMs", "behaviors"]) {
+    for (const key of ["operationDelayMs", "behaviors", "signing"]) {
       expect(request).not.toHaveProperty(key);
     }
     // `session` と `devicePixelRatios` は例外で、選んだ結果ではない: proto3 の

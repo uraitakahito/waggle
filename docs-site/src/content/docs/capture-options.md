@@ -34,6 +34,27 @@ At least one must be true, or BrowserHive rejects the request.
 | `--no-site-behaviors`          | `behaviors.siteBehaviors` | BrowserHive: Behaviors             |
 | `--dismiss-banners`            | `dismissBanners`          | BrowserHive: Behaviors             |
 | `--accept-language <bcp47>`    | `acceptLanguage`          | BrowserHive: Quickstart            |
+| `--session <mode>`             | `session`                 | BrowserHive: Sessions              |
+| `--signing`                    | `signing`                 | BrowserHive: Signing a WACZ        |
+
+## `--signing` fails the capture rather than dropping the signature
+
+`--signing` requires `--wacz`, because the signature covers the WACZ archive.
+waggle rejects the combination locally rather than letting the server answer
+`INVALID_ARGUMENT`.
+
+**If the server cannot obtain a signature, the capture fails.** BrowserHive
+throws before it writes the zip, so an unsigned archive is never produced in
+place of a signed one. That is the intended behaviour, and it has an operational
+consequence worth stating plainly: passing `--signing` at a deployment with no
+signing service configured makes **every** capture in the run fail.
+
+Omitting the flag leaves the decision to the server's `--signing-policy`. A
+deployment running `required` signs everything without waggle saying anything.
+
+The ledger records the outcome. `archives.signed` is `true` when a signature was
+obtained, `null` when none was asked for — so "this run produced evidence-grade
+archives" is answerable without opening a single zip.
 
 ## Omitted means "server default"
 
@@ -51,12 +72,14 @@ never has to track what those defaults currently are.
 These are deployment settings rather than per-run intent, so they also read from
 the environment.
 
-| Flag                   | Env                       | Purpose                                                                                                     |
-| ---------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--database-url <url>` | `DATABASE_URL`            | Where the `capture_targets` table lives. Required.                                                          |
-| `--server <url>`       | `BROWSERHIVE_SERVER`      | BrowserHive base URL. Defaults to the SDK's baked-in value (`servers[0].url` of the vendored spec).         |
-| `--tls-ca-cert <path>` | `BROWSERHIVE_TLS_CA_CERT` | Logged for visibility. Node's trust store is set by `NODE_EXTRA_CA_CERTS`, which is the authoritative knob. |
-| `--limit <n>`          | —                         | Read only the first _n_ enabled rows. Useful for smoke tests.                                               |
+| Flag                        | Env                       | Purpose                                                                                                     |
+| --------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--database-url <url>`      | `DATABASE_URL`            | Where the `capture_targets` table lives. Required.                                                          |
+| `--server <url>`            | `BROWSERHIVE_SERVER`      | BrowserHive base URL. Defaults to `DEFAULT_TARGET` in `src/rpc/client.ts`.                                  |
+| `--tls-ca-cert <path>`      | `BROWSERHIVE_TLS_CA_CERT` | Logged for visibility. Node's trust store is set by `NODE_EXTRA_CA_CERTS`, which is the authoritative knob. |
+| `--limit <n>`               | —                         | Read only the first _n_ enabled rows. Useful for smoke tests.                                               |
+| `--no-collect`              | —                         | Submit and exit without waiting; `fga:reconcile` picks the results up from the bucket later.                |
+| `--capture-timeout-ms <ms>` | —                         | Cap the wait for one capture, overriding the budget the server declares.                                    |
 
 ## Examples
 

@@ -58,6 +58,21 @@ export interface CaptureSettings {
    * 復元するページ (www.yahoo.co.jp) がアーカイブに入らないことに気づけなかった。
    */
   session?: "isolated" | "shared";
+  /**
+   * この取り込みに wacz-auth の署名を求めるか。
+   *
+   * `captureFormats.wacz` と一緒のときだけ有効で、他の組み合わせは server が
+   * INVALID_ARGUMENT で拒む。だから `--signing` は `--wacz` を要求する。
+   *
+   * **求めた署名が付かなければ、その取り込みは失敗する。** BrowserHive は zip を
+   * 書く前に throw するので、署名の無いアーカイブがそもそも存在しない。署名
+   * サービスの居ない配備でこれを渡すと、全件が失敗する —— それが正しい挙動で、
+   * 「署名されているはずのものが黙って署名なしで出る」より良い。
+   *
+   * 省略すると server の `--signing-policy` に委ねる。`required` の配備なら、
+   * ここで何も言わなくても署名される。
+   */
+  signing?: boolean;
   behaviors?: {
     builtins?: string[];
     siteBehaviors?: boolean;

@@ -180,6 +180,22 @@ services:
       # 無い —— v4 を先に引かせないと、worker の WS URL が到達できない v6 アドレスに
       # 着地する。
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      # `--signing` を付けた実行が署名を貰いに行く先。このサービスは "signing"
+      # profile でしか起動しない。**起動していない状態で `--signing` を渡すと、
+      # 取り込みは全部失敗する** —— BrowserHive は署名を求められて得られなければ
+      # zip を書く前に落ちるので、署名の無いアーカイブが代わりに出ることはない。
+      - BROWSERHIVE_SIGNING_URL=http://capping.waggle:8080/sign
+      - BROWSERHIVE_SIGNING_TOKEN=dev-token
+      # この 2 つが無いと chain と timestamp の検査が `skipped` になる。指しているのは
+      # capping が署名に使うのと同じ identity —— **それ以外の CA による署名はここで
+      # 弾かれる**のが眼目で、本番サーバが開発用 CA を拒むのと同じ形になる。
+      - BROWSERHIVE_SIGNING_TRUST_ANCHOR=/dev-ca/insecure-dev-ca.crt
+      - BROWSERHIVE_SIGNING_TIMESTAMP_ANCHOR=/dev-ca/insecure-dev-tsa-ca.crt
+    volumes:
+      # 上の 2 つの anchor は **このコンテナの中の** パスなので、capping が署名に使う
+      # identity はここからも読めなければならない。mount しないと anchor が何も指さず、
+      # chain と timestamp が `skipped` に落ちる。
+      - ./.upstream/browserhive/test/fixtures/dev-ca:/dev-ca:ro
     depends_on:
       - seaweedfs
       - chromium-1
@@ -190,6 +206,70 @@ services:
   # 同じ。compose に入れられないのは、OpenFGA の store/model の ID が起動後にしか
   # 決まらないため (`pnpm run fga:deploy` が出力し、.env に入れる)。
   #
+  # wacz-auth の署名サービス。browserhive のスタックにあるものと同じ構成で、
+  # build context だけ pin 済みの upstream (v5.7.0) の下を指す —— capping も
+  # timestamp-authority も、あちらの submodule として既に手元に在る。
+  #
+  # 独自の CA を発行するので、ここが作る署名を信頼する者は居ない。それでよく、
+  # 確かめたいのは「署名の経路が最後まで繋がっているか」であって「誰が信頼するか」
+  # ではない。
+  capping:
+    build:
+      context: ./.upstream/browserhive/capping
+    # --host 0.0.0.0 にするのは、capping の既定が 127.0.0.1 で他のコンテナから
+    # 一切届かないため。
+    command: [
+        "serve",
+        "--dir",
+        "/id",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--token",
+        "dev-token",
+        # timestamp の出どころ。capping は v0.5.0 以降 自前では発行しないので、これが
+        # 無いと作る署名すべてに timeSignature が付かず、timestamp の検査が `skipped`
+        # に落ちる。
+        "--tsa-url",
+        "http://tsa.waggle:3004/api/v1/timestamp",
+      ]
+    volumes:
+      - ./.upstream/browserhive/test/fixtures/dev-ca:/id:ro
+    # 買えるのは起動順だけ —— container-compose に healthcheck が無い。TSA が待ち受ける
+    # 前に署名しようとすると、timestamp の無い署名ができるのではなく **取り込みが
+    # 失敗する**。ここで望ましいのはそちら。
+    depends_on:
+      - tsa
+    profiles: ["signing"]
+
+  # RFC 3161 の timestamp。sigstore/timestamp-authority を使う。
+  tsa:
+    build:
+      context: ./.upstream/browserhive/timestamp-authority
+      target: "deploy"
+    # この image が設定しているのは ENTRYPOINT ではなく CMD なので、バイナリ名をここで書く。
+    command: [
+        "timestamp-server",
+        "serve",
+        "--host=0.0.0.0",
+        "--port=3004",
+        "--timestamp-signer=file",
+        "--file-signer-key-path=/id/insecure-dev-tsa.key",
+        "--certificate-chain-path=/id/insecure-dev-tsa-chain.pem",
+        # 既定は false で、そうするとトークンに leaf しか入らず、どの timestampCert も
+        # root を欠く。**この環境では何も失敗しない** —— BrowserHive は設定された anchor と
+        # 突き合わせるので `ok` と答え続ける。壊れるのは「アーカイブ単体で読む」ほうで、
+        # それをやるのが `capping verify`。
+        "--include-chain-in-response=true",
+        # このネットワークから公開 NTP への経路が無い。致命的ではないが、周期ごとに
+        # ログを出し続ける。
+        "--disable-ntp-monitoring=true",
+      ]
+    volumes:
+      - ./.upstream/browserhive/test/fixtures/dev-ca:/id:ro
+    profiles: ["signing"]
+
   # browserhive のスタックの replay では代用できない —— replay は内部の DNS 名で
   # 上流を引くので、あちらは browserhive の seaweedfs を見る。成果物があるのは
   # こちらの seaweedfs なので、waggle 用のものが要る。
