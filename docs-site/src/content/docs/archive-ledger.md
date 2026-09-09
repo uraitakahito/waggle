@@ -78,7 +78,7 @@ broken by the first caller who submits a capture by hand.
 
 ## Handing out URLs
 
-`waggle-api` serves two endpoints. Both require an identity; see below.
+`waggle-api` serves two endpoints for archives. Both require an identity; see below.
 
 ```sh
 # One archive
@@ -117,6 +117,102 @@ The single-archive check runs at `HIGHER_CONSISTENCY` — a cached "allow" here
 would hand out a URL valid for its whole lifetime. The list does not: appearing
 in a list grants nothing, since fetching any of them still has to pass the
 strongly consistent check.
+
+## Starting a run
+
+Deciding _when_ to crawl belongs outside waggle — a scheduler does that. Deciding
+_what_ to submit and _how_ stays here. So the boundary is one endpoint that starts
+a run, and one that reports on it.
+
+```sh
+# Start one. Returns immediately; the run keeps going.
+curl -X POST http://localhost:7070/api/runs \
+     -H 'content-type: application/json' -d '{"limit": 5}'
+# → 202 { "runId": "e5f4c0bf-…" }
+
+curl http://localhost:7070/api/runs/e5f4c0bf-…
+# → { "status": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
+```
+
+A run can take tens of minutes — each accepted capture is waited on in turn — so
+there is no synchronous form of this call. **202 means accepted, not finished.**
+The `runs` row is where the outcome lives.
+
+`status` is about the run, not about what it captured. A run whose submissions
+were all rejected still ends `succeeded`: it ran to completion, and `accepted` /
+`rejected` say what came of it. Only a run that threw ends `failed`.
+
+### One at a time
+
+A second run started while one is in flight gets **409**. This is not politeness.
+The gRPC channel is process-global: `configureClient` closes any existing channel
+and `runClient` closes it again on the way out, so two concurrent runs in one
+process tear down each other's connection.
+
+The guarantee is a partial unique index, not an application flag:
+
+```sql
+CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE status = 'running'
+```
+
+A flag in the process would hold only until the day a second process appears.
+Postgres holds it regardless. The route's only job is to translate the constraint
+violation into a 409.
+
+:::caution[The CLI is not covered by this]
+`pnpm run capture` runs in its own process and never inserts a `runs` row, so it
+can run alongside an API-triggered run and break it. Closing that would mean
+making the gRPC channel request-scoped. Until then, treat the two entry points as
+mutually exclusive by operational convention.
+
+A process that dies mid-run also leaves its row `running`, which blocks the next
+one. `GET` returns `startedAt` so you can judge; clearing it is a manual act.
+:::
+
+### What a caller may send
+
+The body accepts `limit` and nothing else — an unknown key is **400**, not
+silently dropped. Capture formats are deliberately not accepted from the caller:
+they are part of what this deployment does, so they come from the environment.
+
+```sh
+WAGGLE_API_RUN_FORMATS=wacz   # comma separated: png,webp,html,links,mhtml,wacz
+WAGGLE_API_RUN_SIGNING=1      # require a wacz-auth signature; needs wacz
+```
+
+Both are read and checked **at startup**, so a misspelling stops the server with
+the bad value named. Read per-run instead, a typo would surface as a scheduled
+run failing at 3am with "no capture format enabled" — a message that never
+mentions the setting that caused it.
+
+### Who may start one
+
+`can_submit` on the organization, checked at `HIGHER_CONSISTENCY` so a revoked
+grant takes effect immediately. A caller who may not gets **404**, for the same
+reason the archive routes do.
+
+The grant is **stored**, and that is the whole point:
+
+```sh
+pnpm run fga:grant submitter alice acme
+pnpm run fga:revoke submitter alice acme
+```
+
+Membership cannot stand in for it. Organizations arrive as contextual tuples
+built from the caller's own token, so a rule like `can_submit: member` reduces to
+asking a caller who claims membership whether they are a member — always yes.
+This was written that way first, and the round-trip caught it: a subject naming
+an organization it had no relationship with got a 202.
+
+The split is about where authority sits. **Who you are** — and which
+organizations you belong to — is the identity provider's to assert, so it is
+never stored. **What you may do** is OpenFGA's, so it is. `grant` refuses to
+write `member` for exactly this reason: two homes for one fact means no answer
+when they disagree.
+
+Note that one grant is enough to start a run, and a run submits every enabled
+target across all organizations. Grant `submitter` only to someone you would
+trust with all of them.
 
 ## Picking an archive in a browser
 

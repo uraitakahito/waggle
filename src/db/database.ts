@@ -71,9 +71,31 @@ export interface CaptureSubmissionsTable {
   submittedAt: ColumnType<Date, string | undefined, never>;
 }
 
+/**
+ * 取り込みの実行 1 回。走行中の行は部分 unique index により高々 1 つ。`006` を見ること。
+ */
+export interface RunsTable {
+  id: string;
+  status: RunStatus;
+  trigger: RunTrigger;
+  startedAt: ColumnType<Date, string | undefined, never>;
+  // 走行中は NULL。入っている＝終わっている。
+  finishedAt: ColumnType<Date | null, string | null | undefined, string | null>;
+  submitted: ColumnType<number | null, number | null | undefined, number | null>;
+  accepted: ColumnType<number | null, number | null | undefined, number | null>;
+  rejected: ColumnType<number | null, number | null | undefined, number | null>;
+  error: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
+export type RunStatus = "running" | "succeeded" | "failed";
+
+/** 何がこの実行を起こしたか。台帳の `submittedBy` は実行の身元で、これは起動した経路。 */
+export type RunTrigger = "api" | "cli";
+
 export interface Database {
   captureTargets: CaptureTargetsTable;
   archives: ArchivesTable;
   fgaOutbox: FgaOutboxTable;
   captureSubmissions: CaptureSubmissionsTable;
+  runs: RunsTable;
 }
