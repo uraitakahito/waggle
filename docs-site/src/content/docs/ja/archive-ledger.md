@@ -150,9 +150,16 @@ CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE status = 'runn
 保つ。route の仕事は、制約違反を 409 に翻訳することだけ。
 
 :::caution[CLI はこの担保の外に居る]
-`pnpm run capture` は別のプロセスで走り、`runs` に行を作らない —— API から起こした実行と
-並んで走り、それを壊しうる。塞ぐには gRPC の channel をリクエスト単位にする必要がある。
-それまでは、2 つの入口は運用上の取り決めとして排他に扱うこと。
+`pnpm run capture` は別のプロセスで走り、`runs` に行を作らないので、上の index からは
+見えない。**互いを壊しはしない** —— gRPC の channel はモジュールの状態で、それはプロセス
+ごとに別なので、入口はそれぞれ自分の channel を持つ。代わりに起きるのは **同じ対象を
+2 度投げること**。どちらも `capture_targets` の有効な行を読むので、両方の選択に入った URL は
+2 度取り込まれ、2 度課金され、2 度保存される。実測: API 経由の 5 件と `--limit 1` の CLI を
+並走させると、同じ URL に `capture_submissions` の行が 2.3 秒差で 2 本並んだ。
+
+channel をリクエスト単位にしても塞がらない —— 重なりはプロセスを跨いでいて、プロセス
+ごとの channel は既にそうなっているため。塞ぐなら CLI にも `runs` の行を作らせ、同じ index
+に守らせること。それまでは、2 つの入口は運用上の取り決めとして排他に扱う。
 
 実行の途中でプロセスが死ぬと、その行は `running` のまま残り、次を塞ぐ。判断できるように
 `GET` は `startedAt` を返す。片付けは手で行う。

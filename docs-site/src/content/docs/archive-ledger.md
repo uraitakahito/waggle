@@ -160,10 +160,18 @@ Postgres holds it regardless. The route's only job is to translate the constrain
 violation into a 409.
 
 :::caution[The CLI is not covered by this]
-`pnpm run capture` runs in its own process and never inserts a `runs` row, so it
-can run alongside an API-triggered run and break it. Closing that would mean
-making the gRPC channel request-scoped. Until then, treat the two entry points as
-mutually exclusive by operational convention.
+`pnpm run capture` runs in its own process and never inserts a `runs` row, so the
+index above does not see it. The two do not corrupt each other — the gRPC channel
+is module state, which is per-process, so each entry point has its own. What they
+do instead is **submit the same targets twice**: both read the enabled rows of
+`capture_targets`, so a URL in both selections is captured twice, billed twice,
+and stored twice. Measured: an API run of 5 and a concurrent `--limit 1` CLI run
+put two `capture_submissions` rows on the same URL 2.3 seconds apart.
+
+Making the channel request-scoped would not close this — the overlap is across
+processes, and a per-process channel is already what they have. Closing it means
+giving the CLI a `runs` row too, so the same index covers both. Until then, treat
+the two entry points as mutually exclusive by operational convention.
 
 A process that dies mid-run also leaves its row `running`, which blocks the next
 one. `GET` returns `startedAt` so you can judge; clearing it is a manual act.
