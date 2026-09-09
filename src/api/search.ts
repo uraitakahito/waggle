@@ -31,7 +31,7 @@ import type { Client } from "@opensearch-project/opensearch";
 import type { Database } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
 import { maySubmit, unauthorized } from "./authorization.js";
-import { membershipTuples } from "./routes.js";
+import { viewableArchiveIds } from "./archive-visibility.js";
 import { indexArchive } from "../search/index-archive.js";
 import { ensureIndex } from "../search/client.js";
 import { createChildLogger } from "../logger.js";
@@ -187,27 +187,15 @@ export const registerSearchRoutes = (app: FastifyInstance, deps: SearchRouteDeps
       if (hits.length === 0) return reply.code(200).send({ hits: [], total: 0 });
 
       // **ここが唯一の認可。** 索引は誰に見せてよいかを知らないし、知るべきでもない。
-      const now = new Date().toISOString();
-      const contextualTuples = membershipTuples(identity);
-      const result = await fga.batchCheck({
-        checks: hits.map((hit) => ({
-          user: `user:${identity.subject}`,
-          relation: "can_view",
-          object: `archive:${hit._source.archiveId}`,
-          contextualTuples: { tuple_keys: contextualTuples },
-          context: { current_time: now },
-          correlationId: hit._source.archiveId.replace(/-/g, ""),
-        })),
-      });
-      const allowed = new Set(
-        result.result
-          .filter((entry) => entry.allowed === true)
-          .map((entry) => entry.request.object),
+      const allowed = await viewableArchiveIds(
+        fga,
+        identity,
+        hits.map((hit) => hit._source.archiveId),
       );
 
       return reply.code(200).send({
         hits: hits
-          .filter((hit) => allowed.has(`archive:${hit._source.archiveId}`))
+          .filter((hit) => allowed.has(hit._source.archiveId))
           .map((hit) => ({ ...hit._source, highlight: hit.highlight?.text })),
         // 索引が数えた生の件数。**認可で落ちた分を含む** —— 返った配列の長さとは
         // 一致しないことがある。
