@@ -160,10 +160,18 @@ Postgres holds it regardless. The route's only job is to translate the constrain
 violation into a 409.
 
 :::caution[The CLI is not covered by this]
-`pnpm run capture` runs in its own process and never inserts a `runs` row, so it
-can run alongside an API-triggered run and break it. Closing that would mean
-making the gRPC channel request-scoped. Until then, treat the two entry points as
-mutually exclusive by operational convention.
+`pnpm run capture` runs in its own process and never inserts a `runs` row, so the
+index above does not see it. The two do not corrupt each other — the gRPC channel
+is module state, which is per-process, so each entry point has its own. What they
+do instead is **submit the same targets twice**: both read the enabled rows of
+`capture_targets`, so a URL in both selections is captured twice, billed twice,
+and stored twice. Measured: an API run of 5 and a concurrent `--limit 1` CLI run
+put two `capture_submissions` rows on the same URL 2.3 seconds apart.
+
+Making the channel request-scoped would not close this — the overlap is across
+processes, and a per-process channel is already what they have. Closing it means
+giving the CLI a `runs` row too, so the same index covers both. Until then, treat
+the two entry points as mutually exclusive by operational convention.
 
 A process that dies mid-run also leaves its row `running`, which blocks the next
 one. `GET` returns `startedAt` so you can judge; clearing it is a manual act.
@@ -184,6 +192,29 @@ Both are read and checked **at startup**, so a misspelling stops the server with
 the bad value named. Read per-run instead, a typo would surface as a scheduled
 run failing at 3am with "no capture format enabled" — a message that never
 mentions the setting that caused it.
+
+### Who calls this
+
+Nothing in waggle does. The scheduler lives in its own repo —
+[forage](https://github.com/uraitakahito/forage) — which runs a Windmill instance
+whose only job is to call this endpoint on a cron.
+
+The split is deliberate: **forage decides when, waggle decides what.** That is
+why the body takes no capture formats, and why a run submits whatever
+`capture_targets` says rather than a list the caller supplies.
+
+Two things a caller has to get right, and forage's script exists to encode them:
+
+- **409 is not a failure.** It means a run is already going. Retrying cannot
+  help — the answer stays the same until that run ends.
+- **202 is not the end.** A run that fails still answered 202. Anything that
+  stops at the 202 reports success for failed captures.
+
+Running with a scheduler means running with a JWT, and that has a cost worth
+knowing: setting `WAGGLE_OIDC_ISSUER` makes the JWT resolver take over, so the
+**browser picker starts returning 401**. JWT beating the dev header is the point
+(a deployment with both configured must not fall to the weaker one), so the two
+are used in turn, not together.
 
 ### Who may start one
 
@@ -213,6 +244,95 @@ when they disagree.
 Note that one grant is enough to start a run, and a run submits every enabled
 target across all organizations. Grant `submitter` only to someone you would
 trust with all of them.
+
+## Following links
+
+`POST /api/crawls` takes a seed and walks the links out from it. Windmill runs the
+walking; waggle decides what is in scope, what has been seen, and when to stop.
+
+```sh
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' \
+     -d '{"seed":"https://example.com/","maxDepth":2,"perHostDelayMs":2000}'
+# → 202 { "crawlId": "9072b625-…" }
+
+curl http://localhost:7070/api/crawls/9072b625-…
+# → { "state": "succeeded", "stopReason": "max_pages",
+#     "pagesCaptured": 6, "pagesDiscovered": 76, … }
+```
+
+Nothing here is served unless `WAGGLE_CRAWL_WEBHOOK_URL` and `_TOKEN` are both set.
+One without the other stops the server at startup — a half-configured webhook fails
+only after someone asks for a crawl, by which time a row is already open.
+
+### Not overloading the other end
+
+Three settings, all per crawl:
+
+|                   | default |                                                                      |
+| ----------------- | ------- | -------------------------------------------------------------------- |
+| `perHostDelayMs`  | 2000    | between **finishing** one page on a host and **submitting** the next |
+| `hostParallelism` | 4       | how many distinct hosts are touched at once                          |
+| `maxPages`        | 30      | total pages, seed included                                           |
+
+The delay is measured from the finish, not the submit, and that is the whole point.
+BrowserHive's queue has no capacity limit and never refuses a submission — only the
+number of browser workers decides what runs at once. Spacing out submissions
+therefore does nothing: three submitted together run back to back in the queue. The
+gap has to sit after the capture completes for the other end to feel it.
+
+One capture is also not one request. The browser fetches sub-resources, so a page is
+a burst of dozens from the far side. 2000 ms is chosen against that, and a
+`Crawl-delay` in robots.txt wins if it is longer — a value the other end states is
+not ours to shorten.
+
+:::note[The pacing is measured, not assumed]
+`crawl_pages` stores `submitted_at` and `finished_at` per page precisely so this can
+be checked afterwards rather than believed:
+
+```sql
+SELECT lag(finished_at) OVER w AS prev, submitted_at
+FROM crawl_pages WHERE crawl_id = $1
+WINDOW w AS (PARTITION BY host ORDER BY submitted_at);
+```
+
+Every gap must be at least `per_host_delay_ms`, and none may be negative. A negative
+gap means two captures on one host overlapped. Both failures look exactly like "it
+ran fast" without the timestamps.
+:::
+
+### One crawl at a time
+
+A second crawl started while one is running gets **409**, held by a partial unique
+index the same way runs are. The reason differs: the pacing above is enforced inside
+one flow run, and two crawls cannot see each other's timing, so the same host would
+quietly be hit at twice the rate.
+
+### Where it stops, and why
+
+`stopReason` is one of `completed`, `max_depth`, `max_pages`, or `failed`. Without it
+a finished crawl cannot say whether it followed everything or was cut off. With the
+default of 30 pages, `max_pages` is the ordinary outcome — that is deliberate, so the
+limit is visible in normal use rather than a surprise.
+
+`pagesDiscovered` and `pagesCaptured` are separate counts. The difference is what
+scope, robots, and the caps threw away.
+
+### What gets followed
+
+Same origin as the seed by default (`scope: "same-host"` relaxes it to the host).
+Judged against the **final** URL, after redirects. `rel="nofollow"` is honoured, and
+only `http(s)` links are considered. Fragments are dropped — `#section` is a position
+inside a page, not another page — but nothing else is normalised: a reordered query
+string is a different URL to plenty of real servers, and taking the wrong page is
+worse than taking one twice.
+
+Deduplication is a unique index on `(crawl_id, url_hash)`, with `url_hash` the same
+generated `digest(url, 'sha256')` column `capture_targets` uses. Discovered links are
+inserted with `ON CONFLICT DO NOTHING` and **the rows that actually landed become the
+next level** — so recording and deciding cannot drift apart. BrowserHive's
+`rejectDuplicateUrls` is not a substitute: it only knows about pending and processing
+tasks and forgets completed URLs.
 
 ## Picking an archive in a browser
 

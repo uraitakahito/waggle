@@ -20,9 +20,12 @@
  *
  * ## 走行中は 1 本
  *
- * gRPC の channel がプロセスに 1 つしかないので、2 本並べると壊れる
- * (`006-create-runs` に詳しい)。ここでは insert を試み、**部分 unique index の違反を
+ * gRPC の channel が **同じプロセスの中で** 1 つしかないので、このプロセスで 2 本並べると
+ * 壊れる (`006-create-runs` に詳しい)。ここでは insert を試み、**部分 unique index の違反を
  * 409 に翻訳する**だけにしてある —— アプリ側のフラグで守ると、プロセスが増えた日に黙って破れる。
+ *
+ * **別プロセスの CLI (`pnpm run capture`) はこの index の外に居る。** あちらは `runs` に行を
+ * 作らないため。壊れはしない (channel はプロセスごとに別) が、**同じ対象を 2 度投げる**。
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";
