@@ -152,7 +152,7 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): voi
       try {
         await db
           .insertInto("runs")
-          .values({ id: runId, status: "running", trigger: "api" })
+          .values({ id: runId, state: "running", trigger: "api" })
           .execute();
       } catch (err) {
         if (isUniqueViolation(err, "runs_single_active")) {
@@ -173,7 +173,7 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): voi
           await db
             .updateTable("runs")
             .set({
-              status: "succeeded",
+              state: "succeeded",
               finishedAt: new Date().toISOString(),
               submitted: results.length,
               accepted: results.filter((r) => r.accepted).length,
@@ -187,7 +187,7 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): voi
           await db
             .updateTable("runs")
             .set({
-              status: "failed",
+              state: "failed",
               finishedAt: new Date().toISOString(),
               error: err instanceof Error ? err.message : String(err),
             })
@@ -241,7 +241,7 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): voi
 
       return reply.code(200).send({
         runId: run.id,
-        status: run.status,
+        state: run.state,
         trigger: run.trigger,
         startedAt: run.startedAt,
         finishedAt: run.finishedAt,
