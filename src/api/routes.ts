@@ -6,7 +6,7 @@
  * 他の検査はすべて助言でしかない。ここでは、直前に Check を置かずに URL を配って
  * はならない。
  */
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { OpenFgaClient } from "@openfga/sdk";
 import { ConsistencyPreference } from "@openfga/sdk";
@@ -14,6 +14,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../db/database.js";
 import type { Identity, IdentityResolver } from "./identity.js";
 import { presignArchive } from "./presign.js";
+import { unauthorized } from "./authorization.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -39,9 +40,6 @@ const membershipTuples = (identity: Identity) =>
     relation: "member",
     object: `organization:${org}`,
   }));
-
-const unauthorized = (reply: FastifyReply): FastifyReply =>
-  reply.code(401).send({ error: "unauthenticated" });
 
 export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { db, fga, s3, resolveIdentity } = deps;
