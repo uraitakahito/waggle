@@ -92,10 +92,74 @@ export type RunStatus = "running" | "succeeded" | "failed";
 /** 何がこの実行を起こしたか。台帳の `submittedBy` は実行の身元で、これは起動した経路。 */
 export type RunTrigger = "api" | "cli";
 
+/**
+ * リンクを辿る取り込み 1 本。走行中の行は部分 unique index により高々 1 つ。`007` を見ること。
+ */
+export interface CrawlsTable {
+  id: string;
+  seed: string;
+  scope: CrawlScope;
+  maxDepth: number;
+  maxPages: number;
+  perHostDelayMs: number;
+  hostParallelism: number;
+  orgId: string;
+  requestedBy: string;
+  state: CrawlState;
+  // 走行中は NULL。なぜ終わったかが入る。
+  stopReason: ColumnType<
+    CrawlStopReason | null,
+    CrawlStopReason | null | undefined,
+    CrawlStopReason | null
+  >;
+  startedAt: ColumnType<Date, string | undefined, never>;
+  finishedAt: ColumnType<Date | null, string | null | undefined, string | null>;
+  // 見つけた件数と取った件数は別。差が「範囲や上限で落としたぶん」。
+  pagesDiscovered: ColumnType<number, number | undefined, number>;
+  pagesCaptured: ColumnType<number, number | undefined, number>;
+  error: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
+export type CrawlState = "running" | "succeeded" | "failed";
+
+/** どこまでを同じ範囲と見なすか。判定は `finalUrl` (リダイレクト後) に対して行う。 */
+export type CrawlScope = "same-origin" | "same-host";
+
+/** なぜ終わったか。これが無いと「全部辿った」と「上限で切った」が区別できない。 */
+export type CrawlStopReason = "completed" | "max_depth" | "max_pages" | "failed";
+
+/**
+ * クロールが触った URL 1 つ。重複排除は `(crawlId, urlHash)` の unique index が持つ。`008` を見ること。
+ */
+export interface CrawlPagesTable {
+  // BIGSERIAL —— node-pg は精度を落とさないために int8 を `string` で返す。
+  id: Generated<string>;
+  crawlId: string;
+  url: string;
+  // GENERATED ALWAYS AS (digest(url, 'sha256')) STORED —— 書き込むことはない。
+  urlHash: GeneratedAlways<Buffer>;
+  depth: number;
+  host: string;
+  state: CrawlPageState;
+  // 取らなかった理由。`skipped` のときだけ入る。
+  skipReason: ColumnType<string | null, string | null | undefined, string | null>;
+  taskId: ColumnType<string | null, string | null | undefined, string | null>;
+  correlationId: ColumnType<string | null, string | null | undefined, string | null>;
+  discoveredFrom: ColumnType<string | null, string | null | undefined, string | null>;
+  // 礼儀の証拠。この 2 つが無いと、間隔と重なりを後から測れない。
+  submittedAt: ColumnType<Date | null, string | null | undefined, string | null>;
+  finishedAt: ColumnType<Date | null, string | null | undefined, string | null>;
+  createdAt: ColumnType<Date, string | undefined, never>;
+}
+
+export type CrawlPageState = "pending" | "captured" | "failed" | "skipped";
+
 export interface Database {
   captureTargets: CaptureTargetsTable;
   archives: ArchivesTable;
   fgaOutbox: FgaOutboxTable;
   captureSubmissions: CaptureSubmissionsTable;
   runs: RunsTable;
+  crawls: CrawlsTable;
+  crawlPages: CrawlPagesTable;
 }
