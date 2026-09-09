@@ -185,6 +185,29 @@ the bad value named. Read per-run instead, a typo would surface as a scheduled
 run failing at 3am with "no capture format enabled" — a message that never
 mentions the setting that caused it.
 
+### Who calls this
+
+Nothing in waggle does. The scheduler lives in its own repo —
+[forage](https://github.com/uraitakahito/forage) — which runs a Windmill instance
+whose only job is to call this endpoint on a cron.
+
+The split is deliberate: **forage decides when, waggle decides what.** That is
+why the body takes no capture formats, and why a run submits whatever
+`capture_targets` says rather than a list the caller supplies.
+
+Two things a caller has to get right, and forage's script exists to encode them:
+
+- **409 is not a failure.** It means a run is already going. Retrying cannot
+  help — the answer stays the same until that run ends.
+- **202 is not the end.** A run that fails still answered 202. Anything that
+  stops at the 202 reports success for failed captures.
+
+Running with a scheduler means running with a JWT, and that has a cost worth
+knowing: setting `WAGGLE_OIDC_ISSUER` makes the JWT resolver take over, so the
+**browser picker starts returning 401**. JWT beating the dev header is the point
+(a deployment with both configured must not fall to the weaker one), so the two
+are used in turn, not together.
+
 ### Who may start one
 
 `can_submit` on the organization, checked at `HIGHER_CONSISTENCY` so a revoked
