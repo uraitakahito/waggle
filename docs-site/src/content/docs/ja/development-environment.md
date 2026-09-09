@@ -233,6 +233,33 @@ API も CLI も `identityFromClaims` を通してそこを読みます。
 - **docs のビルドが BrowserHive のピンを読めない** —
   `git submodule update --init --recursive` を実行。
 
+### 自分の持ち物をクロールする
+
+スタックには取り込み対象のフィクスチャ [meadow](https://github.com/uraitakahito/meadow) が
+profile 付きで入っている。見知らぬサイトに向けずにクロールを試せる:
+
+```sh
+container-compose --profile meadow up -d -b
+```
+
+port は publish していない。`meadow.waggle:8080` はコンテナからも host からも引ける。
+種にするのは `/links/hub` —— `/links/*` はどれもそのページを 1 か所だけ変えたもので、
+それが「誤った規則を適用しているクローラ」と「単に壊れているクローラ」を分ける。
+
+meadow はリクエストログも持っていて、**それを使うことがこのフィクスチャの要点**:
+
+```sh
+curl -s http://meadow.waggle:8080/__request-counts
+```
+
+`crawl_pages` が言うのは waggle が**記録した**こと、ログが言うのはフィクスチャが
+**実際に要求された**こと。「robots を尊重した」は後者でしか決着しない —— 台帳に無い
+ページは、取りに行かなかったのか、取りに行って捨てたのか、台帳からは区別できない。
+
+meadow は `.upstream/browserhive` 経由ではなく `.upstream/meadow` に**直接** vendor して
+いる。あちらが抱える meadow はずっと古く、2 つの pin は別々の都合で動くので、
+どちらももう一方を待つ理由が無い。
+
 ## リポジトリの約束
 
 - ソースは `src/`、テストは `test/`、1 モジュール 1 関心。
