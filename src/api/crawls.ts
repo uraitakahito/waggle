@@ -485,18 +485,24 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       // ── 6. 集計と、終わったなら締める ────────────────────────────────
       const capturedCount = results.filter((r) => r.status === "captured").length;
       const done = inserted.length === 0;
+
+      // **最初に効いた理由を残す。上書きしない。**
+      //
+      // 段の途中で `max_pages` に当たって切っても、そのあと最後の段が `max_depth` で
+      // 終われば、素朴に書くと後者で上書きされる。すると「深さの範囲は全部辿った」と
+      // 読めてしまうが、実際には切り落としている —— 実測で踏んだ: 50 件見つけて 9 件
+      // 入れたクロールが `max_depth` と記録された。
+      //
+      // `coalesce` で最初の非 NULL を守る。`budget.ts` が深さを件数より優先するのと
+      // 同じ考え方で、**先に効いた制約**が理由になる。
+      const reason = stopReason ?? (done ? ("completed" as const) : null);
       await db
         .updateTable("crawls")
         .set((eb) => ({
           pagesCaptured: eb("pagesCaptured", "+", capturedCount),
           pagesDiscovered: eb("pagesDiscovered", "+", discovered.length),
-          ...(done
-            ? {
-                state: "succeeded" as const,
-                stopReason: stopReason ?? ("completed" as const),
-                finishedAt: new Date().toISOString(),
-              }
-            : {}),
+          ...(reason === null ? {} : { stopReason: eb.fn.coalesce("stopReason", eb.val(reason)) }),
+          ...(done ? { state: "succeeded" as const, finishedAt: new Date().toISOString() } : {}),
         }))
         .where("id", "=", crawlId)
         .execute();
