@@ -7,3 +7,6 @@
 [submodule ".upstream/replay"]
 	path = .upstream/replay
 	url = git@github.com:uraitakahito/replay.git
+[submodule ".upstream/meadow"]
+	path = .upstream/meadow
+	url = https://github.com/uraitakahito/meadow.git

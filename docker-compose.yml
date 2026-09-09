@@ -16,11 +16,16 @@
 # chromium) では権限が無くて失敗し、しかも container-compose は何も言わない。
 #
 # 上流のソースは git URL からではなく .upstream/ の submodule から来る ——
-# `container build` は context のディレクトリしか受け取らないため。3 本ある:
+# `container build` は context のディレクトリしか受け取らないため。4 本ある:
 #
 #   .upstream/browserhive   本体と、それが動作確認された版の chromium-server-docker
 #   .upstream/seaweedfs     object store の起動設定
 #   .upstream/replay        WACZ のビューア
+#   .upstream/meadow        取り込み対象のフィクスチャ (profile: meadow)
+#
+# meadow を browserhive 越しではなく **直接** vendor しているのは、あちらの pin が
+# 別の都合で動くため。browserhive が持つ meadow は v0.12.0 で、こちらが要る
+# `/links/*` はそれより後に入った —— 経由すると browserhive の版上げを待つことになる。
 #
 # 分けてあるのは、S3 が欲しいだけのときに browserhive 全体を要求しないため。
 # 以前は browserhive/etc/seaweedfs を mount していて、そうなっていた。
@@ -279,6 +284,21 @@ services:
   # browserhive のスタックの replay では代用できない —— replay は内部の DNS 名で
   # 上流を引くので、あちらは browserhive の seaweedfs を見る。成果物があるのは
   # こちらの seaweedfs なので、waggle 用のものが要る。
+  # クロールの e2e が辿るフィクスチャ origin。既定では起動しない:
+  #
+  #   container-compose --profile meadow up -d -b
+  #
+  # port は publish しない —— browserhive も host 側の道具も、プラットフォーム DNS が
+  # 配る meadow.waggle:8080 という **同じ名前** で引ける。browserhive の compose の
+  # meadow と同じ形。
+  #
+  # 取り込み対象がここに居るので、browserhive 側に
+  # BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true が要る (上に入れてある)。
+  meadow:
+    build:
+      context: ./.upstream/meadow
+    profiles: ["meadow"]
+
   replay:
     build:
       context: ./.upstream/replay

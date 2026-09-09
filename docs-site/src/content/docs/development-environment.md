@@ -237,6 +237,36 @@ which both the API and the CLI read through `identityFromClaims`.
 - **The docs build cannot read the BrowserHive pin** — run
   `git submodule update --init --recursive`.
 
+### Crawling something you control
+
+The stack ships a fixture origin — [meadow](https://github.com/uraitakahito/meadow) —
+behind a profile, so a crawl can be exercised without pointing it at a stranger's
+site:
+
+```sh
+container-compose --profile meadow up -d -b
+```
+
+It publishes no port; `meadow.waggle:8080` resolves from containers and from the
+host alike. `/links/hub` is the seed to use — every `/links/*` page is that page
+with exactly one thing changed, which is what lets a crawler applying the wrong
+rule be told apart from one that is simply broken.
+
+meadow also keeps a request log, and that is the point of using it:
+
+```sh
+curl -s http://meadow.waggle:8080/__request-counts
+```
+
+`crawl_pages` says what waggle _recorded_; the log says what the fixture was
+_actually asked for_. "The crawler honoured robots" is a claim only the second one
+can settle — a page missing from the ledger might never have been fetched, or might
+have been fetched and dropped.
+
+meadow is vendored directly at `.upstream/meadow` rather than through
+`.upstream/browserhive`, which carries its own much older copy. The two pins move
+for different reasons and neither should wait on the other.
+
 ## Repo conventions
 
 - Source under `src/`, tests under `test/`, one concern per module.
