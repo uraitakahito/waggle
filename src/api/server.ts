@@ -18,6 +18,8 @@ import { resolveIdentityResolver } from "./identity.js";
 import { registerRoutes } from "./routes.js";
 import { registerPicker, replayOriginFromEnv } from "./picker.js";
 import { parseRunFormats, registerRunRoutes } from "./runs.js";
+import { registerCrawlRoutes } from "./crawls.js";
+import { createWindmillDispatcher } from "../crawl/dispatch.js";
 import { runClient } from "../client/run.js";
 import { optional } from "../config/env.js";
 import { fatal, logger } from "../logger.js";
@@ -115,6 +117,19 @@ const start = async (options: ServerOptions): Promise<void> => {
       ),
     },
   });
+
+  // リンクを辿るクロールの口。実行は Windmill の flow が回すので、ここが渡すのは
+  // 「頼んだ」という事実だけ。dispatcher は **起動時に** 設定を読む —— 頼まれた瞬間に
+  // 「設定がありません」と言うのでは遅く、そのときには行が既に立っている。
+  //
+  // 設定が無ければ口ごと出さない。**404 になるのは正しい** —— その配備にこの能力は
+  // 本当に無いので、「してはいけない」と同じ答えでよい。log で区別が付くようにする。
+  const dispatch = createWindmillDispatcher();
+  if (dispatch === undefined) {
+    logger.info("WAGGLE_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
+  } else {
+    registerCrawlRoutes(app, { db, fga, s3, bucket: storage.bucket, resolveIdentity, dispatch });
+  }
 
   const drainTimer = setInterval(() => {
     void drainOutbox(db, fga).catch((err: unknown) => {

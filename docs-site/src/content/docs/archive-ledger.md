@@ -245,6 +245,95 @@ Note that one grant is enough to start a run, and a run submits every enabled
 target across all organizations. Grant `submitter` only to someone you would
 trust with all of them.
 
+## Following links
+
+`POST /api/crawls` takes a seed and walks the links out from it. Windmill runs the
+walking; waggle decides what is in scope, what has been seen, and when to stop.
+
+```sh
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' \
+     -d '{"seed":"https://example.com/","maxDepth":2,"perHostDelayMs":2000}'
+# → 202 { "crawlId": "9072b625-…" }
+
+curl http://localhost:7070/api/crawls/9072b625-…
+# → { "state": "succeeded", "stopReason": "max_pages",
+#     "pagesCaptured": 6, "pagesDiscovered": 76, … }
+```
+
+Nothing here is served unless `WAGGLE_CRAWL_WEBHOOK_URL` and `_TOKEN` are both set.
+One without the other stops the server at startup — a half-configured webhook fails
+only after someone asks for a crawl, by which time a row is already open.
+
+### Not overloading the other end
+
+Three settings, all per crawl:
+
+|                   | default |                                                                      |
+| ----------------- | ------- | -------------------------------------------------------------------- |
+| `perHostDelayMs`  | 2000    | between **finishing** one page on a host and **submitting** the next |
+| `hostParallelism` | 4       | how many distinct hosts are touched at once                          |
+| `maxPages`        | 30      | total pages, seed included                                           |
+
+The delay is measured from the finish, not the submit, and that is the whole point.
+BrowserHive's queue has no capacity limit and never refuses a submission — only the
+number of browser workers decides what runs at once. Spacing out submissions
+therefore does nothing: three submitted together run back to back in the queue. The
+gap has to sit after the capture completes for the other end to feel it.
+
+One capture is also not one request. The browser fetches sub-resources, so a page is
+a burst of dozens from the far side. 2000 ms is chosen against that, and a
+`Crawl-delay` in robots.txt wins if it is longer — a value the other end states is
+not ours to shorten.
+
+:::note[The pacing is measured, not assumed]
+`crawl_pages` stores `submitted_at` and `finished_at` per page precisely so this can
+be checked afterwards rather than believed:
+
+```sql
+SELECT lag(finished_at) OVER w AS prev, submitted_at
+FROM crawl_pages WHERE crawl_id = $1
+WINDOW w AS (PARTITION BY host ORDER BY submitted_at);
+```
+
+Every gap must be at least `per_host_delay_ms`, and none may be negative. A negative
+gap means two captures on one host overlapped. Both failures look exactly like "it
+ran fast" without the timestamps.
+:::
+
+### One crawl at a time
+
+A second crawl started while one is running gets **409**, held by a partial unique
+index the same way runs are. The reason differs: the pacing above is enforced inside
+one flow run, and two crawls cannot see each other's timing, so the same host would
+quietly be hit at twice the rate.
+
+### Where it stops, and why
+
+`stopReason` is one of `completed`, `max_depth`, `max_pages`, or `failed`. Without it
+a finished crawl cannot say whether it followed everything or was cut off. With the
+default of 30 pages, `max_pages` is the ordinary outcome — that is deliberate, so the
+limit is visible in normal use rather than a surprise.
+
+`pagesDiscovered` and `pagesCaptured` are separate counts. The difference is what
+scope, robots, and the caps threw away.
+
+### What gets followed
+
+Same origin as the seed by default (`scope: "same-host"` relaxes it to the host).
+Judged against the **final** URL, after redirects. `rel="nofollow"` is honoured, and
+only `http(s)` links are considered. Fragments are dropped — `#section` is a position
+inside a page, not another page — but nothing else is normalised: a reordered query
+string is a different URL to plenty of real servers, and taking the wrong page is
+worse than taking one twice.
+
+Deduplication is a unique index on `(crawl_id, url_hash)`, with `url_hash` the same
+generated `digest(url, 'sha256')` column `capture_targets` uses. Discovered links are
+inserted with `ON CONFLICT DO NOTHING` and **the rows that actually landed become the
+next level** — so recording and deciding cannot drift apart. BrowserHive's
+`rejectDuplicateUrls` is not a substitute: it only knows about pending and processing
+tasks and forgets completed URLs.
+
 ## Picking an archive in a browser
 
 `waggle-api` also serves a picker at `/` — the list above, rendered, with each

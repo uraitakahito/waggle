@@ -184,6 +184,12 @@ services:
       # profile でしか起動しない。**起動していない状態で `--signing` を渡すと、
       # 取り込みは全部失敗する** —— BrowserHive は署名を求められて得られなければ
       # zip を書く前に落ちるので、署名の無いアーカイブが代わりに出ることはない。
+      # 取り込み対象がこのスタックの中に居るので、私設アドレスへの取り込みを許す
+      # (seaweedfs の filer、replay など。クロールの往復もこれが無いと組めない)。
+      # **メタデータ(169.254)とループバックはこれでも閉じたまま。**
+      # 開発スタック限定で、本番の既定は off (SSRF 対策)。browserhive の compose にも
+      # 同じ設定が同じ理由で入っている。
+      - BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true
       - BROWSERHIVE_SIGNING_URL=http://capping.waggle:8080/sign
       - BROWSERHIVE_SIGNING_TOKEN=dev-token
       # この 2 つが無いと chain と timestamp の検査が `skipped` になる。指しているのは

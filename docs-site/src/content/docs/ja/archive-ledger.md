@@ -225,6 +225,87 @@ subject に 202 が出た。
 なお、許可が 1 つあれば実行は起こせて、実行は**全組織の**有効な対象を投げる。`submitter`
 は、その全部を任せられる相手にだけ与えること。
 
+## リンクを辿る
+
+`POST /api/crawls` は種を受け取り、そこからリンクを辿る。辿る作業は Windmill が回し、
+**範囲・既読・打ち切り**を決めるのは waggle。
+
+```sh
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' \
+     -d '{"seed":"https://example.com/","maxDepth":2,"perHostDelayMs":2000}'
+# → 202 { "crawlId": "9072b625-…" }
+
+curl http://localhost:7070/api/crawls/9072b625-…
+# → { "state": "succeeded", "stopReason": "max_pages",
+#     "pagesCaptured": 6, "pagesDiscovered": 76, … }
+```
+
+`WAGGLE_CRAWL_WEBHOOK_URL` と `_TOKEN` の両方が無ければ、この口は出さない。片方だけだと
+**起動時に落とす** —— 半端な設定は、頼まれた後にしか気づけない失敗になり、そのときには
+行が既に立っている。
+
+### 相手に負荷をかけないために
+
+クロールごとの設定が 3 つ:
+
+|                   | 既定 |                                                            |
+| ----------------- | ---- | ---------------------------------------------------------- |
+| `perHostDelayMs`  | 2000 | 同じホストで、**前が終わってから**次を**投げる**までの間隔 |
+| `hostParallelism` | 4    | 同時に触るホストの数                                       |
+| `maxPages`        | 30   | 種を含む総ページ数                                         |
+
+間隔を「投入から」ではなく「**完了から**」測るのが肝。BrowserHive のキューに容量制限は
+無く、投入は決して拒まれない —— 同時に走る数を決めているのは worker の数だけ。だから
+投入を間引いても意味がない。3 件まとめて投げれば、キューの中で連続して実行される。
+相手が間隔を感じるのは、取り込みが終わった後に空けたときだけ。
+
+そして 1 回の取り込みは 1 リクエストではない。ブラウザはサブリソースまで取るので、
+1 ページが相手には数十本のバーストに見える。2000ms はそれを踏まえた値で、robots.txt の
+`Crawl-delay` が長ければそちらが勝つ —— 相手が言っている値をこちらの都合で縮めない。
+
+:::note[間隔は信じるものではなく、測るもの]
+`crawl_pages` がページごとに `submitted_at` と `finished_at` を持つのは、まさに後から
+確かめるため:
+
+```sql
+SELECT lag(finished_at) OVER w AS prev, submitted_at
+FROM crawl_pages WHERE crawl_id = $1
+WINDOW w AS (PARTITION BY host ORDER BY submitted_at);
+```
+
+差はすべて `per_host_delay_ms` 以上で、**負であってはならない**。負の差は、同じホストへの
+取り込みが重なったという意味。どちらの失敗も、時刻が無ければ「速く動いた」と見分けが付かない。
+:::
+
+### クロールは同時に 1 本
+
+走行中に 2 本目を起こすと **409**。`runs` と同じく部分 unique index が守る。ただし理由は
+違う —— 上の間隔は **1 つの flow run の中でしか効かない**ので、2 本走ると互いの間隔が
+見えず、同じホストへの頻度が黙って倍になる。
+
+### どこで、なぜ止まったか
+
+`stopReason` は `completed` / `max_depth` / `max_pages` / `failed` のいずれか。これが無いと、
+終わったクロールが「全部辿った」のか「切られた」のかを言えない。既定の 30 ページでは
+**`max_pages` で止まるのが普通** —— 上限が日常的に見えているほうがよいので、そう選んである。
+
+`pagesDiscovered` と `pagesCaptured` は別々に持つ。差が「範囲・robots・上限で落としたぶん」。
+
+### 何を辿るか
+
+既定は種と同じ origin（`scope: "same-host"` にするとホスト単位に緩む）。判定は
+リダイレクト後の **最終 URL** に対して行う。`rel="nofollow"` は尊重し、`http(s)` 以外は
+辿らない。フラグメントは落とす —— `#section` はページの中の位置であって別のページではない
+—— が、それ以外は正規化しない。クエリを並べ替えると別のページを返すサーバは実在するので、
+取りこぼしより取り違えのほうが悪い。
+
+重複排除は `(crawl_id, url_hash)` の unique index 1 本。`url_hash` は `capture_targets` と
+同じ `digest(url, 'sha256')` の生成列。見つけたリンクは `ON CONFLICT DO NOTHING` で入れ、
+**実際に入った行がそのまま次の段になる** —— 記録と決定がずれようがない。BrowserHive の
+`rejectDuplicateUrls` は代わりにならない: pending と processing しか見ておらず、完了した
+URL を忘れる。
+
 ## ブラウザからアーカイブを選ぶ
 
 `waggle-api` は `/` に picker も出す —— 上の一覧を画面にしたもので、行をクリックすると
