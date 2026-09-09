@@ -42,6 +42,8 @@ export interface ArchivesTable {
   waczComplete: boolean | null;
   /** wacz-auth の署名を持って出たか。NULL は「求めていない」。`005` を見ること。 */
   signed: boolean | null;
+  /** 全文検索の索引に載せた時刻。NULL は「まだ」。`009` を見ること。 */
+  indexedAt: ColumnType<Date | null, string | null | undefined, string | null>;
   capturedAt: ColumnType<Date, string, string>;
   createdAt: ColumnType<Date, string | undefined, never>;
 }
