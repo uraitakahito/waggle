@@ -42,7 +42,7 @@ in that case, or the new tuples would be lost silently.
 
 ## Filling the ledger
 
-Two paths, on purpose.
+Three paths, on purpose.
 
 **Polling** — `waggle` waits for each capture it submitted
 (`GetCapture`, `PENDING` / `PROCESSING` until it finishes) and registers the ones
@@ -54,6 +54,18 @@ BrowserHive writes next to every capture's artifacts and registers anything the
 ledger is missing. This is what makes the ledger self-healing: waggle can be
 down for hours, or a result can age out of BrowserHive's cache before the
 poller sees it, and the next reconcile still picks it up.
+
+**Crawling** — a link-following crawl registers what it captured as soon as it
+reports a level (`src/crawl/register-level.ts`). The level report does not carry
+artifact locations, so it re-reads `.result.json` before registering.
+
+:::note[This path used to be missing]
+The crawl wrote only to `crawl_pages` and `capture_submissions`; it put
+**nothing in the ledger**. Crawled pages did not exist until someone ran
+reconcile — they showed up in neither the picker nor search. The process that
+captured them could have written the ledger itself, and instead waited for the
+sweeper.
+:::
 
 Polling is for latency. Reconciling is for correctness. A ledger with holes
 nobody notices is worse than no ledger, because the holes only surface much
@@ -333,6 +345,69 @@ inserted with `ON CONFLICT DO NOTHING` and **the rows that actually landed becom
 next level** — so recording and deciding cannot drift apart. BrowserHive's
 `rejectDuplicateUrls` is not a substitute: it only knows about pending and processing
 tasks and forgets completed URLs.
+
+## Full-text search
+
+Off by default. A deployment may have no index, so unless `WAGGLE_OPENSEARCH_URL`
+is set the endpoints are **not served at all** (you get a 404 — the capability
+genuinely is not there, so that is the right answer).
+
+```sh
+container-compose --profile search up -d -b
+# and WAGGLE_OPENSEARCH_URL=http://127.0.0.1:9200 in .env
+```
+
+```sh
+# Index one crawl's worth (the crawl flow calls this on its own)
+curl -X POST .../api/crawls/<id>/index
+# → 202 { "indexed": 6, "pages": 6 }
+
+# Query
+curl ".../api/search?q=responsive"
+# → { "hits": [ { "archiveId": "…", "url": "…", "title": "responsive", … } ], "total": 3 }
+```
+
+### The text comes out of the archive
+
+BrowserHive writes `title` and `text` into the WACZ's `pages/pages.jsonl`. The
+`text` is `document.body.innerText` — **the rendered body**, not the HTML. waggle
+indexes that as-is. Re-deriving it from HTML would let the index disagree with
+what the archive signed for.
+
+`textWithheld` (`url-policy` / `content-type`) travels with it. Drop it and
+**a capture that came back empty** looks identical to **a body policy refused to
+store**. The first is a fault worth investigating; the second is normal.
+
+### The index does not know who may see what
+
+Search asks OpenSearch, then asks OpenFGA `can_view` about what came back and
+drops the rest — the same shape as `GET /api/archives`.
+
+Copying orgs or permissions into the index would filter in one query and be
+faster, but then **the index becomes an authority on authorization, and one fact
+has two homes**. Fix one and both still look like they work, so an authorization
+bypass stays silent.
+
+:::caution[Counts and paging are not exact]
+`total` is the index's raw count and **includes what authorization dropped**. Ask
+for 50 and you may get 30. Counting only what you may see means filtering before
+counting, which is the "put permissions in the index" option above. We take one
+authority over exact numbers.
+:::
+
+### Rebuilding is one statement
+
+```sql
+UPDATE archives SET indexed_at = NULL;
+```
+
+Index state is the single `archives.indexed_at` column and no body text is stored
+(everything needed is derivable from the ledger row and S3). That makes changing
+the analyzer or mapping a cheap decision.
+
+The analyzer today is the built-in `cjk` (bigram). Kuromoji needs a plugin
+install and does not run on the stock image — swap in a custom image when you
+need it, then rebuild with the statement above.
 
 ## Picking an archive in a browser
 

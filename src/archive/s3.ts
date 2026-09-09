@@ -1,5 +1,6 @@
 /**
- * 台帳のための S3 アクセス: 結果 manifest を読むことと、bucket を列挙すること。
+ * 台帳のための S3 アクセス: 結果 manifest を読むこと、アーカイブ本体を取ること、
+ * bucket を列挙すること。
  *
  * 署名付き URL は `api/presign.ts` に在る —— この client は共有するが、関心は別
  * (あちらはオブジェクトを一度も読まず、署名するだけ)。
@@ -37,6 +38,33 @@ export const getJsonObject = async (
     // 解析は呼ぶ側の仕事 (readManifest など)。ここで型を名乗らせない ——
     // 名乗れるようにすると、いつか誰かが検査せずに名乗る。
     return JSON.parse(body);
+  } catch (cause) {
+    if (isNotFound(cause)) return undefined;
+    throw cause;
+  }
+};
+
+/**
+ * オブジェクトを丸ごとバイト列で取る。無ければ `undefined`。
+ *
+ * `getJsonObject` と分けてあるのは、こちらの相手が **JSON ではない**から ——
+ * WACZ (zip) を開くのに使う。文字列に変換すると壊れる。
+ *
+ * **丸ごと読む。** WACZ の大半は WARC なので、`pages.jsonl` 1 本のために全部を
+ * 落とすことになる。それを承知でこうしている: 現物は数十 KB〜数 MB で、範囲読みの
+ * 複雑さに見合わない。規模が変わったときの直し方は既に書かれていて、
+ * waxlens の `packages/core/src/wacz/s3-range-reader.ts` が `HeadObject` で大きさを
+ * 訊いてから yauzl に Range で食わせる形を持っている。
+ */
+export const getObjectBytes = async (
+  s3: S3Client,
+  bucket: string,
+  key: string,
+): Promise<Buffer | undefined> => {
+  try {
+    const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const bytes = await result.Body?.transformToByteArray();
+    return bytes === undefined ? undefined : Buffer.from(bytes);
   } catch (cause) {
     if (isNotFound(cause)) return undefined;
     throw cause;
