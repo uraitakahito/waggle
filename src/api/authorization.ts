@@ -16,7 +16,10 @@
  * 名乗るので、同じものを渡すと検査が無意味になる。
  *
  * 共有の場所に置くと「認可に使う道具」に見えてしまい、誤用への距離が縮む。
- * `routes.ts` の中に、使ってよい唯一の場所と一緒に置いてある。
+ * いまは `api/archive-visibility.ts` の中に閉じていて、**export されていない** ——
+ * 誤用はコメントではなく型が止める。以前は `routes.ts` に private で置いていたが、
+ * 使う場所が 2 つになった時点で export され、「危ないと書いてあるが誰でも取れる」
+ * 状態になっていた。
  */
 import type { FastifyReply } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";

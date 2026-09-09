@@ -9,12 +9,12 @@
 import type { FastifyInstance } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { OpenFgaClient } from "@openfga/sdk";
-import { ConsistencyPreference } from "@openfga/sdk";
 import type { Kysely } from "kysely";
 import type { Database } from "../db/database.js";
-import type { Identity, IdentityResolver } from "./identity.js";
+import type { IdentityResolver } from "./identity.js";
 import { presignArchive } from "./presign.js";
 import { unauthorized } from "./authorization.js";
+import { mayViewArchive, viewableArchiveIds } from "./archive-visibility.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -28,27 +28,6 @@ export interface RouteDeps {
 
 /** アーカイブ一覧 1 ページあたりの行数。 */
 const PAGE_SIZE = 50;
-
-/**
- * 所属を contextual tuple として、リクエストのたびに呼び出し元の identity から
- * 組み直す。誰がどの組織に属するかは OpenFGA に一切保存しないので、同期を保つべき
- * 所属が存在しない —— 認可ストアと identity provider が食い違う窓も無い。
- *
- * **渡してよいのは `can_view` を特定の archive について訊くときだけ。** そこでは
- * object が組織を固定する。`can_submit` のように呼び出し元が object を名乗る検査に
- * 同じものを渡すと、「member だと言った者に member か訊く」形になって常に通る
- * (`api/authorization.ts` に経緯がある)。
- *
- * `api/search.ts` も同じ検査をするので export しているが、置き場所はここのまま ——
- * `authorization.ts` に移すと「認可に使う汎用の道具」に見えてしまい、誤用への距離が
- * 縮む。**写しは作らないこと。**
- */
-export const membershipTuples = (identity: Identity) =>
-  identity.organizations.map((org) => ({
-    user: `user:${identity.subject}`,
-    relation: "member",
-    object: `organization:${org}`,
-  }));
 
 export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { db, fga, s3, resolveIdentity } = deps;
@@ -80,23 +59,9 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
 
       const { id } = request.params;
 
-      const { allowed } = await fga.check(
-        {
-          user: `user:${identity.subject}`,
-          relation: "can_view",
-          object: `archive:${id}`,
-          contextualTuples: membershipTuples(identity),
-          context: { current_time: new Date().toISOString() },
-        },
-        {
-          // 古い答えが許されない唯一の場所。ここでキャッシュされた許可は、寿命の
-          // 間ずっと有効な URL を配ってしまうので、1 秒前に入った取り消しが既に
-          // 見えていなければならない。
-          consistency: ConsistencyPreference.HigherConsistency,
-        },
-      );
-
-      if (allowed !== true) {
+      // **強一貫で訊く。** ここで配る URL は寿命の間ずっと有効なので、古い許可を
+      // 使ってはいけない。理由は `archive-visibility.ts` に書いてある。
+      if (!(await mayViewArchive(fga, identity, id))) {
         log.info({ subject: identity.subject, archiveId: id }, "Denied");
         return reply.code(404).send({ error: "not found" });
       }
@@ -161,32 +126,12 @@ export const registerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
 
       if (page.length === 0) return reply.code(200).send({ archives: [] });
 
-      const now = new Date().toISOString();
-      const contextualTuples = membershipTuples(identity);
-      const result = await fga.batchCheck({
-        checks: page.map((archive) => ({
-          user: `user:${identity.subject}`,
-          relation: "can_view",
-          object: `archive:${archive.id}`,
-          // batchCheck は contextual tuple を `tuple_keys` で包む。上の単発の
-          // `check` は素の配列を取る。概念は同じで、形が違う。
-          contextualTuples: { tuple_keys: contextualTuples },
-          context: { current_time: now },
-          // 応答とリクエストを対応付けるためのもの —— 順序は保証されない。
-          // BrowserHive の取り込みの `correlationId` とは無関係で、名前が同じだけの
-          // 別概念。
-          correlationId: archive.id.replace(/-/g, ""),
-        })),
-      });
-
-      const allowed = new Set(
-        result.result
-          .filter((entry) => entry.allowed === true)
-          .map((entry) => entry.request.object),
+      const allowed = await viewableArchiveIds(
+        fga,
+        identity,
+        page.map((archive) => archive.id),
       );
-      return reply
-        .code(200)
-        .send({ archives: page.filter((archive) => allowed.has(`archive:${archive.id}`)) });
+      return reply.code(200).send({ archives: page.filter((a) => allowed.has(a.id)) });
     },
   );
 
