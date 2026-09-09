@@ -27,15 +27,15 @@
  * **別プロセスの CLI (`pnpm run capture`) はこの index の外に居る。** あちらは `runs` に行を
  * 作らないため。壊れはしない (channel はプロセスごとに別) が、**同じ対象を 2 度投げる**。
  */
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";
-import { ConsistencyPreference } from "@openfga/sdk";
 import type { Kysely } from "kysely";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../db/database.js";
-import type { Identity, IdentityResolver } from "./identity.js";
+import type { IdentityResolver } from "./identity.js";
 import type { ClientOptions } from "../config/cli-options.js";
 import type { SubmitResult } from "../client/submit.js";
+import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -113,51 +113,6 @@ interface RunBody {
   limit?: number;
 }
 
-const unauthorized = (reply: FastifyReply): FastifyReply =>
-  reply.code(401).send({ error: "unauthenticated" });
-
-/**
- * この呼び出し元が、**どれか 1 つでも**自分の組織で取り込みを起こしてよいか。
- *
- * 実行は組織ごとではなく全体に効く(`capture_targets` の enabled な行をすべて投げる)ので、
- * 「どの組織について訊くか」を選べない。許されている組織がどこかに 1 つあれば起こせる、
- * とする —— **その 1 つの許可で、他の組織の対象も投げられる**。組織を跨いで信頼できる
- * 相手にだけ `submitter` を与えること。
- *
- * **`routes.ts` と違い、contextual tuple を送らない。** あちらは `can_view` を特定の
- * archive について訊くので、所属の申告を渡しても object が組織を固定する。こちらの
- * object は呼び出し元が名乗った組織なので、所属の申告を一緒に渡すと「member だと
- * 言った者に member か訊く」形になり、検査が常に通る。実際そう書いて往復で見つけた
- * (`fga/model.fga` の `submitter` の注記)。判断材料は保存された tuple だけにする。
- */
-const maySubmit = async (fga: OpenFgaClient, identity: Identity): Promise<boolean> => {
-  if (identity.organizations.length === 0) return false;
-  const results = await Promise.all(
-    identity.organizations.map(async (org) => {
-      const { allowed } = await fga.check(
-        {
-          user: `user:${identity.subject}`,
-          relation: "can_submit",
-          object: `organization:${org}`,
-        },
-        {
-          // 取り消しが即座に効くべき側。古い許可で実行を起こさせない。
-          consistency: ConsistencyPreference.HigherConsistency,
-        },
-      );
-      return allowed === true;
-    }),
-  );
-  return results.includes(true);
-};
-
-/** 部分 unique index の違反か。走行中の 2 本目だけがこれになる。 */
-const isSingleActiveViolation = (err: unknown): boolean =>
-  typeof err === "object" &&
-  err !== null &&
-  (err as { code?: string }).code === "23505" &&
-  String((err as { constraint?: string }).constraint ?? "").includes("runs_single_active");
-
 export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): void => {
   const { db, fga, resolveIdentity, launch, baseOptions } = deps;
 
@@ -200,7 +155,7 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RunRouteDeps): voi
           .values({ id: runId, status: "running", trigger: "api" })
           .execute();
       } catch (err) {
-        if (isSingleActiveViolation(err)) {
+        if (isUniqueViolation(err, "runs_single_active")) {
           log.info({ subject: identity.subject }, "Run already in progress");
           return reply.code(409).send({ error: "a run is already in progress" });
         }

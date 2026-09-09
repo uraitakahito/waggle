@@ -9,7 +9,7 @@
  */
 import Fastify, { type FastifyError } from "fastify";
 import { Command, Option } from "commander";
-import { collectEnv, fgaFrom, storageFrom } from "../config/env.js";
+import { collectEnv, fgaFrom, storageFrom, searchConfig } from "../config/env.js";
 import { createKyselyClient } from "../db/kysely.js";
 import { createFgaClient } from "../fga/client.js";
 import { drainOutbox } from "../fga/outbox-worker.js";
@@ -19,6 +19,8 @@ import { registerRoutes } from "./routes.js";
 import { registerPicker, replayOriginFromEnv } from "./picker.js";
 import { parseRunFormats, registerRunRoutes } from "./runs.js";
 import { registerCrawlRoutes } from "./crawls.js";
+import { registerSearchRoutes } from "./search.js";
+import { createSearchClient } from "../search/client.js";
 import { createWindmillDispatcher } from "../crawl/dispatch.js";
 import { runClient } from "../client/run.js";
 import { optional } from "../config/env.js";
@@ -129,6 +131,22 @@ const start = async (options: ServerOptions): Promise<void> => {
     logger.info("WAGGLE_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
   } else {
     registerCrawlRoutes(app, { db, fga, s3, bucket: storage.bucket, resolveIdentity, dispatch });
+  }
+
+  // 全文検索の口。クロールと同じ形 —— 設定が無ければ出さない。索引を持たない配備が
+  // ありうるし、そこでは 404 が正しい答え。
+  const searchSettings = searchConfig();
+  if (searchSettings === undefined) {
+    logger.info("WAGGLE_OPENSEARCH_URL is not set — /api/search is not served");
+  } else {
+    registerSearchRoutes(app, {
+      db,
+      fga,
+      s3,
+      search: createSearchClient(searchSettings),
+      index: searchSettings.index,
+      resolveIdentity,
+    });
   }
 
   const drainTimer = setInterval(() => {

@@ -312,6 +312,42 @@ services:
       # アーカイブが永久に開かない**。公開範囲の話ではない。
       - "127.0.0.1:8899:8080"
 
+  # 全文検索の索引。既定では起動しない:
+  #
+  #   container-compose --profile search up -d -b
+  #
+  # **開発スタック限定の設定が 2 つ入っている。** security plugin を切っているので
+  # 認証も TLS も無く、`discovery.type=single-node` なので冗長性も無い。API に
+  # 触れるのは waggle だけ (`WAGGLE_OPENSEARCH_URL`) で、認可は OpenFGA が持つ ——
+  # 索引そのものは誰に見せてよいかを知らない (`api/search.ts` に理由がある)。
+  #
+  # 解析器は組み込みの `cjk`。kuromoji は plugin の導入が要り、既製イメージでは
+  # 動かない (`src/search/client.ts`)。
+  opensearch:
+    image: docker.io/opensearchproject/opensearch:3.8.0
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      # 既定は 1g。開発では 512m で足りるうえ、このスタックは他に 10 本以上
+      # 動いている。
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      # 1 ノードなので複製先が無い。既定のままだと index が黄色で建ち続ける。
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ports:
+      # host 側から索引を直接覗くため (`curl 127.0.0.1:9200/_cat/indices`)。
+      # waggle 自身は DNS 名で引く。
+      - "127.0.0.1:9200:9200"
+    # JVM は 512m の heap の外にも要る。2g は実測ではなく安全側の見積り。
+    mem_limit: 2gb
+    # **ボリュームを持たせない。** 名前付きボリュームは root 所有で作られ、
+    # OpenSearch は uid 1000 で動くので `data/nodes` を作れず
+    # `AccessDeniedException` で起動に失敗する (実測)。
+    #
+    # 所有者を直して持たせることもできるが、**持たせる利得が小さい**: 索引は
+    # `UPDATE archives SET indexed_at = NULL` で作り直せる (`009` を見ること)。
+    # 落とせば消えるが、消えても困らないように作ってある。
+    profiles: ["search"]
+
 volumes:
   postgres-data:
   seaweedfs-data:

@@ -57,6 +57,8 @@ export const OPTIONAL_ENV = [
   "WAGGLE_CRAWL_WEBHOOK_TOKEN",
   "WAGGLE_CRAWL_WEBHOOK_TIMEOUT_MS",
   "WAGGLE_DRAIN_INTERVAL_MS",
+  "WAGGLE_OPENSEARCH_URL",
+  "WAGGLE_OPENSEARCH_INDEX",
 ] as const;
 
 /**
@@ -214,3 +216,21 @@ export const storageFrom = (need: Need): StorageConfig => ({
 });
 
 export const storageConfig = (): StorageConfig => collectEnv(storageFrom);
+
+export interface SearchConfig {
+  url: string;
+  index: string;
+}
+
+/**
+ * 全文検索の宛先。**設定が無ければ `undefined`** —— 検索を持たない配備がありうる。
+ *
+ * `createWindmillDispatcher` と同じ形。呼ぶ側 (`api/server.ts`) は `undefined` の
+ * ときに口ごと出さない。「設定がありません」と実行時に言うのでは遅く、そのときには
+ * 呼んだ側は索引されたつもりでいる。
+ */
+export const searchConfig = (): SearchConfig | undefined => {
+  const url = optional("WAGGLE_OPENSEARCH_URL", "");
+  if (url === "") return undefined;
+  return { url, index: optional("WAGGLE_OPENSEARCH_INDEX", "waggle-pages") };
+};
