@@ -7,6 +7,23 @@ type organization
   relations
     define member: [user]
     define admin: [user]
+    # 取り込みを起こしてよい者。**保存する**。
+    #
+    # `member` を含めてはならない。所属は保存せず、呼び出し元のトークンから組んだ
+    # contextual tuple として届く —— つまり `member` は **呼び出し元の申告**そのもの。
+    # `can_submit` がそれで満たせると、「自分は member だ」と言った者に「member か」を
+    # 訊くことになり、検査は必ず true を返す。実際そう書いて、往復で 202 が出た。
+    #
+    # 権威の置き場所が違う: **誰であるか**は IdP が決め (だから contextual)、
+    # **何をしてよいか**は OpenFGA が決める (だから保存する)。
+    define submitter: [user]
+
+    # 取り込みの実行を起こしてよいか。`archive` 側ではなく組織に載るのは、**まだ job が
+    # 無い時点の問い**だから —— 訊く相手の object が他に無い。
+    #
+    # 保存された関係だけで決まる。object は呼び出し元が名乗った組織でよい ——
+    # 名乗りが嘘なら、その組織に tuple が無いので落ちる。
+    define can_submit: submitter or admin
 
 # 投げた取り込み 1 回。所有の単位でもある —— ジョブは誰が頼んだかと、どの組織の
 # ために走ったかを知っていて、そこから生まれた成果物はすべてそれを継ぐ。

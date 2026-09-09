@@ -144,8 +144,15 @@ const collectResults = async (
 /**
  * 最上位の段取り: Postgres から URL を読み、client を設定し、全エントリを投げ、
  * まとめをログに出す。
+ *
+ * 投げた結果をそのまま返す。CLI は捨ててよい(ログに出ているのはこれの要約) ——
+ * 要るのは実行 API の側で、`runs` の行に件数を書き戻すため。投げるものが無ければ空配列。
+ *
+ * **プロセスに 1 本しか走らせないこと。** gRPC の channel はプロセス共有で、この関数は
+ * 終わりに必ず閉じる —— 2 本並べると互いの channel を畳む。API 経路では `runs` の
+ * 部分 unique index がそれを構造で防いでいる(`006-create-runs` を見ること)。
  */
-export const runClient = async (options: ClientOptions): Promise<void> => {
+export const runClient = async (options: ClientOptions): Promise<SubmitResult[]> => {
   const startTime = Date.now();
 
   // 環境変数はここで一度に検査する。**取り込みを投げる前に。** 検査を collectResults
@@ -182,7 +189,7 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
 
     if (entries.length === 0) {
       logger.info("No entries to process");
-      return;
+      return [];
     }
 
     // 自分が属さない組織の URL は投げない。
@@ -216,6 +223,7 @@ export const runClient = async (options: ClientOptions): Promise<void> => {
 
     const totalDuration = Date.now() - startTime;
     logSummary(results, totalDuration);
+    return results;
   } finally {
     closeClient();
   }

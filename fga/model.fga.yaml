@@ -126,3 +126,62 @@ tests:
           current_time: "2026-07-30T00:00:00Z"
         assertions:
           can_delete: false
+
+  - name: 保存された submitter は取り込みを起こせる
+    tuples:
+      - user: user:bob
+        relation: submitter
+        object: organization:acme
+    check:
+      - user: user:bob
+        object: organization:acme
+        assertions:
+          can_submit: true
+
+  - name: 組織の admin も起こせる
+    tuples:
+      - user: user:erin
+        relation: admin
+        object: organization:acme
+    check:
+      - user: user:erin
+        object: organization:acme
+        assertions:
+          can_submit: true
+
+  # この 1 本がこのモデルの要。所属は呼び出し元の申告なので、これが true になる形に
+  # 書くと検査そのものが無意味になる (`model.fga` の `submitter` の注記を見ること)。
+  - name: 所属しているだけでは取り込みを起こせない
+    tuples:
+      - user: user:carol
+        relation: member
+        object: organization:acme
+    check:
+      - user: user:carol
+        object: organization:acme
+        assertions:
+          can_submit: false
+          # 所属そのものは効いている。効いていないのは can_submit への経路だけ。
+          member: true
+
+  - name: 別の組織の submitter は、その組織でしか起こせない
+    tuples:
+      - user: user:dave
+        relation: submitter
+        object: organization:contoso
+    check:
+      - user: user:dave
+        object: organization:acme
+        assertions:
+          can_submit: false
+      - user: user:dave
+        object: organization:contoso
+        assertions:
+          can_submit: true
+
+  - name: 何も持たない利用者は起こせない
+    check:
+      - user: user:mallory
+        object: organization:acme
+        assertions:
+          can_submit: false
