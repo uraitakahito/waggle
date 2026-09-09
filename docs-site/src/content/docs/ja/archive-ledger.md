@@ -135,15 +135,26 @@ curl -X POST http://localhost:7070/api/runs \
 # → 202 { "runId": "e5f4c0bf-…" }
 
 curl http://localhost:7070/api/runs/e5f4c0bf-…
-# → { "status": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
+# → { "state": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
 ```
 
 実行は数十分に達しうる —— 受理された取り込みを 1 件ずつ待つため —— ので、この呼び出しに
 同期の形は無い。**202 は受理であって完了ではない。** 結果が住むのは `runs` の行。
 
-`status` が語るのは実行そのものであって、何が取れたかではない。投げたものが全部拒まれても
+`state` が語るのは実行そのものであって、何が取れたかではない。投げたものが全部拒まれても
 `succeeded` で終わる —— 最後まで走ったのは事実で、何が起きたかは `accepted` / `rejected`
 が言う。`failed` になるのは実行が例外で落ちたときだけ。
+
+:::note[なぜ `status` ではなく `state` か]
+この workspace では両方の語が使われているので、規則を書いておきます。
+**進行中の値を取りうる列は `state`。** `runs.state` / `crawls.state` /
+`crawl_pages.state` はいずれも取りうります（`running`、`pending`）。線の上の
+`PageReport.status` は取りえない（`captured` / `failed` / `skipped` だけ）ので、
+`crawl_pages.state` に書き込む値であっても `status` のままが正しい。
+
+`runs` だけが例外でした —— `runs.status` が `running` を持っていて、2 つの型は
+語が違うだけで文字通り同一でした。
+:::
 
 ### 同時に 1 本
 
@@ -154,7 +165,7 @@ curl http://localhost:7070/api/runs/e5f4c0bf-…
 担保はアプリの旗ではなく、部分 unique index:
 
 ```sql
-CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE status = 'running'
+CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE state = 'running'
 ```
 
 プロセスの中の旗は、プロセスが 2 つになった日まで**しか**保たない。Postgres はどちらでも

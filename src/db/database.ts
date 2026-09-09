@@ -78,7 +78,7 @@ export interface CaptureSubmissionsTable {
  */
 export interface RunsTable {
   id: string;
-  status: RunStatus;
+  state: RunState;
   trigger: RunTrigger;
   startedAt: ColumnType<Date, string | undefined, never>;
   // 走行中は NULL。入っている＝終わっている。
@@ -89,7 +89,7 @@ export interface RunsTable {
   error: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
-export type RunStatus = "running" | "succeeded" | "failed";
+export type RunState = "running" | "succeeded" | "failed";
 
 /** 何がこの実行を起こしたか。台帳の `submittedBy` は実行の身元で、これは起動した経路。 */
 export type RunTrigger = "api" | "cli";

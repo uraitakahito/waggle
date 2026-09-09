@@ -143,16 +143,27 @@ curl -X POST http://localhost:7070/api/runs \
 # → 202 { "runId": "e5f4c0bf-…" }
 
 curl http://localhost:7070/api/runs/e5f4c0bf-…
-# → { "status": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
+# → { "state": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
 ```
 
 A run can take tens of minutes — each accepted capture is waited on in turn — so
 there is no synchronous form of this call. **202 means accepted, not finished.**
 The `runs` row is where the outcome lives.
 
-`status` is about the run, not about what it captured. A run whose submissions
+`state` is about the run, not about what it captured. A run whose submissions
 were all rejected still ends `succeeded`: it ran to completion, and `accepted` /
 `rejected` say what came of it. Only a run that threw ends `failed`.
+
+:::note[Why `state` and not `status`]
+Both words are used in this workspace, so the rule is worth stating: **a column
+that can hold an in-progress value is called `state`.** `runs.state`,
+`crawls.state` and `crawl_pages.state` all can (`running`, `pending`); the wire's
+`PageReport.status` cannot (`captured` / `failed` / `skipped` only), which is why
+that one keeps `status` even though it is written into `crawl_pages.state`.
+
+`runs` used to be the exception — `runs.status` held `running` — and the two type
+aliases were literally identical apart from the word.
+:::
 
 ### One at a time
 
@@ -164,7 +175,7 @@ process tear down each other's connection.
 The guarantee is a partial unique index, not an application flag:
 
 ```sql
-CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE status = 'running'
+CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE state = 'running'
 ```
 
 A flag in the process would hold only until the day a second process appears.

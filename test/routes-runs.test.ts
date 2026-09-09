@@ -104,7 +104,7 @@ describe("実行 route の入力検証", () => {
 /** 認可まで届く経路を見るための、最小の偽物。 */
 interface FakeRun {
   id: string;
-  status: string;
+  state: string;
   trigger: string;
   startedAt: Date;
   finishedAt: Date | null;
@@ -120,9 +120,9 @@ interface FakeRun {
  */
 const fakeDb = (rows: FakeRun[]) => ({
   insertInto: () => ({
-    values: (row: { id: string; status: string; trigger: string }) => ({
+    values: (row: { id: string; state: string; trigger: string }) => ({
       execute: async (): Promise<void> => {
-        if (rows.some((r) => r.status === "running")) {
+        if (rows.some((r) => r.state === "running")) {
           const err = new Error("duplicate key") as Error & { code: string; constraint: string };
           err.code = "23505";
           err.constraint = "runs_single_active_idx";
@@ -130,7 +130,7 @@ const fakeDb = (rows: FakeRun[]) => ({
         }
         rows.push({
           id: row.id,
-          status: row.status,
+          state: row.state,
           trigger: row.trigger,
           startedAt: new Date(),
           finishedAt: null,
@@ -225,7 +225,7 @@ describe("実行 route の認可と単一実行", () => {
     expect(res.statusCode).toBe(202);
     expect(res.json()).toHaveProperty("runId");
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe("running");
+    expect(rows[0]?.state).toBe("running");
     await app.close();
   });
 
@@ -273,7 +273,7 @@ describe("実行 route の認可と単一実行", () => {
     // 背後の更新が回るまで待つ。
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(rows[0]?.status).toBe("succeeded");
+    expect(rows[0]?.state).toBe("succeeded");
     expect(rows[0]?.submitted).toBe(2);
     expect(rows[0]?.accepted).toBe(1);
     expect(rows[0]?.rejected).toBe(1);
@@ -293,7 +293,7 @@ describe("実行 route の認可と単一実行", () => {
     await app.inject({ method: "POST", url: "/api/runs", payload: {} });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(rows[0]?.status).toBe("failed");
+    expect(rows[0]?.state).toBe("failed");
     expect(rows[0]?.error).toContain("browserhive unreachable");
     await app.close();
   });
@@ -302,7 +302,7 @@ describe("実行 route の認可と単一実行", () => {
     const rows: FakeRun[] = [
       {
         id: UUID,
-        status: "succeeded",
+        state: "succeeded",
         trigger: "api",
         startedAt: new Date("2026-09-09T00:00:00Z"),
         finishedAt: new Date("2026-09-09T00:05:00Z"),
@@ -317,7 +317,7 @@ describe("実行 route の認可と単一実行", () => {
     const res = await app.inject({ method: "GET", url: `/api/runs/${UUID}` });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ runId: UUID, status: "succeeded", submitted: 3 });
+    expect(res.json()).toMatchObject({ runId: UUID, state: "succeeded", submitted: 3 });
     await app.close();
   });
 
