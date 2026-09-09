@@ -26,17 +26,17 @@
  * 報告に taskId が載っているので、そのときに書けばよい。reconciler が
  * `unattributed` を数えている理由 (`archive/reconcile.ts`) はそのまま残る。
  */
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";
-import { ConsistencyPreference } from "@openfga/sdk";
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import type { Database, CrawlScope } from "../db/database.js";
-import type { Identity, IdentityResolver } from "./identity.js";
+import type { IdentityResolver } from "./identity.js";
 import { acceptLinks, parseHttpUrl, type DiscoveredLink } from "../crawl/scope.js";
 import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
+import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -127,35 +127,6 @@ interface LevelBody {
   results: PageReport[];
 }
 
-const unauthorized = (reply: FastifyReply): FastifyReply =>
-  reply.code(401).send({ error: "unauthenticated" });
-
-/** `runs.ts` と同じ形。保存された tuple だけで決める —— 所属の申告は渡さない。 */
-const maySubmit = async (fga: OpenFgaClient, identity: Identity): Promise<boolean> => {
-  if (identity.organizations.length === 0) return false;
-  const results = await Promise.all(
-    identity.organizations.map(async (org) => {
-      const { allowed } = await fga.check(
-        {
-          user: `user:${identity.subject}`,
-          relation: "can_submit",
-          object: `organization:${org}`,
-        },
-        { consistency: ConsistencyPreference.HigherConsistency },
-      );
-      return allowed === true;
-    }),
-  );
-  return results.includes(true);
-};
-
-/** 部分 unique index の違反か。走行中の 2 本目だけがこれになる。 */
-const isSingleActiveViolation = (err: unknown): boolean =>
-  typeof err === "object" &&
-  err !== null &&
-  (err as { code?: string }).code === "23505" &&
-  String((err as { constraint?: string }).constraint ?? "").includes("crawls_single_active");
-
 export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps): void => {
   const { db, fga, resolveIdentity, dispatch } = deps;
 
@@ -222,7 +193,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       try {
         await db.insertInto("crawls").values(crawl).execute();
       } catch (err) {
-        if (isSingleActiveViolation(err)) {
+        if (isUniqueViolation(err, "crawls_single_active")) {
           log.info({ subject: identity.subject }, "Crawl already in progress");
           return reply.code(409).send({ error: "a crawl is already in progress" });
         }
