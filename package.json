@@ -43,6 +43,8 @@
     "fga:deploy": "node --env-file-if-exists=.env scripts/fga-deploy.mjs",
     "fga:drain": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js drain",
     "fga:reconcile": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js reconcile",
+    "fga:grant": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js grant",
+    "fga:revoke": "pnpm run build && node --env-file-if-exists=.env dist/fga/ledger-commands.js revoke",
     "api": "pnpm run build && node --env-file-if-exists=.env dist/api/server.js",
     "db:migrate": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js up",
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",

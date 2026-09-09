@@ -8,6 +8,8 @@
  *
  *   waggle-ledger drain      積まれた tuple を OpenFGA へ配送する
  *   waggle-ledger reconcile  bucket の manifest から台帳の穴を埋める
+ *   waggle-ledger grant      組織に対する権限を与える
+ *   waggle-ledger revoke     それを取り消す
  */
 import { Command, Option } from "commander";
 import { fgaConfig, storageConfig } from "../config/env.js";
@@ -16,6 +18,7 @@ import { createFgaClient } from "./client.js";
 import { drainOutbox } from "./outbox-worker.js";
 import { createS3Client } from "../archive/s3.js";
 import { reconcile } from "../archive/reconcile.js";
+import { isAlreadyInDesiredState } from "./client.js";
 import { fatal, logger } from "../logger.js";
 
 const databaseUrlOption = new Option("--database-url <url>", "Postgres connection string")
@@ -43,6 +46,49 @@ const runReconcile = async (databaseUrl: string): Promise<void> => {
   }
 };
 
+/**
+ * 組織そのものに対して保存できる権限。
+ *
+ * `member` は**意図して入れていない**。所属は保存せず、呼び出し元のトークンから
+ * contextual tuple として毎回届く —— ここで書けるようにすると、同じ事実の権威が
+ * 2 か所に生まれ、食い違ったときにどちらが正しいのか誰にも言えなくなる
+ * (`fga/model.fga` の `submitter` の注記)。
+ */
+const GRANTABLE = ["submitter", "admin"] as const;
+type Grantable = (typeof GRANTABLE)[number];
+
+const isGrantable = (value: string): value is Grantable =>
+  (GRANTABLE as readonly string[]).includes(value);
+
+/**
+ * 組織への権限を 1 つ書く / 消す。
+ *
+ * outbox を通さず直に書く。outbox が在るのは、tuple の書き込みをアプリの
+ * トランザクションに載せられないから —— 運用者が手で叩くこの経路にはその
+ * トランザクションが無い。直に書けば、通ったかどうかがその場で分かる。
+ */
+const runGrant = async (
+  relation: string,
+  user: string,
+  org: string,
+  remove: boolean,
+): Promise<void> => {
+  if (!isGrantable(relation)) {
+    throw new Error(`relation must be one of: ${GRANTABLE.join(", ")} (got ${relation})`);
+  }
+  const tuple = { user: `user:${user}`, relation, object: `organization:${org}` };
+  const fga = createFgaClient(fgaConfig());
+  try {
+    await fga.write(remove ? { deletes: [tuple] } : { writes: [tuple] });
+  } catch (caught) {
+    // 既にその状態なら、頼まれたことは達成されている。
+    if (!isAlreadyInDesiredState(caught)) throw caught;
+    logger.info(tuple, remove ? "Already revoked" : "Already granted");
+    return;
+  }
+  logger.info(tuple, remove ? "Revoked" : "Granted");
+};
+
 const program = new Command()
   .name("waggle-ledger")
   .description("Maintain waggle's archive ledger and its OpenFGA tuples")
@@ -62,6 +108,26 @@ program
   .addOption(databaseUrlOption)
   .action(async (opts: { databaseUrl: string }) => {
     await runReconcile(opts.databaseUrl);
+  });
+
+program
+  .command("grant")
+  .description(`Give <user> <relation> on <organization> (one of: ${GRANTABLE.join(", ")})`)
+  .argument("<relation>")
+  .argument("<user>")
+  .argument("<organization>")
+  .action(async (relation: string, user: string, org: string) => {
+    await runGrant(relation, user, org, false);
+  });
+
+program
+  .command("revoke")
+  .description("Take back what `grant` gave")
+  .argument("<relation>")
+  .argument("<user>")
+  .argument("<organization>")
+  .action(async (relation: string, user: string, org: string) => {
+    await runGrant(relation, user, org, true);
   });
 
 program.parseAsync(process.argv).catch(fatal);
