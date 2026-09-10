@@ -22,7 +22,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { readManifest } from "./manifest.js";
 import type { Database } from "../db/database.js";
 import { getJsonObject, listAllKeys } from "./s3.js";
-import { registerArchive } from "./register.js";
+import { admitArchive } from "./admit.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "archive-reconcile" });
@@ -106,7 +106,7 @@ export const reconcile = async (
     // identity はここでは作らない。reconcile は掃除役で、いま動かしている人と
     // 取り込みを頼んだ人は別 —— 投げた時点の記録から読む。`org_id` が既に
     // 取っているのと同じ形。
-    const registered = await registerArchive(
+    const registered = await admitArchive(
       db,
       readManifest(raw),
       submission.orgId,

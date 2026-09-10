@@ -2,7 +2,7 @@
  * `pages.jsonl` の行を、索引に載せる 1 件へ写す。**純粋な部分**。
  *
  * ここだけが「何を索引するか」を決めている。S3 も OpenSearch も知らないので、
- * どちらも立てずに確かめられる —— `archive/register.ts` の `archiveRow` を
+ * どちらも立てずに確かめられる —— `archive/admit.ts` の `archiveRow` を
  * 切り出してあるのと同じ理由。
  *
  * ## 本文は既に抽出されている

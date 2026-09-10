@@ -56,7 +56,7 @@ down for hours, or a result can age out of BrowserHive's cache before the
 poller sees it, and the next reconcile still picks it up.
 
 **Crawling** — a link-following crawl registers what it captured as soon as it
-reports a level (`src/crawl/register-level.ts`). The level report does not carry
+reports a level (`src/crawl/admit-level.ts`). The level report does not carry
 artifact locations, so it re-reads `.result.json` before registering.
 
 :::note[This path used to be missing]

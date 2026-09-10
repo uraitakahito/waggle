@@ -33,7 +33,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import type { Database, CrawlScope } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
-import { registerLevel } from "../crawl/register-level.js";
+import { admitLevel } from "../crawl/admit-level.js";
 import { acceptLinks, parseHttpUrl, type DiscoveredLink } from "../crawl/scope.js";
 import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
@@ -397,8 +397,8 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
 
         // ── 2b. 台帳に載せる ──────────────────────────────────────────
         // ここが無いと、クロールしたページは `reconcile` を走らせるまで存在しない。
-        // 詳しくは `crawl/register-level.ts`。
-        await registerLevel(captured, {
+        // 詳しくは `crawl/admit-level.ts`。
+        await admitLevel(captured, {
           db,
           s3: deps.s3,
           bucket: deps.bucket,

@@ -3,7 +3,7 @@
  *
  * ## なぜ要るのか
  *
- * クロールの経路は **`archives` に 1 行も書いていなかった**。`registerArchive` を
+ * クロールの経路は **`archives` に 1 行も書いていなかった**。`admitArchive` を
  * 呼ぶのは `client/run.ts` (CLI 経路) と `archive/reconcile.ts` だけで、クロールは
  * `crawl_pages` と `capture_submissions` にしか跡を残さない。実測でも、10 ページ
  * 取り込んだクロールに対して台帳の該当行は 0 件だった。
@@ -14,7 +14,7 @@
  *
  * ## 報告からは登録できない
  *
- * 段の報告が運ぶのは `taskId` と状態だけで、`registerArchive` が要る
+ * 段の報告が運ぶのは `taskId` と状態だけで、`admitArchive` が要る
  * `CaptureResultReport` (成果物の在り処、`waczComplete`、署名、取り込み時刻) は
  * 入っていない。だから **S3 の manifest を読み直す**。
  *
@@ -33,11 +33,11 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { manifestKey } from "../archive/watch.js";
 import { getJsonObject } from "../archive/s3.js";
 import { readManifest } from "../archive/manifest.js";
-import { registerArchive } from "../archive/register.js";
+import { admitArchive } from "../archive/admit.js";
 import type { Database } from "../db/database.js";
 import { createChildLogger } from "../logger.js";
 
-const log = createChildLogger({ module: "crawl-register-level" });
+const log = createChildLogger({ module: "crawl-admit-level" });
 
 /** 段の報告のうち、台帳に載せうるもの。 */
 export interface CapturedPage {
@@ -46,7 +46,7 @@ export interface CapturedPage {
   url: string;
 }
 
-export interface RegisterLevelOptions {
+export interface AdmitLevelOptions {
   db: Kysely<Database>;
   s3: S3Client;
   bucket: string;
@@ -58,13 +58,13 @@ export interface RegisterLevelOptions {
 /**
  * 取り込めたページを順に台帳へ。返すのは実際に入った件数。
  *
- * `registerArchive` は `(bucket, object_key)` の unique で冪等なので、同じ段が
+ * `admitArchive` は `(bucket, object_key)` の unique で冪等なので、同じ段が
  * 二度報告されても増えない。**逐次で回す** —— 段あたり高々ホスト数ぶんで、
  * 並列にする理由が無い。
  */
-export const registerLevel = async (
+export const admitLevel = async (
   pages: CapturedPage[],
-  options: RegisterLevelOptions,
+  options: AdmitLevelOptions,
 ): Promise<number> => {
   let registered = 0;
   for (const page of pages) {
@@ -77,7 +77,7 @@ export const registerLevel = async (
         log.debug({ taskId: page.taskId, key }, "no manifest yet; leaving it to reconcile");
         continue;
       }
-      const result = await registerArchive(
+      const result = await admitArchive(
         options.db,
         readManifest(raw),
         options.orgId,

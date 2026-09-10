@@ -1,6 +1,19 @@
 /**
- * 終わった取り込みを台帳に入れ、それを到達可能にする tuple を queue に積む ——
- * 1 つのトランザクションで。
+ * 終わった取り込みを台帳に **受け入れる** —— 行を入れ、それを到達可能にする tuple を
+ * queue に積む。1 つのトランザクションで。
+ *
+ * ## なぜ `register` ではないのか
+ *
+ * 以前は `registerArchive` という名前だった。「登録する」は前半しか言っておらず、
+ * **後半は「誰がそのアーカイブを読めるか」を決める部分**なのに、呼び出し箇所だけを
+ * 読むと台帳に行を足しているようにしか見えなかった。
+ *
+ * 名前が短いことは引数に出ていた —— `orgId` と `submittedBy` は tuple のためだけに
+ * 使われる。行を書くだけの操作が、なぜ誰が投げたかを知る必要があるのか、
+ * 「登録」では説明できない。
+ *
+ * `accept` は使えない (`crawl/scope.ts` の `acceptLinks` と `runs.accepted` で
+ * 別の意味に取られている)。`admit` は**入れる**と**通す**の両方を含む。
  *
  * この 2 つの書き込みは、それだけでは 1 つの原子的な操作にできない: アーカイブの
  * 行は Postgres へ、関係の tuple は OpenFGA の HTTP API へ行き、両方に跨がる
@@ -21,9 +34,9 @@ import type { Database } from "../db/database.js";
 import { parseS3Uri } from "./s3-uri.js";
 import { createChildLogger } from "../logger.js";
 
-const log = createChildLogger({ module: "archive-register" });
+const log = createChildLogger({ module: "archive-admit" });
 
-export interface RegisterResult {
+export interface AdmitResult {
   /** 何も挿入しなかったときは `undefined` —— エラーではない。下を見ること。 */
   archiveId?: string;
   reason?: "no-archive" | "already-known";
@@ -68,7 +81,7 @@ export const archiveRow = (
   capturedAt: report.timestamp,
 });
 
-export const registerArchive = async (
+export const admitArchive = async (
   db: Kysely<Database>,
   report: CaptureResultReport,
   orgId: string,
@@ -79,7 +92,7 @@ export const registerArchive = async (
    * 投げたものがそれ。その場合、組織のメンバーは読めるが、削除できる者は居ない。
    */
   submittedBy: string | null,
-): Promise<RegisterResult> => {
+): Promise<AdmitResult> => {
   // 失敗した取り込みは何もアップロードしていない。それを記録すると、署名の
   // エンドポイントが存在しないオブジェクトの URL を配ることになる —— 404 に対して
   // 認可が完璧に働いている状態で、最も気づきにくい壊れ方。

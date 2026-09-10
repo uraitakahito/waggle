@@ -8,7 +8,7 @@ import { createKyselyClient } from "../db/kysely.js";
 import type { Database } from "../db/database.js";
 import { createS3Client } from "../archive/s3.js";
 import { waitForCapture } from "../archive/watch.js";
-import { registerArchive } from "../archive/register.js";
+import { admitArchive } from "../archive/admit.js";
 import { logger } from "../logger.js";
 import type { CaptureSettings } from "../types/capture.js";
 import { closeClient, configureClient } from "../rpc/client.js";
@@ -131,7 +131,7 @@ const collectResults = async (
         ...(options.captureTimeoutMs !== undefined && { timeoutMs: options.captureTimeoutMs }),
       });
       if (!report) continue;
-      await registerArchive(db, report, result.orgId, identity.subject);
+      await admitArchive(db, report, result.orgId, identity.subject);
     } catch (caught) {
       logger.warn(
         { err: caught, taskId: result.taskId },
