@@ -39,6 +39,7 @@ import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
 import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
+import { loadTargets } from "../data/url-source.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -115,6 +116,13 @@ export interface CrawlRouteDeps {
 
 interface CrawlBody {
   seeds?: string[];
+  /**
+   * 種を明示せず、`capture_targets` の有効な行から取る。
+   *
+   * これが `runs` を畳んだ先。既定では**辿らない** (`maxDepth: 0`) ので、
+   * 「登録済みの URL 一覧を、いま全部取ってこい」がそのまま表せる。
+   */
+  fromTargets?: { limit?: number };
   scope?: CrawlScope;
   maxDepth?: number;
   maxPages?: number;
@@ -158,7 +166,9 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           // 知らない鍵は拒む。`server.ts` の `removeAdditional: false` がこれを
           // 「黙って削る」ではなく「400 で返す」意味にしている。
           additionalProperties: false,
-          required: ["seeds"],
+          // **`seeds` と `fromTargets` のどちらか一方**。schema では表さず handler で
+          // 見る —— ajv の `oneOf` は「どちらでもない」と「両方」を同じ 400 にするが、
+          // 呼ぶ側にとっては別の間違いなので、言い分を分けたい。
           properties: {
             // **1 本以上。** 種を持たないクロールは始まりが無いので進みようがなく、
             // 受理されたのに何も起きない、という形になる (`011` の CHECK と対)。
@@ -166,6 +176,11 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
               type: "array",
               minItems: 1,
               items: { type: "string", minLength: 1 },
+            },
+            fromTargets: {
+              type: "object",
+              additionalProperties: false,
+              properties: { limit: { type: "integer", minimum: 1 } },
             },
             scope: { type: "string", enum: ["same-origin", "same-host"] },
             maxDepth: { type: "integer", minimum: 0, maximum: 10 },
@@ -187,10 +202,44 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       const body = request.body ?? {};
-      // schema が `seeds` を必須かつ 1 本以上にしているので、ここに来た時点で
-      // 空でない文字列の配列である。**読めない種が 1 本でもあれば拒む** ——
-      // 黙って落とすと、投げた側は全部辿ったつもりで結果を読むことになる。
-      const seeds = (body.seeds ?? []).map((raw) => parseHttpUrl(raw));
+
+      // **どちらか一方。** 両方渡されたら、どちらを使うかをこちらが決めることに
+      // なるので拒む。片方も無ければ始まりが無い。
+      const fromTargets = body.fromTargets;
+      if ((body.seeds === undefined) === (fromTargets === undefined)) {
+        return reply.code(400).send({ error: "provide exactly one of seeds or fromTargets" });
+      }
+
+      // 組織は呼び出し元の 1 つ目。`maySubmit` はどれか 1 つで許されていれば通すので、
+      // 帰属も同じ組織に寄せる。**対象を読むときの絞り込みにも同じ値を使う。**
+      const orgId = identity.organizations[0] ?? "";
+
+      // `fromTargets` なら `capture_targets` から。`run.ts` が読んでいたのと同じ表で、
+      // 絞り込みだけが変わる (組織で絞る)。
+      const rawSeeds =
+        fromTargets === undefined
+          ? (body.seeds ?? [])
+          : (
+              await loadTargets(db, {
+                orgId,
+                ...(fromTargets.limit === undefined ? {} : { limit: fromTargets.limit }),
+              })
+            ).map((row) => row.url);
+
+      // **1 本も無ければ拒む。** 対象が 0 件のときにここを通すと、`011` の CHECK に
+      // 当たって 500 になる —— 呼ぶ側から見れば「壊れた」で、「対象が無い」ではない。
+      if (rawSeeds.length === 0) {
+        return reply.code(400).send({
+          error:
+            fromTargets === undefined
+              ? "seeds must not be empty"
+              : "no enabled capture targets for this organization",
+        });
+      }
+
+      // 読めない種が 1 本でもあれば拒む。**黙って落とさない** ——
+      // 落とすと、投げた側は全部辿ったつもりで結果を読むことになる。
+      const seeds = rawSeeds.map((raw) => parseHttpUrl(raw));
       if (seeds.some((parsed) => parsed === undefined)) {
         return reply.code(400).send({ error: "every seed must be an http(s) URL" });
       }
@@ -201,13 +250,14 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         id: crawlId,
         seeds: parsedSeeds.map((parsed) => parsed.normalized),
         scope: body.scope ?? DEFAULT_SCOPE,
-        maxDepth: body.maxDepth ?? DEFAULT_MAX_DEPTH,
-        maxPages: body.maxPages ?? DEFAULT_MAX_PAGES,
+        // **対象一覧から取るときは、既定で辿らない。** それが `runs` の意味だった。
+        // 明示された値は勝つので、「一覧を種にして 2 段辿る」も書ける。
+        maxDepth: body.maxDepth ?? (fromTargets === undefined ? DEFAULT_MAX_DEPTH : 0),
+        // 既定の 30 だと対象一覧が切り落とされる。**種の数は下回らせない。**
+        maxPages: body.maxPages ?? Math.max(DEFAULT_MAX_PAGES, parsedSeeds.length),
         perHostDelayMs: body.perHostDelayMs ?? DEFAULT_PER_HOST_DELAY_MS,
         hostParallelism: body.hostParallelism ?? DEFAULT_HOST_PARALLELISM,
-        // 組織は呼び出し元の 1 つ目。`maySubmit` はどれか 1 つで許されていれば通すので、
-        // 帰属も同じ組織に寄せる。
-        orgId: identity.organizations[0] ?? "",
+        orgId,
         requestedBy: identity.subject,
         state: "running" as const,
       };

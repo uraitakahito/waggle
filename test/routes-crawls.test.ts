@@ -57,8 +57,11 @@ describe("クロール route の入力検証", () => {
   const post = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/crawls", headers: SUBJECT, payload });
 
-  it("requires a seed", async () => {
-    expect((await post({})).statusCode).toBe(400);
+  it("空の seeds を拒む", async () => {
+    // 「どちらか一方」の判定は handler に置いてある (ajv の `oneOf` だと
+    // 「どちらでもない」と「両方」が同じ 400 になり、言い分を分けられない)。
+    // schema の層で落ちるのは、**配列として空**のときだけ。
+    expect((await post({ seeds: [] })).statusCode).toBe(400);
   });
 
   it("rejects a body key that is not on the allowlist", async () => {
@@ -119,7 +122,14 @@ interface FakeCrawl {
  * **index そのものはここでは証明できない** —— 制約を持っているのが偽物のほうだから。
  * 本物の Postgres に対して別途確かめること。
  */
-const fakeDb = (crawls: FakeCrawl[]) => ({
+/** `capture_targets` の 1 行。組織で絞れることを見るために `orgId` を持つ。 */
+interface FakeTarget {
+  url: string;
+  enabled: boolean;
+  orgId: string;
+}
+
+const fakeDb = (crawls: FakeCrawl[], targets: FakeTarget[] = []) => ({
   insertInto: (table: string) => ({
     values: (row: Record<string, unknown> | Record<string, unknown>[]) => ({
       /**
@@ -164,13 +174,40 @@ const fakeDb = (crawls: FakeCrawl[]) => ({
   updateTable: () => ({
     set: () => ({ where: () => ({ execute: async (): Promise<void> => Promise.resolve() }) }),
   }),
-  selectFrom: () => ({
+  selectFrom: (table: string) => ({
     selectAll: () => ({
       where: (_c: unknown, _o: unknown, id: string) => ({
         executeTakeFirst: async (): Promise<FakeCrawl | undefined> =>
           Promise.resolve(crawls.find((c) => c.id === id)),
       }),
     }),
+    /**
+     * `loadTargets` の読み方を写す。
+     *
+     * **問い合わせが指定した条件だけを当てる。** 最初は `enabled` を無条件に
+     * 絞っていたが、それだと**本物から `enabled` の条件を外しても試験が緑のまま**に
+     * なる (反証で素通りした)。偽物が制約を持っていると、消したことに気づけない。
+     */
+    select: () => {
+      const build = (where: [string, unknown][], limit: number | undefined) => ({
+        where: (column: string, _op: unknown, value: unknown) =>
+          build([...where, [column, value]], limit),
+        orderBy: () => build(where, limit),
+        limit: (n: number) => build(where, n),
+        execute: async (): Promise<{ url: string }[]> => {
+          const matched = targets.filter((t) =>
+            where.every(
+              ([column, value]) => (t as unknown as Record<string, unknown>)[column] === value,
+            ),
+          );
+          return Promise.resolve(
+            (limit === undefined ? matched : matched.slice(0, limit)).map((t) => ({ url: t.url })),
+          );
+        },
+      });
+      expect(table).toBe("captureTargets");
+      return build([], undefined);
+    },
   }),
 });
 
@@ -178,9 +215,10 @@ const depsWith = (opts: {
   crawls: FakeCrawl[];
   allowed: boolean;
   dispatch?: CrawlRouteDeps["dispatch"];
+  targets?: FakeTarget[];
 }): CrawlRouteDeps =>
   ({
-    db: fakeDb(opts.crawls),
+    db: fakeDb(opts.crawls, opts.targets),
     fga: { check: async () => Promise.resolve({ allowed: opts.allowed }) },
     resolveIdentity: () => Promise.resolve({ subject: "alice", organizations: ["acme"] }),
     dispatch: opts.dispatch ?? (() => Promise.resolve()),
@@ -353,5 +391,91 @@ describe("クロール route の認可と単一実行", () => {
     const res = await app.inject({ method: "GET", url: `/api/crawls/${UUID}` });
     expect(res.statusCode).toBe(404);
     await app.close();
+  });
+});
+
+describe("対象一覧から起こす", () => {
+  const targets: FakeTarget[] = [
+    { url: "https://a.example.com/1", enabled: true, orgId: "acme" },
+    { url: "https://b.example.com/2", enabled: true, orgId: "acme" },
+    { url: "https://c.example.com/3", enabled: false, orgId: "acme" },
+    { url: "https://d.example.com/4", enabled: true, orgId: "other" },
+  ];
+
+  const start = async (payload: Record<string, unknown>, crawls: FakeCrawl[] = []) => {
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls,
+        allowed: true,
+        targets,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    const res = await app.inject({ method: "POST", url: "/api/crawls", payload });
+    await app.close();
+    return { res, sent, crawls };
+  };
+
+  it("有効な行だけを、自分の組織のぶんだけ種にする", async () => {
+    // **組織で絞る。** `run.ts` は「他組織が混じっていたら投げる」という仮の検査を
+    // していたが、クロールは `org_id` を 1 つ持つ行なので、混ぜると帰属が言えない。
+    const { res, sent } = await start({ fromTargets: {} });
+    expect(res.statusCode).toBe(202);
+    expect(sent[0]?.map((f) => f.url)).toEqual([
+      "https://a.example.com/1",
+      "https://b.example.com/2",
+    ]);
+  });
+
+  it("既定では辿らない（max_depth = 0）", async () => {
+    // それが `runs` の意味だった —— 深さも範囲も持たない 1 回。
+    const { crawls } = await start({ fromTargets: {} });
+    expect(crawls[0]?.maxDepth).toBe(0);
+  });
+
+  it("明示された深さは勝つ", async () => {
+    // 「一覧を種にして 2 段辿る」も書ける。畳んだことで表せる幅が減っていない。
+    const { crawls } = await start({ fromTargets: {}, maxDepth: 2 });
+    expect(crawls[0]?.maxDepth).toBe(2);
+  });
+
+  it("max_pages が種の数を下回らない", async () => {
+    // 既定の 30 のままだと、対象が 30 件を超えた瞬間に黙って切り落とされる。
+    const { crawls } = await start({ fromTargets: {} });
+    expect(crawls[0]?.maxPages).toBeGreaterThanOrEqual(2);
+  });
+
+  it("limit は種の数を絞る", async () => {
+    const { sent } = await start({ fromTargets: { limit: 1 } });
+    expect(sent[0]).toHaveLength(1);
+  });
+
+  it("対象が 1 件も無ければ 400（500 ではない）", async () => {
+    // `011` の CHECK に当たって 500 にすると、呼ぶ側から見て「壊れた」になる。
+    // 実際には「取るものが無い」なので、そう言う。
+    const app = await buildApp(depsWith({ crawls: [], allowed: true, targets: [] }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { fromTargets: {} },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain("no enabled capture targets");
+    await app.close();
+  });
+
+  it("seeds と fromTargets の両方は拒む", async () => {
+    // どちらを使うかをこちらが決めることになる。
+    const { res } = await start({ seeds: [SEED], fromTargets: {} });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("どちらも無ければ拒む", async () => {
+    const { res } = await start({});
+    expect(res.statusCode).toBe(400);
   });
 });

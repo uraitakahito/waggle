@@ -9,6 +9,8 @@
  * ちょうど一致する。変換は要らない。
  */
 import type { Pool } from "pg";
+import type { Kysely } from "kysely";
+import type { Database } from "../db/database.js";
 
 export interface DataEntry {
   labels: string[];
@@ -39,4 +41,36 @@ export const loadUrls = async (pool: Pool, query: UrlSourceQuery): Promise<DataE
   const params = query.limit !== undefined ? [query.limit] : [];
   const result = await pool.query<CaptureTargetRow>(sql, params);
   return result.rows.map((row) => ({ url: row.url, labels: row.labels, orgId: row.org_id }));
+};
+
+/**
+ * クロールの種として `capture_targets` を読む。
+ *
+ * ## なぜ `loadUrls` と別なのか
+ *
+ * 呼ぶ側が違う。あちらは CLI の経路で生の `pg.Pool` を持ち、こちらは API の経路で
+ * Kysely を持つ。`run.ts` (と `loadUrls`) は畳んだあとに消えるので、二重に見えるのは
+ * その間だけ。
+ *
+ * ## 組織で絞る
+ *
+ * `run.ts` は「他組織の対象が混じっていたら投げる」という仮の検査をしていた。
+ * ここでは**絞り込みにしてある** —— クロールは `org_id` を 1 つ持つ行なので、
+ * 別の組織の対象を混ぜると帰属が言えなくなる。テナントが増えたときに、
+ * 「他人の対象まで取ってしまった」ではなく「自分のぶんだけ取った」になる形。
+ *
+ * 順は `id` 昇順。`capture_targets_enabled_id_idx` の partial index が覆う。
+ */
+export const loadTargets = async (
+  db: Kysely<Database>,
+  query: { orgId: string; limit?: number },
+): Promise<{ url: string }[]> => {
+  let q = db
+    .selectFrom("captureTargets")
+    .select("url")
+    .where("enabled", "=", true)
+    .where("orgId", "=", query.orgId)
+    .orderBy("id", "asc");
+  if (query.limit !== undefined) q = q.limit(query.limit);
+  return q.execute();
 };
