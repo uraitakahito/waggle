@@ -45,10 +45,7 @@ const fakeS3 = (): { s3: S3Client; requested: (string | undefined)[] } => {
  * `archives` に全部在ることにして、manifest を 1 つも GET させない最小の fake。
  * ここで見たいのは listing の絞り込みだけで、その先の登録は別の関心。
  */
-const fakeDb = (
-  knownTaskIds: readonly string[],
-  tables: string[] = [],
-): Kysely<Database> =>
+const fakeDb = (knownTaskIds: readonly string[], tables: string[] = []): Kysely<Database> =>
   ({
     selectFrom: (table: string) => {
       tables.push(table);
@@ -93,10 +90,7 @@ describe("reconcile の絞り込み", () => {
   it("入れ子の prefix でも鍵を重複して数えない", async () => {
     const { s3 } = fakeS3();
 
-    const result = await reconcile(fakeDb(KNOWN), s3, "archives", [
-      "",
-      "org/acme/2026-09/",
-    ]);
+    const result = await reconcile(fakeDb(KNOWN), s3, "archives", ["", "org/acme/2026-09/"]);
 
     expect(result.manifests).toBe(4);
   });

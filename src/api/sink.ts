@@ -118,8 +118,7 @@ export const keyPrefixFor = (
   crawl: { orgId: string; artifactKeyPrefix: string | null },
   sink: SinkConfig | undefined,
 ): string | undefined =>
-  crawl.artifactKeyPrefix ??
-  (sink === undefined ? undefined : sinkObjectKey(crawl.orgId, ""));
+  crawl.artifactKeyPrefix ?? (sink === undefined ? undefined : sinkObjectKey(crawl.orgId, ""));
 
 /**
  * 受け口の設定。**両方揃ったときだけ生きる。**

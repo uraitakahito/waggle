@@ -31,12 +31,7 @@ import type { OpenFgaClient } from "@openfga/sdk";
 import type { Insertable, Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
-import type {
-  CaptureSubmissionsTable,
-  CrawlsTable,
-  Database,
-  CrawlScope,
-} from "../db/database.js";
+import type { CaptureSubmissionsTable, CrawlsTable, Database, CrawlScope } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
 import { admitLevel } from "../crawl/admit-level.js";
 import { acceptLinks, parseHttpUrl, type DiscoveredLink, type ParsedUrl } from "../crawl/scope.js";
@@ -46,12 +41,7 @@ import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
 import { loadTargets } from "../data/url-source.js";
 import { createChildLogger } from "../logger.js";
-import {
-  crawlKeyPrefix,
-  keyPrefixFor,
-  sinkForCrawl,
-  type SinkConfig,
-} from "./sink.js";
+import { crawlKeyPrefix, keyPrefixFor, sinkForCrawl, type SinkConfig } from "./sink.js";
 
 const log = createChildLogger({ module: "api" });
 

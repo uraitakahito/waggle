@@ -42,17 +42,17 @@ describe("keyPrefixFor", () => {
   // 記録が在れば、いまの設定が何であれそれを読む。**そのクロールが実際に置いた
   // 場所**が答えなので、設定の側が勝つ余地は無い。
   it("記録された接頭辞をそのまま返す", () => {
-    expect(
-      keyPrefixFor({ orgId: "acme", artifactKeyPrefix: "org/acme/2026-01/" }, SINK),
-    ).toBe("org/acme/2026-01/");
+    expect(keyPrefixFor({ orgId: "acme", artifactKeyPrefix: "org/acme/2026-01/" }, SINK)).toBe(
+      "org/acme/2026-01/",
+    );
   });
 
   // 受け口を切ってから同じクロールの続きを報告しても、探し先は変わらない。
   // ここが設定を見る実装だと undefined になり、manifest が見つからなくなる。
   it("受け口が無くても、記録が在ればそれを読む", () => {
-    expect(
-      keyPrefixFor({ orgId: "acme", artifactKeyPrefix: "org/acme/2026-01/" }, undefined),
-    ).toBe("org/acme/2026-01/");
+    expect(keyPrefixFor({ orgId: "acme", artifactKeyPrefix: "org/acme/2026-01/" }, undefined)).toBe(
+      "org/acme/2026-01/",
+    );
   });
 
   // `013` より前に作られた行。従来どおり設定から導く —— 過去の行の振る舞いを
@@ -86,6 +86,8 @@ describe("置く側と探す側の一致", () => {
     const sought = manifestKey(taskId, correlationId, [], keyPrefixFor(crawl, SINK));
 
     expect(sought).toBe(written);
-    expect(sought).toBe("org/acme/2026-01/550e8400-e29b-41d4-a716-446655440000_9f1c0b2a.result.json");
+    expect(sought).toBe(
+      "org/acme/2026-01/550e8400-e29b-41d4-a716-446655440000_9f1c0b2a.result.json",
+    );
   });
 });

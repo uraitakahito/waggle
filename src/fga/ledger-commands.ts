@@ -48,10 +48,7 @@ const runDrain = async (databaseUrl: string): Promise<void> => {
   }
 };
 
-const runReconcile = async (
-  databaseUrl: string,
-  sinceDays: number | undefined,
-): Promise<void> => {
+const runReconcile = async (databaseUrl: string, sinceDays: number | undefined): Promise<void> => {
   const storage = storageConfig();
   const db = createKyselyClient(databaseUrl);
   try {

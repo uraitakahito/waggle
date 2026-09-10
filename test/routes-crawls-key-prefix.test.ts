@@ -79,9 +79,7 @@ const report = async (sink: typeof SINK | undefined): Promise<Record<string, unk
       headers: SUBJECT,
       payload: {
         depth: 0,
-        results: [
-          { url: "https://example.com/start", status: "captured", taskId: TASK },
-        ],
+        results: [{ url: "https://example.com/start", status: "captured", taskId: TASK }],
       },
     });
   } finally {

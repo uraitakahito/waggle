@@ -85,7 +85,6 @@ describe("listAllKeys", () => {
     expect(second?.input["ContinuationToken"]).toBe("t1");
   });
 
-
   /**
    * `encoding-type=url` を付けた以上、返る鍵は percent-encoded。復号しないと
    * `"a%01b.result.json"` のような鍵をそのまま台帳に載せてしまい、
