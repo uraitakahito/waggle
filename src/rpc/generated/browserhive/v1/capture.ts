@@ -234,6 +234,11 @@ export enum ErrorType {
   ERROR_TYPE_CONNECTION = 3,
   ERROR_TYPE_SIGNING = 4,
   ERROR_TYPE_INTERNAL = 5,
+  /**
+   * ERROR_TYPE_ARTIFACT_SINK - 成果物を受け口へ押し出せなかった。**この経路には待ち場所が無い**ので、
+   * 取り込みは丸ごと失われている。受け口を直して投げ直す。
+   */
+  ERROR_TYPE_ARTIFACT_SINK = 6,
   UNRECOGNIZED = -1,
 }
 
@@ -257,6 +262,9 @@ export function errorTypeFromJSON(object: any): ErrorType {
     case 5:
     case "ERROR_TYPE_INTERNAL":
       return ErrorType.ERROR_TYPE_INTERNAL;
+    case 6:
+    case "ERROR_TYPE_ARTIFACT_SINK":
+      return ErrorType.ERROR_TYPE_ARTIFACT_SINK;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -278,6 +286,8 @@ export function errorTypeToJSON(object: ErrorType): string {
       return "ERROR_TYPE_SIGNING";
     case ErrorType.ERROR_TYPE_INTERNAL:
       return "ERROR_TYPE_INTERNAL";
+    case ErrorType.ERROR_TYPE_ARTIFACT_SINK:
+      return "ERROR_TYPE_ARTIFACT_SINK";
     case ErrorType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -337,7 +347,47 @@ export function sessionModeToJSON(object: SessionMode): string {
   }
 }
 
-/** 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。 */
+/**
+ * 取得する形式。少なくとも 1 つは true でなければならない (handlers が検証する)。
+ * URL への扱い。順序付きの一覧の 1 項目で、最初に当たったものが効く。
+ */
+export interface UrlPolicy {
+  /** URL 全体に当てる glob。ワイルドカードは `*` のみ。 */
+  pattern: string;
+  /**
+   * deny | no-archive | no-body。
+   *
+   * **enum ではなく string**。proto の enum は知らない値を UNRECOGNIZED に潰すので、
+   * 新しい action を足したとき古いサーバがそれを黙って別物として扱う ——
+   * 「送らないつもりで送っていた」が起こりうる。string ならサーバ側の検証で
+   * INVALID_ARGUMENT にでき、呼ぶ側は自分の要求が通らなかったことを知れる。
+   */
+  action: string;
+}
+
+/** メディア型への扱い。応答が届いてからしか判定できないので deny は取りえない。 */
+export interface ContentTypePolicy {
+  prefix: string;
+  /** no-body のみ。 */
+  action: string;
+}
+
+/**
+ * `repeated` を包むための箱。
+ *
+ * proto3 の repeated は **空と未設定を区別できない**。この API ではその差が
+ * 意味を持つ —— 空の一覧は「何も濾さないで」という指示で、未設定は
+ * 「サーバ既定に任せる」。message で包めば presence が付き、型そのものが
+ * 「言及したかどうか」を表す。bool のフラグを添えるより誤用しにくい。
+ */
+export interface UrlPolicyList {
+  policies: UrlPolicy[];
+}
+
+export interface ContentTypePolicyList {
+  policies: ContentTypePolicy[];
+}
+
 export interface CaptureFormats {
   png: boolean;
   webp: boolean;
@@ -464,6 +514,28 @@ export interface BehaviorSpec {
   siteBehaviors?: boolean | undefined;
 }
 
+/**
+ * 成果物の送り先。**呼ぶ側が 1 回きりの口を渡し、こちらはそこへ押し出す。**
+ *
+ * これを送ると、この取り込みの成果物はサーバの保管庫ではなく `url` へ PUT される。
+ * server は bucket も prefix も知らず、置き場所を選べない —— 選ぶのは口を出した側で、
+ * 応答が最終的な location を返す。
+ *
+ * **省略できる。** 省略すればサーバ自身の保管庫へ書く従来の経路になるので、
+ * 2 つの経路は同じ server で同時に生きられる。
+ */
+export interface ArtifactSink {
+  /** PUT の宛先。`<url>/<filename>` へ 1 成果物ずつ送る。 */
+  url: string;
+  /**
+   * 呼ぶ側が発行した 1 回きりの資格。`authorization: Bearer <token>` で送る。
+   *
+   * **これが権限そのもの。** server はこれ以上のものを持たないので、
+   * 他の取り込みの成果物に触れる手段が無い。
+   */
+  token: string;
+}
+
 export interface SubmitCaptureRequest {
   url: string;
   /**
@@ -547,7 +619,47 @@ export interface SubmitCaptureRequest {
    * —— 効いた値は archive の settings.limits.max_response_bytes に残るので、
    * 何が起きたかは後から読める。
    */
-  maxResponseBytes?: number | undefined;
+  maxResponseBytes?:
+    | number
+    | undefined;
+  /**
+   * この取り込みに限って policy を差し替える。**丸ごと置き換え** で、サーバ既定とは
+   * 混ざらない。空の一覧は「何も濾さない」という指示で、省略 (サーバ既定に任せる) とは別。
+   *
+   * 上限 (max_response_bytes) と違って丸めない。到達してよい範囲を守るのは
+   * この層の仕事ではないので、締める方向に縛る理由が無い。
+   *
+   * 効いた一覧は archive の settings.urlPolicies に順序のまま残り、
+   * サーバ既定は GetServerStatus の default_url_policies で読める。
+   */
+  urlPolicies?: UrlPolicyList | undefined;
+  contentTypePolicies?:
+    | ContentTypePolicyList
+    | undefined;
+  /**
+   * この取り込みに限って、web storage の **値** まで archive に入れるかを決める。
+   * 省略時はサーバ既定 (--storage-values)。
+   *
+   * 目録 (browserhive:capture.storage) は値の有無に関わらず必ず載る。これが足すのは
+   * storage/origins.jsonl の値のほうで、どちらであるかは目録の valuesRecorded が述べる。
+   *
+   * 既定が off なのは、web storage が bearer token や session 識別子を日常的に持ち、
+   * それが WARC の payload のどこにも現れないため。**true を送ることは、archive を
+   * 渡すことがそれらを渡すことになる、と引き受けること。**
+   *
+   * optional なのは false を送れるようにするため。サーバ既定が on の配備で、
+   * この取り込みだけ値を出さない、が言えなければならない。
+   */
+  storageValues?:
+    | boolean
+    | undefined;
+  /**
+   * 成果物の送り先。省略するとサーバ自身の保管庫へ書く (従来どおり)。
+   *
+   * 保管庫を持たない配備では**必須**で、無ければ受理の時点で断る ——
+   * 撮ってから「置けません」は、この系でいちばん高くつく失敗。
+   */
+  artifactSink?: ArtifactSink | undefined;
 }
 
 export interface GetCaptureRequest {
@@ -585,6 +697,15 @@ export interface CaptureArtifacts {
 
 export interface WaczStats {
   totalRecorded: number;
+  /**
+   * 内部では totalWithheld と呼ぶもの (deny または no-archive の policy に一致し、
+   * request / response のレコードを書かなかったリクエスト)。
+   *
+   * **名前を変えていない。** 数える集合は 7.0.0 から変わっておらず、変わったのは
+   * 呼び方だけ。wire の名前は archive の語彙とは別の契約で、読んでいるのは
+   * grpcurl を叩く手元のスクリプトのような **こちらから見えない相手**。
+   * 意味が同じものを改名して、その全部を黙って壊す理由が無い。
+   */
   totalBlocked: number;
   totalSkippedContentType: number;
   totalTruncatedTooLarge: number;
@@ -592,6 +713,13 @@ export interface WaczStats {
   totalFailed: number;
   totalIncomplete: number;
   totalBodyBytes: number;
+  /**
+   * deny の policy により、リクエスト自体を送らなかったもの。total_withheld の内数。
+   *
+   * 送ったかどうかは証憑としての意味を変える —— 送っていれば相手のサーバに
+   * 痕跡が残り、送っていなければ残らない。
+   */
+  totalDenied: number;
 }
 
 export interface WaczSignatureChecks {
@@ -830,8 +958,330 @@ export interface GetServerStatusResponse {
   workers: WorkerInfo[];
   queue?: QueueSnapshot | undefined;
   build?: BuildInfo | undefined;
-  limits?: ServerLimits | undefined;
+  limits?:
+    | ServerLimits
+    | undefined;
+  /**
+   * 取り込みが policy を指定しなかったときに効くもの。順序のまま。
+   *
+   * 晒すのは、呼ぶ側が「既定とだいたい同じ、ただし 1 つだけ違う」を組み立てられる
+   * ようにするため —— url_policies は丸ごと置き換えなので、足すには既定を知る必要がある。
+   */
+  defaultUrlPolicies: UrlPolicy[];
+  defaultContentTypePolicies: ContentTypePolicy[];
 }
+
+function createBaseUrlPolicy(): UrlPolicy {
+  return { pattern: "", action: "" };
+}
+
+export const UrlPolicy: MessageFns<UrlPolicy> = {
+  encode(message: UrlPolicy, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.pattern !== "") {
+      writer.uint32(10).string(message.pattern);
+    }
+    if (message.action !== "") {
+      writer.uint32(18).string(message.action);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UrlPolicy {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseUrlPolicy();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.pattern = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.action = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): UrlPolicy {
+    return {
+      pattern: isSet(object.pattern) ? globalThis.String(object.pattern) : "",
+      action: isSet(object.action) ? globalThis.String(object.action) : "",
+    };
+  },
+
+  toJSON(message: UrlPolicy): unknown {
+    const obj: any = {};
+    if (message.pattern !== "") {
+      obj.pattern = message.pattern;
+    }
+    if (message.action !== "") {
+      obj.action = message.action;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UrlPolicy>, I>>(base?: I): UrlPolicy {
+    return UrlPolicy.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UrlPolicy>, I>>(object: I): UrlPolicy {
+    const message = createBaseUrlPolicy();
+    message.pattern = object.pattern ?? "";
+    message.action = object.action ?? "";
+    return message;
+  },
+};
+
+function createBaseContentTypePolicy(): ContentTypePolicy {
+  return { prefix: "", action: "" };
+}
+
+export const ContentTypePolicy: MessageFns<ContentTypePolicy> = {
+  encode(message: ContentTypePolicy, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.prefix !== "") {
+      writer.uint32(10).string(message.prefix);
+    }
+    if (message.action !== "") {
+      writer.uint32(18).string(message.action);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContentTypePolicy {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseContentTypePolicy();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.prefix = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.action = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ContentTypePolicy {
+    return {
+      prefix: isSet(object.prefix) ? globalThis.String(object.prefix) : "",
+      action: isSet(object.action) ? globalThis.String(object.action) : "",
+    };
+  },
+
+  toJSON(message: ContentTypePolicy): unknown {
+    const obj: any = {};
+    if (message.prefix !== "") {
+      obj.prefix = message.prefix;
+    }
+    if (message.action !== "") {
+      obj.action = message.action;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContentTypePolicy>, I>>(base?: I): ContentTypePolicy {
+    return ContentTypePolicy.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContentTypePolicy>, I>>(object: I): ContentTypePolicy {
+    const message = createBaseContentTypePolicy();
+    message.prefix = object.prefix ?? "";
+    message.action = object.action ?? "";
+    return message;
+  },
+};
+
+function createBaseUrlPolicyList(): UrlPolicyList {
+  return { policies: [] };
+}
+
+export const UrlPolicyList: MessageFns<UrlPolicyList> = {
+  encode(message: UrlPolicyList, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.policies) {
+      UrlPolicy.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UrlPolicyList {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseUrlPolicyList();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.policies.push(UrlPolicy.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): UrlPolicyList {
+    return {
+      policies: globalThis.Array.isArray(object?.policies)
+        ? object.policies.map((e: any) => UrlPolicy.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: UrlPolicyList): unknown {
+    const obj: any = {};
+    if (message.policies?.length) {
+      obj.policies = message.policies.map((e) => UrlPolicy.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UrlPolicyList>, I>>(base?: I): UrlPolicyList {
+    return UrlPolicyList.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UrlPolicyList>, I>>(object: I): UrlPolicyList {
+    const message = createBaseUrlPolicyList();
+    message.policies = object.policies?.map((e) => UrlPolicy.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseContentTypePolicyList(): ContentTypePolicyList {
+  return { policies: [] };
+}
+
+export const ContentTypePolicyList: MessageFns<ContentTypePolicyList> = {
+  encode(message: ContentTypePolicyList, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.policies) {
+      ContentTypePolicy.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContentTypePolicyList {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseContentTypePolicyList();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.policies.push(ContentTypePolicy.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ContentTypePolicyList {
+    return {
+      policies: globalThis.Array.isArray(object?.policies)
+        ? object.policies.map((e: any) => ContentTypePolicy.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ContentTypePolicyList): unknown {
+    const obj: any = {};
+    if (message.policies?.length) {
+      obj.policies = message.policies.map((e) => ContentTypePolicy.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContentTypePolicyList>, I>>(base?: I): ContentTypePolicyList {
+    return ContentTypePolicyList.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContentTypePolicyList>, I>>(object: I): ContentTypePolicyList {
+    const message = createBaseContentTypePolicyList();
+    message.policies = object.policies?.map((e) => ContentTypePolicy.fromPartial(e)) || [];
+    return message;
+  },
+};
 
 function createBaseCaptureFormats(): CaptureFormats {
   return { png: false, webp: false, html: false, links: false, mhtml: false, wacz: false };
@@ -1980,6 +2430,91 @@ export const BehaviorSpec: MessageFns<BehaviorSpec> = {
   },
 };
 
+function createBaseArtifactSink(): ArtifactSink {
+  return { url: "", token: "" };
+}
+
+export const ArtifactSink: MessageFns<ArtifactSink> = {
+  encode(message: ArtifactSink, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
+    }
+    if (message.token !== "") {
+      writer.uint32(18).string(message.token);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ArtifactSink {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseArtifactSink();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.url = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.token = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ArtifactSink {
+    return {
+      url: isSet(object.url) ? globalThis.String(object.url) : "",
+      token: isSet(object.token) ? globalThis.String(object.token) : "",
+    };
+  },
+
+  toJSON(message: ArtifactSink): unknown {
+    const obj: any = {};
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    if (message.token !== "") {
+      obj.token = message.token;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ArtifactSink>, I>>(base?: I): ArtifactSink {
+    return ArtifactSink.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ArtifactSink>, I>>(object: I): ArtifactSink {
+    const message = createBaseArtifactSink();
+    message.url = object.url ?? "";
+    message.token = object.token ?? "";
+    return message;
+  },
+};
+
 function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
   return {
     url: "",
@@ -1998,6 +2533,10 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
     behaviors: undefined,
     session: 0,
     maxResponseBytes: undefined,
+    urlPolicies: undefined,
+    contentTypePolicies: undefined,
+    storageValues: undefined,
+    artifactSink: undefined,
   };
 }
 
@@ -2052,6 +2591,18 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     }
     if (message.maxResponseBytes !== undefined) {
       writer.uint32(152).int64(message.maxResponseBytes);
+    }
+    if (message.urlPolicies !== undefined) {
+      UrlPolicyList.encode(message.urlPolicies, writer.uint32(178).fork()).join();
+    }
+    if (message.contentTypePolicies !== undefined) {
+      ContentTypePolicyList.encode(message.contentTypePolicies, writer.uint32(186).fork()).join();
+    }
+    if (message.storageValues !== undefined) {
+      writer.uint32(192).bool(message.storageValues);
+    }
+    if (message.artifactSink !== undefined) {
+      ArtifactSink.encode(message.artifactSink, writer.uint32(202).fork()).join();
     }
     return writer;
   },
@@ -2207,6 +2758,38 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
             message.maxResponseBytes = longToNumber(reader.int64());
             continue;
           }
+          case 22: {
+            if (tag !== 178) {
+              break;
+            }
+
+            message.urlPolicies = UrlPolicyList.decode(reader, reader.uint32());
+            continue;
+          }
+          case 23: {
+            if (tag !== 186) {
+              break;
+            }
+
+            message.contentTypePolicies = ContentTypePolicyList.decode(reader, reader.uint32());
+            continue;
+          }
+          case 24: {
+            if (tag !== 192) {
+              break;
+            }
+
+            message.storageValues = reader.bool();
+            continue;
+          }
+          case 25: {
+            if (tag !== 202) {
+              break;
+            }
+
+            message.artifactSink = ArtifactSink.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -2273,6 +2856,26 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
         : isSet(object.max_response_bytes)
         ? globalThis.Number(object.max_response_bytes)
         : undefined,
+      urlPolicies: isSet(object.urlPolicies)
+        ? UrlPolicyList.fromJSON(object.urlPolicies)
+        : isSet(object.url_policies)
+        ? UrlPolicyList.fromJSON(object.url_policies)
+        : undefined,
+      contentTypePolicies: isSet(object.contentTypePolicies)
+        ? ContentTypePolicyList.fromJSON(object.contentTypePolicies)
+        : isSet(object.content_type_policies)
+        ? ContentTypePolicyList.fromJSON(object.content_type_policies)
+        : undefined,
+      storageValues: isSet(object.storageValues)
+        ? globalThis.Boolean(object.storageValues)
+        : isSet(object.storage_values)
+        ? globalThis.Boolean(object.storage_values)
+        : undefined,
+      artifactSink: isSet(object.artifactSink)
+        ? ArtifactSink.fromJSON(object.artifactSink)
+        : isSet(object.artifact_sink)
+        ? ArtifactSink.fromJSON(object.artifact_sink)
+        : undefined,
     };
   },
 
@@ -2326,6 +2929,18 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     if (message.maxResponseBytes !== undefined) {
       obj.maxResponseBytes = Math.round(message.maxResponseBytes);
     }
+    if (message.urlPolicies !== undefined) {
+      obj.urlPolicies = UrlPolicyList.toJSON(message.urlPolicies);
+    }
+    if (message.contentTypePolicies !== undefined) {
+      obj.contentTypePolicies = ContentTypePolicyList.toJSON(message.contentTypePolicies);
+    }
+    if (message.storageValues !== undefined) {
+      obj.storageValues = message.storageValues;
+    }
+    if (message.artifactSink !== undefined) {
+      obj.artifactSink = ArtifactSink.toJSON(message.artifactSink);
+    }
     return obj;
   },
 
@@ -2358,6 +2973,16 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
       : undefined;
     message.session = object.session ?? 0;
     message.maxResponseBytes = object.maxResponseBytes ?? undefined;
+    message.urlPolicies = (object.urlPolicies !== undefined && object.urlPolicies !== null)
+      ? UrlPolicyList.fromPartial(object.urlPolicies)
+      : undefined;
+    message.contentTypePolicies = (object.contentTypePolicies !== undefined && object.contentTypePolicies !== null)
+      ? ContentTypePolicyList.fromPartial(object.contentTypePolicies)
+      : undefined;
+    message.storageValues = object.storageValues ?? undefined;
+    message.artifactSink = (object.artifactSink !== undefined && object.artifactSink !== null)
+      ? ArtifactSink.fromPartial(object.artifactSink)
+      : undefined;
     return message;
   },
 };
@@ -2849,6 +3474,7 @@ function createBaseWaczStats(): WaczStats {
     totalFailed: 0,
     totalIncomplete: 0,
     totalBodyBytes: 0,
+    totalDenied: 0,
   };
 }
 
@@ -2877,6 +3503,9 @@ export const WaczStats: MessageFns<WaczStats> = {
     }
     if (message.totalBodyBytes !== 0) {
       writer.uint32(64).int64(message.totalBodyBytes);
+    }
+    if (message.totalDenied !== 0) {
+      writer.uint32(72).int32(message.totalDenied);
     }
     return writer;
   },
@@ -2958,6 +3587,14 @@ export const WaczStats: MessageFns<WaczStats> = {
             message.totalBodyBytes = longToNumber(reader.int64());
             continue;
           }
+          case 9: {
+            if (tag !== 72) {
+              break;
+            }
+
+            message.totalDenied = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3012,6 +3649,11 @@ export const WaczStats: MessageFns<WaczStats> = {
         : isSet(object.total_body_bytes)
         ? globalThis.Number(object.total_body_bytes)
         : 0,
+      totalDenied: isSet(object.totalDenied)
+        ? globalThis.Number(object.totalDenied)
+        : isSet(object.total_denied)
+        ? globalThis.Number(object.total_denied)
+        : 0,
     };
   },
 
@@ -3041,6 +3683,9 @@ export const WaczStats: MessageFns<WaczStats> = {
     if (message.totalBodyBytes !== 0) {
       obj.totalBodyBytes = Math.round(message.totalBodyBytes);
     }
+    if (message.totalDenied !== 0) {
+      obj.totalDenied = Math.round(message.totalDenied);
+    }
     return obj;
   },
 
@@ -3057,6 +3702,7 @@ export const WaczStats: MessageFns<WaczStats> = {
     message.totalFailed = object.totalFailed ?? 0;
     message.totalIncomplete = object.totalIncomplete ?? 0;
     message.totalBodyBytes = object.totalBodyBytes ?? 0;
+    message.totalDenied = object.totalDenied ?? 0;
     return message;
   },
 };
@@ -5790,6 +6436,8 @@ function createBaseGetServerStatusResponse(): GetServerStatusResponse {
     queue: undefined,
     build: undefined,
     limits: undefined,
+    defaultUrlPolicies: [],
+    defaultContentTypePolicies: [],
   };
 }
 
@@ -5830,6 +6478,12 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
     }
     if (message.limits !== undefined) {
       ServerLimits.encode(message.limits, writer.uint32(98).fork()).join();
+    }
+    for (const v of message.defaultUrlPolicies) {
+      UrlPolicy.encode(v!, writer.uint32(106).fork()).join();
+    }
+    for (const v of message.defaultContentTypePolicies) {
+      ContentTypePolicy.encode(v!, writer.uint32(114).fork()).join();
     }
     return writer;
   },
@@ -5943,6 +6597,22 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
             message.limits = ServerLimits.decode(reader, reader.uint32());
             continue;
           }
+          case 13: {
+            if (tag !== 106) {
+              break;
+            }
+
+            message.defaultUrlPolicies.push(UrlPolicy.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 14: {
+            if (tag !== 114) {
+              break;
+            }
+
+            message.defaultContentTypePolicies.push(ContentTypePolicy.decode(reader, reader.uint32()));
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5987,6 +6657,16 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
       queue: isSet(object.queue) ? QueueSnapshot.fromJSON(object.queue) : undefined,
       build: isSet(object.build) ? BuildInfo.fromJSON(object.build) : undefined,
       limits: isSet(object.limits) ? ServerLimits.fromJSON(object.limits) : undefined,
+      defaultUrlPolicies: globalThis.Array.isArray(object?.defaultUrlPolicies)
+        ? object.defaultUrlPolicies.map((e: any) => UrlPolicy.fromJSON(e))
+        : globalThis.Array.isArray(object?.default_url_policies)
+        ? object.default_url_policies.map((e: any) => UrlPolicy.fromJSON(e))
+        : [],
+      defaultContentTypePolicies: globalThis.Array.isArray(object?.defaultContentTypePolicies)
+        ? object.defaultContentTypePolicies.map((e: any) => ContentTypePolicy.fromJSON(e))
+        : globalThis.Array.isArray(object?.default_content_type_policies)
+        ? object.default_content_type_policies.map((e: any) => ContentTypePolicy.fromJSON(e))
+        : [],
     };
   },
 
@@ -6028,6 +6708,12 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
     if (message.limits !== undefined) {
       obj.limits = ServerLimits.toJSON(message.limits);
     }
+    if (message.defaultUrlPolicies?.length) {
+      obj.defaultUrlPolicies = message.defaultUrlPolicies.map((e) => UrlPolicy.toJSON(e));
+    }
+    if (message.defaultContentTypePolicies?.length) {
+      obj.defaultContentTypePolicies = message.defaultContentTypePolicies.map((e) => ContentTypePolicy.toJSON(e));
+    }
     return obj;
   },
 
@@ -6054,6 +6740,9 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
     message.limits = (object.limits !== undefined && object.limits !== null)
       ? ServerLimits.fromPartial(object.limits)
       : undefined;
+    message.defaultUrlPolicies = object.defaultUrlPolicies?.map((e) => UrlPolicy.fromPartial(e)) || [];
+    message.defaultContentTypePolicies =
+      object.defaultContentTypePolicies?.map((e) => ContentTypePolicy.fromPartial(e)) || [];
     return message;
   },
 };

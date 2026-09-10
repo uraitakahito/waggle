@@ -46,5 +46,15 @@ export const manifestKey = (
   taskId: string,
   correlationId: string | undefined,
   labels: string[],
+  /**
+   * 置き場所の接頭辞。**受け口が成果物を受け取る構成でだけ付く。**
+   *
+   * BrowserHive が自前の保管庫へ書くときは平らな名前空間なので空。受け口が受けると
+   * 組織で分ける (`org/<orgId>/`) ので、鍵の綴りもそれに従う —— ここがずれると
+   * **manifest が見つからず、台帳に 1 行も入らないまま静かに終わる。**
+   */
+  keyPrefix = "",
 ): string =>
-  [taskId, encodeField(correlationId ?? ""), ...labels.map(encodeField)].join("_") + ".result.json";
+  keyPrefix +
+  [taskId, encodeField(correlationId ?? ""), ...labels.map(encodeField)].join("_") +
+  ".result.json";
