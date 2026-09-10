@@ -62,24 +62,24 @@ describe("クロール route の入力検証", () => {
   });
 
   it("rejects a body key that is not on the allowlist", async () => {
-    expect((await post({ seed: SEED, signing: true })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], signing: true })).statusCode).toBe(400);
   });
 
   it("rejects a scope it does not know", async () => {
     // 範囲は挙動を決めるので、綴りの誤りを通すと黙って別の範囲になる。
-    expect((await post({ seed: SEED, scope: "same-site" })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], scope: "same-site" })).statusCode).toBe(400);
   });
 
   it("rejects limits outside their range", async () => {
-    expect((await post({ seed: SEED, maxPages: 0 })).statusCode).toBe(400);
-    expect((await post({ seed: SEED, maxDepth: -1 })).statusCode).toBe(400);
-    expect((await post({ seed: SEED, hostParallelism: 0 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], maxPages: 0 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], maxDepth: -1 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], hostParallelism: 0 })).statusCode).toBe(400);
   });
 
   it("allows a zero delay so a test can take it away on purpose", async () => {
     // 0 を弾くと「間隔が効いている」の反証が書けなくなる。schema は通し、
     // 通った先で deps に触れて落ちる。
-    expect((await post({ seed: SEED, perHostDelayMs: 0 })).statusCode).toBe(500);
+    expect((await post({ seeds: [SEED], perHostDelayMs: 0 })).statusCode).toBe(500);
   });
 
   it("rejects a crawl id that is not a uuid", async () => {
@@ -95,7 +95,7 @@ describe("クロール route の入力検証", () => {
 /** 認可と単一実行を見るための、最小の偽物。 */
 interface FakeCrawl {
   id: string;
-  seed: string;
+  seeds: string[];
   scope: string;
   state: string;
   maxDepth: number;
@@ -121,7 +121,25 @@ interface FakeCrawl {
  */
 const fakeDb = (crawls: FakeCrawl[]) => ({
   insertInto: (table: string) => ({
-    values: (row: Record<string, unknown>) => ({
+    values: (row: Record<string, unknown> | Record<string, unknown>[]) => ({
+      /**
+       * 深さ 0 の行は `onConflict(...).returning(...)` で入れる。
+       *
+       * **重複排除まで写す。** 本物は `(crawl_id, url_hash)` の unique index が
+       * 落とすので、ここで素通しにすると「同じ URL を 2 つ種に書いても 2 回取る」
+       * という、本物では起きない振る舞いを試験が肯定してしまう。
+       */
+      onConflict: () => ({
+        returning: () => ({
+          execute: async (): Promise<{ url: string; host: string }[]> => {
+            const rows = (Array.isArray(row) ? row : [row]) as { url: string; host: string }[];
+            const seen = new Set<string>();
+            return Promise.resolve(
+              rows.filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true))),
+            );
+          },
+        }),
+      }),
       execute: async (): Promise<void> => {
         if (table === "crawlPages") return Promise.resolve();
         if (crawls.some((c) => c.state === "running")) {
@@ -178,14 +196,22 @@ describe("クロール route の認可と単一実行", () => {
       ...depsWith({ crawls: [], allowed: true }),
       resolveIdentity: () => Promise.resolve(undefined),
     });
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
   it("hides the endpoint from a caller without permission", async () => {
     const app = await buildApp(depsWith({ crawls: [], allowed: false }));
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
@@ -196,7 +222,67 @@ describe("クロール route の認可と単一実行", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: "ftp://example.com/x" },
+      payload: { seeds: ["ftp://example.com/x"] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("種を複数受け取り、全部を最初の段に渡す", async () => {
+    // run を畳むための土台。`capture_targets` の一覧はここに複数の種として入る。
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls: [],
+        allowed: true,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: ["https://a.example.com/1", "https://b.example.com/2"] },
+    });
+    expect(sent[0]?.map((f) => f.url)).toEqual([
+      "https://a.example.com/1",
+      "https://b.example.com/2",
+    ]);
+    await app.close();
+  });
+
+  it("同じ種を 2 度渡しても 1 度しか取らない", async () => {
+    // 本物では `(crawl_id, url_hash)` の unique index が落とす。**種の段にも
+    // 同じ守りが要る** —— 対象一覧に同じ URL が 2 行あることは普通にありうる。
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls: [],
+        allowed: true,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED, SEED] },
+    });
+    expect(sent[0]).toHaveLength(1);
+    await app.close();
+  });
+
+  it("読めない種が 1 本でもあれば拒む", async () => {
+    // **黙って落とさない。** 落とすと、投げた側は全部辿ったつもりで結果を読む。
+    const app = await buildApp(depsWith({ crawls: [], allowed: true }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED, "ftp://example.com/x"] },
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -205,7 +291,11 @@ describe("クロール route の認可と単一実行", () => {
   it("accepts a crawl and answers 202 without waiting for it", async () => {
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(202);
     expect(res.json()).toHaveProperty("crawlId");
     expect(crawls[0]?.state).toBe("running");
@@ -216,7 +306,7 @@ describe("クロール route の認可と単一実行", () => {
     // 既定は控えめな側。**30 が効いていること**が、上限で止まる普通の姿を作る。
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    await app.inject({ method: "POST", url: "/api/crawls", payload: { seeds: [SEED] } });
     expect(crawls[0]).toMatchObject({
       scope: "same-origin",
       maxDepth: 2,
@@ -233,20 +323,24 @@ describe("クロール route の認可と単一実行", () => {
     await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: "https://example.com/start#top" },
+      payload: { seeds: ["https://example.com/start#top"] },
     });
-    expect(crawls[0]?.seed).toBe("https://example.com/start");
+    expect(crawls[0]?.seeds?.[0]).toBe("https://example.com/start");
     await app.close();
   });
 
   it("refuses a second crawl while one is in flight", async () => {
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    const first = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     const second = await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: SEED },
+      payload: { seeds: [SEED] },
     });
     expect(first.statusCode).toBe(202);
     expect(second.statusCode).toBe(409);

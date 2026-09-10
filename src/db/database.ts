@@ -99,7 +99,8 @@ export type RunTrigger = "api" | "cli";
  */
 export interface CrawlsTable {
   id: string;
-  seed: string;
+  /** 出発点。1 本以上。範囲はこのどれかに入るかで決まる (`crawl/scope.ts`)。 */
+  seeds: string[];
   scope: CrawlScope;
   maxDepth: number;
   maxPages: number;

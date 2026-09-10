@@ -34,7 +34,7 @@ import { randomUUID } from "node:crypto";
 import type { Database, CrawlScope } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
 import { admitLevel } from "../crawl/admit-level.js";
-import { acceptLinks, parseHttpUrl, type DiscoveredLink } from "../crawl/scope.js";
+import { acceptLinks, parseHttpUrl, type DiscoveredLink, type ParsedUrl } from "../crawl/scope.js";
 import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
 import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
@@ -114,7 +114,7 @@ export interface CrawlRouteDeps {
 }
 
 interface CrawlBody {
-  seed?: string;
+  seeds?: string[];
   scope?: CrawlScope;
   maxDepth?: number;
   maxPages?: number;
@@ -158,9 +158,15 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           // 知らない鍵は拒む。`server.ts` の `removeAdditional: false` がこれを
           // 「黙って削る」ではなく「400 で返す」意味にしている。
           additionalProperties: false,
-          required: ["seed"],
+          required: ["seeds"],
           properties: {
-            seed: { type: "string", minLength: 1 },
+            // **1 本以上。** 種を持たないクロールは始まりが無いので進みようがなく、
+            // 受理されたのに何も起きない、という形になる (`011` の CHECK と対)。
+            seeds: {
+              type: "array",
+              minItems: 1,
+              items: { type: "string", minLength: 1 },
+            },
             scope: { type: "string", enum: ["same-origin", "same-host"] },
             maxDepth: { type: "integer", minimum: 0, maximum: 10 },
             maxPages: { type: "integer", minimum: 1, maximum: 10000 },
@@ -181,16 +187,19 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       const body = request.body ?? {};
-      // schema が `seed` を必須にしているので、ここに来た時点で文字列である。
-      const seed = parseHttpUrl(body.seed ?? "");
-      if (seed === undefined) {
-        return reply.code(400).send({ error: "seed must be an http(s) URL" });
+      // schema が `seeds` を必須かつ 1 本以上にしているので、ここに来た時点で
+      // 空でない文字列の配列である。**読めない種が 1 本でもあれば拒む** ——
+      // 黙って落とすと、投げた側は全部辿ったつもりで結果を読むことになる。
+      const seeds = (body.seeds ?? []).map((raw) => parseHttpUrl(raw));
+      if (seeds.some((parsed) => parsed === undefined)) {
+        return reply.code(400).send({ error: "every seed must be an http(s) URL" });
       }
+      const parsedSeeds = seeds as ParsedUrl[];
 
       const crawlId = randomUUID();
       const crawl = {
         id: crawlId,
-        seed: seed.normalized,
+        seeds: parsedSeeds.map((parsed) => parsed.normalized),
         scope: body.scope ?? DEFAULT_SCOPE,
         maxDepth: body.maxDepth ?? DEFAULT_MAX_DEPTH,
         maxPages: body.maxPages ?? DEFAULT_MAX_PAGES,
@@ -214,15 +223,23 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       // 種を最初の行として置く。深さ 0。ここから flow が読む。
-      await db
+      //
+      // **深さ 1 以降と同じ形にしてある** —— 配列で入れ、`onConflict` で重複を
+      // index に落とさせ、`returning` で実際に入った行だけを次に渡す。種が複数に
+      // なると同じ URL が 2 度渡されうるので、ここも同じ守りが要る。
+      const seeded = await db
         .insertInto("crawlPages")
-        .values({
-          crawlId,
-          url: seed.normalized,
-          depth: 0,
-          host: seed.host,
-          state: "pending",
-        })
+        .values(
+          parsedSeeds.map((parsed) => ({
+            crawlId,
+            url: parsed.normalized,
+            depth: 0,
+            host: parsed.host,
+            state: "pending" as const,
+          })),
+        )
+        .onConflict((oc) => oc.columns(["crawlId", "urlHash"]).doNothing())
+        .returning(["url", "host"])
         .execute();
 
       // 待たない。この Promise の行き先は `crawls` の行であって、この応答ではない。
@@ -230,7 +247,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         crawlId,
         depth: 0,
         // 最初の段には「前」が無い。
-        frontier: [{ url: seed.normalized, host: seed.host, lastFinishedAt: null }],
+        frontier: seeded.map((row) => ({ url: row.url, host: row.host, lastFinishedAt: null })),
         perHostDelayMs: crawl.perHostDelayMs,
         hostParallelism: crawl.hostParallelism,
         // 辿るつもりが無いなら `links` は要らない。取り出させても相手と S3 に無駄が出る。
@@ -286,7 +303,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
 
       return reply.code(200).send({
         crawlId: crawl.id,
-        seed: crawl.seed,
+        seeds: crawl.seeds,
         scope: crawl.scope,
         state: crawl.state,
         stopReason: crawl.stopReason,
@@ -365,10 +382,16 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       if (!crawl) return reply.code(404).send({ error: "not found" });
 
       const { depth, results } = request.body;
-      const seed = parseHttpUrl(crawl.seed);
-      if (seed === undefined) {
-        // 種は投入時に検査しているので、ここに来るのは行が壊れているとき。
-        return reply.code(500).send({ error: "the crawl seed is not a usable url" });
+      // 種は投入時に検査しているので、読めない行はここに来ない。**それでも
+      // 全部を読み直す** —— 範囲の判定に要るのは正規化した形で、行に入っているのは
+      // 文字列だから。1 本でも読めなければ行が壊れている。
+      const parsedSeeds: ParsedUrl[] = [];
+      for (const raw of crawl.seeds) {
+        const parsed = parseHttpUrl(raw);
+        if (parsed === undefined) {
+          return reply.code(500).send({ error: "a crawl seed is not a usable url" });
+        }
+        parsedSeeds.push(parsed);
       }
 
       // ── 1. 報告された行を閉じる ────────────────────────────────────────
@@ -476,7 +499,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         }
       }
 
-      const discovered = acceptLinks(links, seed, crawl.scope);
+      const discovered = acceptLinks(links, parsedSeeds, crawl.scope);
 
       // ── 4. 上限を当てる ──────────────────────────────────────────────
       const nextDepth = depth + 1;
