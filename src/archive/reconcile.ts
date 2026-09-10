@@ -47,9 +47,21 @@ export interface ReconcileResult {
  * labels を `%XX` へ逃がして組むが、**taskId だけは逃がさない** —— 逃がす対象の
  * 文字を含まないので、逃がしても逃がさなくても同じ綴りになる。将来 taskId の形が
  * UUID でなくなったら、この 1 行が最初に壊れる。
+ *
+ * **export しているのは試験のため。** 非公開のままだったので prefix を入れたときに
+ * 誰も気づかず、`reconcile` を走らせるまで壊れが表に出なかった。
  */
-const taskIdFromKey = (key: string): string =>
-  key.slice(0, -MANIFEST_SUFFIX.length).split("_")[0] ?? "";
+export const taskIdFromKey = (key: string): string => {
+  // **prefix を先に落とす。** 受け口が受けた成果物は `org/<orgId>/…` に在るので、
+  // 鍵をそのまま `_` で切ると `org/acme/<taskId>` が返る。それは uuid ではないので、
+  // `archives` や `capture_submissions` を引いた瞬間に Postgres が
+  // `invalid input syntax for type uuid` で落ちる —— **prefix を入れた日に壊れていた。**
+  //
+  // `/` が無ければ `lastIndexOf` は -1 を返し、`slice(0)` が全体になる。平らな配置
+  // (BrowserHive が自前の保管庫へ書く従来の経路) はそのまま通る。
+  const filename = key.slice(key.lastIndexOf("/") + 1);
+  return filename.slice(0, -MANIFEST_SUFFIX.length).split("_")[0] ?? "";
+};
 
 export const reconcile = async (
   db: Kysely<Database>,
