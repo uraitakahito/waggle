@@ -386,7 +386,7 @@ URL を忘れる。
 無いので、正しい答えです）。
 
 ```sh
-container-compose --profile search up -d -b
+pnpm run stack:up --profile search
 # .env に WAGGLE_OPENSEARCH_URL=http://127.0.0.1:9200
 ```
 
@@ -603,7 +603,7 @@ pnpm run fga:deploy  # モデルを投入し、固定すべき ID を出力
 
 ```sh
 ./setup.sh                    # .env.example から .env を作る（35 個）
-container-compose up -d -b
+pnpm run stack:up
 pnpm run fga:migrate          # OpenFGA のスキーマ（下記参照）
 pnpm run db:migrate
 pnpm run fga:deploy           # → 出力された 2 つの ID を .env に貼る

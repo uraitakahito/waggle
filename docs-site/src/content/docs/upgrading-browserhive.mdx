@@ -36,8 +36,8 @@ pnpm run proto:check       # must exit 0 once committed
 
 # 3. Rebuild from a clean state. Old volumes hold the previous bucket and
 #    database, which hides ordering bugs introduced by the upgrade.
-container-compose down
-container-compose up -d -b
+pnpm run stack:down
+pnpm run stack:up
 
 # 4. Prove it end to end.
 pnpm run check

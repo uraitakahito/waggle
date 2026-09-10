@@ -418,7 +418,7 @@ is set the endpoints are **not served at all** (you get a 404 — the capability
 genuinely is not there, so that is the right answer).
 
 ```sh
-container-compose --profile search up -d -b
+pnpm run stack:up --profile search
 # and WAGGLE_OPENSEARCH_URL=http://127.0.0.1:9200 in .env
 ```
 
@@ -645,7 +645,7 @@ that switch deliberate.
 
 ```sh
 ./setup.sh                    # writes .env from .env.example (35 variables)
-container-compose up -d -b
+pnpm run stack:up
 pnpm run fga:migrate          # OpenFGA's schema (see below)
 pnpm run db:migrate
 pnpm run fga:deploy           # → paste the two ids it prints into .env

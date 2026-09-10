@@ -162,6 +162,17 @@ services:
     build:
       context: ./.upstream/browserhive
       dockerfile: Dockerfile.prod
+      args:
+        # 版と revision を image に焼き込む。**`GetServerStatus` に出るだけではない** ——
+        # archive の `datapackage.json` (`software` と `browserhive:capture.build`) と
+        # WARC の `warcinfo` に入り、署名対象のバイト列の中で確定する。
+        #
+        # 渡さないと版は "unknown"、revision は "dev" になる。**値は手で書かない** ——
+        # `pnpm run stack:up` (と `prod-smoke.sh`) が `scripts/submodule-versions.sh`
+        # から submodule の実際のタグを渡す。生の `container-compose up` を叩くと
+        # 既定に落ちるので、docs もそちらを案内していない。
+        GIT_TAG: "${BROWSERHIVE_TAG:-}"
+        GIT_REV: "${BROWSERHIVE_REV:-dev}"
     ports:
       # gRPC。BrowserHive は v3 で HTTP の提供をやめた。
       - "127.0.0.1:50051:50051"
@@ -296,11 +307,19 @@ services:
   meadow:
     build:
       context: ./.upstream/meadow
+      args:
+        # browserhive と同じ理由。meadow は `/__version` でこれを出す。
+        GIT_TAG: "${MEADOW_TAG:-}"
+        GIT_REV: "${MEADOW_REV:-dev}"
     profiles: ["meadow"]
 
   replay:
     build:
       context: ./.upstream/replay
+      args:
+        # browserhive と同じ理由。replay は `/__version` に書き出す。
+        GIT_TAG: "${REPLAY_TAG:-}"
+        GIT_REV: "${REPLAY_REV:-dev}"
     environment:
       # 上流は複合値で渡す。素のサービス名を値に書くと container-compose が
       # その IP に書き換えてしまい、読みが全部 403 になる (browserhive で実測)。

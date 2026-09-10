@@ -36,8 +36,8 @@ pnpm run proto:check       # コミット後に exit 0 になること
 
 # 3. まっさらな状態から作り直す。古いボリュームには前のバケットと DB が残っており、
 #    更新で入り込んだ順序の不具合を隠してしまう。
-container-compose down
-container-compose up -d -b
+pnpm run stack:down
+pnpm run stack:up
 
 # 4. 端から端まで確認する。
 pnpm run check

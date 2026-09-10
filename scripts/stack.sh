@@ -63,6 +63,12 @@ echo
 
 case "${SUBCOMMAND}" in
   up)
+    # submodule の版を build 引数として渡す。渡さないと image は "unknown" を名乗り、
+    # **その値が archive に焼き込まれる**。詳しくは scripts/submodule-versions.sh。
+    # shellcheck source=scripts/submodule-versions.sh
+    . "$(dirname "$0")/submodule-versions.sh"
+    export_submodule_versions
+
     # `-d -b` を既定にするのは、docs がずっとそう案内してきたから。
     exec container-compose ${profile_args[@]+"${profile_args[@]}"} up -d -b ${env_args[@]+"${env_args[@]}"} "$@"
     ;;
