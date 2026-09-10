@@ -173,14 +173,10 @@ jobs:
       # 渡す。waggle の CLI は allowExcessArguments(false) なので、それは
       # "too many arguments" で即死する。npm から移したときの書き換え漏れは
       # ドキュメントの中でしか起きず、テストも lint も届かないので、ここで見る。
+      # 中身は scripts/check-flag-style.mjs。**inline の shell に置かない** ——
+      # 手元で走らせようが無い検査は、CI でしか気づけない検査になる。
       - name: No npm-style `--` before flags
-        run: |
-          if grep -rn 'pnpm run [a-z:]* -- -' \
-               --exclude-dir=node_modules --exclude-dir=.git \
-               --exclude-dir=.upstream --exclude-dir=dist .; then
-            echo "::error::pnpm では -- が literal で渡ります。落としてください。"
-            exit 1
-          fi
+        run: pnpm run check:flag-style
 
       - name: Authorization model tests
         run: pnpm run fga:test

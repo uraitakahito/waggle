@@ -13,10 +13,15 @@
  *
  * ## 規模
  *
- * S3 の list は prefix でしか絞れない —— 拡張子での絞り込みも「いつ以降」も無い ——
- * ので、listing を全部引いてから manifest をここで選ぶ。今の規模 (数十オブジェクト)
- * なら問題ない。数万になったときの直し方は、賢い listing ではなく BrowserHive の鍵に
- * 日付の prefix を入れること。
+ * S3 の list は prefix でしか絞れない —— **拡張子での絞り込みも「いつ以降」も無い。**
+ * だから listing を引いてから manifest をここで選ぶ。今の規模 (数十オブジェクト) なら
+ * 全部歩いても数百 ms で、既定はいまも全走査。
+ *
+ * 絞れる手がかりは在る。受け口が受けた成果物の鍵は waggle が決めるので
+ * `org/<orgId>/<YYYY-MM>/` の下に在り (`api/sink.ts` の `crawlKeyPrefix`)、その接頭辞は
+ * `crawls.artifact_key_prefix` に書き残してある (`013`)。`prefixes` を渡せば、その月
+ * だけを歩く。**BrowserHive が自前の保管庫へ書く経路は平らなまま**なので、そちらは
+ * 絞れない —— だから絞るのは明示のときだけで、既定を変えていない。
  */
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
@@ -29,6 +34,18 @@ import { createChildLogger } from "../logger.js";
 const log = createChildLogger({ module: "archive-reconcile" });
 
 const MANIFEST_SUFFIX = ".result.json";
+
+/**
+ * `archives.task_id` も `capture_submissions.task_id` も **uuid 列**。UUID でない値で
+ * 引くと Postgres が `invalid input syntax for type uuid` で落ち、**その 1 件で走行が
+ * 丸ごと止まる** —— 残りの manifest は歩かれないまま終わる。
+ *
+ * 鍵の綴りは BrowserHive が決めるが、bucket に何が置かれるかは決めない。他所が置いた
+ * ものや、手で入れたもの、古い綴りの残りが混じりうる。**bucket は信用しない。**
+ *
+ * `api/sink.ts` が `crawlId` に対して同じ守りをしている (実地で 500 を踏んだ後に入れた)。
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ReconcileResult {
   manifests: number;
@@ -63,12 +80,44 @@ export const taskIdFromKey = (key: string): string => {
   return filename.slice(0, -MANIFEST_SUFFIX.length).split("_")[0] ?? "";
 };
 
+/**
+ * 窓に入ったクロールの行から、歩くべき接頭辞を決める。`undefined` は「全部歩く」。
+ *
+ * **1 本でも記録の無い行があれば絞らない。** その行の成果物がどこに在るかを言えない
+ * のに絞れば、その穴は二度と見つからない —— 冒頭に書いたとおり、気づかれない穴の
+ * ある台帳は台帳が無いより悪い。**取りこぼしを速さと交換しない。**
+ *
+ * DB を触らない純関数にしてあるのは、この判断こそ検査したいから。waggle には DB に
+ * 繋ぐ試験が 1 本も無いので、判断をクエリと同じ関数に置くと誰も確かめられなくなる。
+ */
+export const narrowingFrom = (
+  rows: readonly { artifactKeyPrefix: string | null }[],
+): string[] | undefined => {
+  const prefixes: string[] = [];
+  for (const row of rows) {
+    if (row.artifactKeyPrefix === null) return undefined;
+    prefixes.push(row.artifactKeyPrefix);
+  }
+  return [...new Set(prefixes)];
+};
+
 export const reconcile = async (
   db: Kysely<Database>,
   s3: S3Client,
   bucket: string,
+  /** 歩く接頭辞。省くと bucket 全体。`narrowingFrom` が決める。 */
+  prefixes?: readonly string[],
 ): Promise<ReconcileResult> => {
-  const keys = await listAllKeys(s3, bucket);
+  // 接頭辞をまたいで同じ鍵が返ることは無いが、`Set` で受けるのは接頭辞どうしが
+  // 入れ子になった場合の保険 (`org/a/` と `org/a/2026-09/` を両方渡せてしまう)。
+  const keys =
+    prefixes === undefined
+      ? await listAllKeys(s3, bucket)
+      : [
+          ...new Set(
+            (await Promise.all(prefixes.map((prefix) => listAllKeys(s3, bucket, prefix)))).flat(),
+          ),
+        ];
   const manifests = keys.filter((key) => key.endsWith(MANIFEST_SUFFIX));
 
   // manifest ごとに 1 回ではなく、まとめて 1 回のクエリ。
@@ -84,7 +133,9 @@ export const reconcile = async (
 
   for (const key of manifests) {
     const taskId = taskIdFromKey(key);
-    if (taskId === "" || known.has(taskId)) {
+    if (!UUID.test(taskId) || known.has(taskId)) {
+      // 形が違うものは飛ばす。**止めない** —— 1 件の見慣れない鍵で掃除が終わって
+      // しまうと、その先に在る本物の穴が埋まらない。
       result.skipped += 1;
       continue;
     }

@@ -19,10 +19,15 @@ export const up = async (db: Kysely<Database>): Promise<void> => {
   await db
     .insertInto("captureTargets")
     .values([
-      // `orgId` は列の既定 ("default") に任せない。`.env.example` が
-      // `WAGGLE_DEV_ORGANIZATIONS=acme` を配っていて、`pnpm run capture` は
-      // **自分が属さない組織の URL を投げない**。既定のままだと、書いてある
-      // とおりに setup した人が最初の取り込みで落ちる (実際に落ちた)。
+      // `orgId` は列の既定 ("default") に任せない。対象一覧からクロールを起こす経路
+      // (`POST /api/crawls` の `fromTargets`) は `data/url-source.ts` の
+      // `loadTargets` を通り、そこが **呼んだ人の組織で絞る** —— 別の組織の対象を
+      // 混ぜると、クロールが持つ 1 つの `org_id` では帰属が言えなくなるから。
+      //
+      // docs が案内する開発用の主体は `X-Waggle-Organizations: acme` なので、
+      // 既定の "default" のままだと 1 件も一致せず
+      // `no enabled capture targets for this organization` で 400 になる。
+      // seed が在るのに空、という一番読めない出方をする。
       { url: "https://www.apple.com/", labels: ["Apple"], orgId: "acme" },
       { url: "https://www.microsoft.com/", labels: ["Microsoft"], orgId: "acme" },
       { url: "https://www.cloudflare.com/", labels: ["Cloudflare"], orgId: "acme" },

@@ -83,14 +83,22 @@ const isNotFound = (cause: unknown): boolean => {
 };
 
 /**
- * bucket 内のすべての鍵。ページ送りも辿る。
+ * bucket 内の鍵。ページ送りも辿る。`prefix` を渡せばその下だけ。
  *
- * S3 の list は prefix でしか絞れない —— 拡張子での絞り込みも「いつ以降」も無い ——
- * ので、reconciler は listing を全部引いてから `.result.json` を自分で選ぶ。今の
- * 規模 (数十オブジェクト) なら問題なく、bucket が数万に育ったとき最初に変える
- * べきなのがここ。そのときの直し方は、BrowserHive 側の鍵に日付の prefix を入れること。
+ * S3 の list は prefix でしか絞れない —— **拡張子での絞り込みも「いつ以降」も無い。**
+ * だから reconciler は listing を引いてから `.result.json` を自分で選ぶ。ここは
+ * 変わっていない。
+ *
+ * 変わったのは絞る手がかりのほう。受け口が受けた成果物の鍵は waggle が決めるので、
+ * `org/<orgId>/<YYYY-MM>/` という接頭辞を持つ (`api/sink.ts` の `crawlKeyPrefix`)。
+ * 月ごとに分かれているので、reconciler は直近の数か月だけを歩ける。
+ * **BrowserHive が自前の保管庫へ書く経路は平らなまま**で、そちらは絞れない。
  */
-export const listAllKeys = async (s3: S3Client, bucket: string): Promise<string[]> => {
+export const listAllKeys = async (
+  s3: S3Client,
+  bucket: string,
+  prefix?: string,
+): Promise<string[]> => {
   const keys: string[] = [];
   let continuationToken: string | undefined;
   do {
@@ -101,9 +109,12 @@ export const listAllKeys = async (s3: S3Client, bucket: string): Promise<string[
         // 制御文字を含む鍵は **オブジェクトが在るのに一覧に出てこない**。
         // 付けた以上、下で復号する必要がある (SDK v3 は復号してくれない)。
         //
-        // 注意: これは `Delimiter` / `Prefix` / `StartAfter` にも掛かる ——
-        // 下の「日付の prefix を入れる」をやるときに踏む。
+        // 注意: これは `Delimiter` / `Prefix` / `StartAfter` にも掛かる。ただし
+        // 掛かるのは**応答に echo される側**で、要求として送る `Prefix` は生のまま
+        // 渡す (SDK が query に載せるときに符号化する)。ここは仕様の読みだけでは
+        // 足りないので、実物の S3 実装に投げて確かめてある。
         EncodingType: "url",
+        ...(prefix !== undefined && { Prefix: prefix }),
         ...(continuationToken !== undefined && { ContinuationToken: continuationToken }),
       }),
     );

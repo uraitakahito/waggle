@@ -29,10 +29,14 @@ export interface Identity {
 export const ORGANIZATIONS_CLAIM = "organizations";
 
 /**
- * カンマ区切りから組織を読む。**開発用ヘッダと環境変数が共有する。**
+ * カンマ区切りから組織を読む。いまの読み手は開発用ヘッダ
+ * `X-Waggle-Organizations` だけ。
  *
- * `X-Waggle-Organizations` と `WAGGLE_DEV_ORGANIZATIONS` は同じ綴りなので、
- * 空白の落とし方が片方だけ変わってはいけない。
+ * 以前は `WAGGLE_DEV_ORGANIZATIONS` と綴りを共有していて「片方だけ空白の落とし方が
+ * 変わってはいけない」ことが分けてある理由だったが、**その環境変数を読む場所は
+ * 上に書いたとおり畳んで消えた。** いま呼ぶのは `api/identity.ts` の 1 か所だけで、
+ * 関数のまま残しているのは `test/claims.test.ts` が空要素の落とし方を直接見ているから
+ * —— `,,  ,` のような入力の扱いは、ヘッダ経路の中に埋めると誰も見なくなる。
  */
 export const organizationsFromList = (value: string): string[] =>
   value
