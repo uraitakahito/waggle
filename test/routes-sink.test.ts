@@ -18,19 +18,23 @@ const CRAWL = "456a75bf-7082-49a7-86ce-e2fb24e879da";
 
 let app: FastifyInstance;
 let selects: number;
+/** 偽の `crawls` 行。試験ごとに書き換えて、置き場所の決まり方を分ける。 */
+let crawlRow: { orgId: string; artifactKeyPrefix: string | null };
 
 const bearer = (crawlId: string): string =>
   `Bearer ${issueSinkToken(SECRET, crawlId, new Date(Date.now() + 60_000))}`;
 
 beforeEach(() => {
   selects = 0;
+  // 既定は `013` より前に作られた行 —— 記録が無いので従来の綴りに落ちる。
+  crawlRow = { orgId: "acme", artifactKeyPrefix: null };
   app = Fastify();
   const db = {
     selectFrom: () => {
       selects += 1;
       return {
         select: () => ({
-          where: () => ({ executeTakeFirst: () => Promise.resolve({ orgId: "acme" }) }),
+          where: () => ({ executeTakeFirst: () => Promise.resolve(crawlRow) }),
         }),
       };
     },
@@ -59,6 +63,27 @@ describe("受け口の口", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ location: "s3://b/org/acme/a.wacz" });
+  });
+
+  /**
+   * **クロールを作ったときに決めた場所へ置く。** ここで `orgId` から組み直すと、
+   * 月をまたいだクロールや受け口の設定を切り替えた配備で、探す側とずれる。
+   *
+   * 月を **いまと違う 2026-01** にしてあるのが肝。同じ月のうちは記録から読んでも
+   * 組み直しても同じ綴りになるので、区別できる入力を置かないと検査が素通りする。
+   */
+  it("記録された接頭辞の下に置く", async () => {
+    crawlRow = { orgId: "acme", artifactKeyPrefix: "org/acme/2026-01/" };
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/sink/${CRAWL}/a.wacz`,
+      headers: { authorization: bearer(CRAWL), "content-type": "application/wacz+zip" },
+      payload: "bytes",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ location: "s3://b/org/acme/2026-01/a.wacz" });
   });
 
   it("UUID でない crawlId は DB に届く前に 404", async () => {

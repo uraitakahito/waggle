@@ -38,6 +38,54 @@ describe("listAllKeys", () => {
   });
 
   /**
+   * S3 の list は **prefix でしか絞れない**ので、絞り込みはここを通るしかない。
+   *
+   * 実物 (SeaweedFS) に投げて、`EncodingType: "url"` と同時に効くことと、鍵が正しく
+   * 復号されて返ることを確かめてある —— 掛かるのは応答に echo される側で、送る
+   * `Prefix` は生のままでよい。ここではその綴りが input に届くことを見る。
+   */
+  it("prefix を渡すと Prefix として送る", async () => {
+    const { s3, send } = fakeS3([{ Contents: [{ Key: "org/acme/2026-09/a.wacz" }] }]);
+
+    await listAllKeys(s3, "archives", "org/acme/2026-09/");
+
+    const command = send.mock.calls[0]?.[0] as { input: Record<string, unknown> } | undefined;
+    expect(command?.input["Prefix"]).toBe("org/acme/2026-09/");
+    // 符号化して渡さないこと。したら `org%2Facme%2F…` という鍵を探して 0 件になる。
+    expect(command?.input["EncodingType"]).toBe("url");
+  });
+
+  // 既定は bucket 全体。**渡さなければ付かない**ことを見ないと、常に空文字を送る
+  // 実装が緑で通る。
+  it("prefix を渡さなければ Prefix を送らない", async () => {
+    const { s3, send } = fakeS3([{ Contents: [{ Key: "a.wacz" }] }]);
+
+    await listAllKeys(s3, "archives");
+
+    const command = send.mock.calls[0]?.[0] as { input: Record<string, unknown> } | undefined;
+    expect(command?.input["Prefix"]).toBeUndefined();
+  });
+
+  // ページ送りの 2 ページ目以降にも付き続けること。落ちると 2 ページ目から **bucket
+  // 全体が混ざる** —— しかも 1 ページで収まる規模では誰も気づけない。
+  it("ページ送りしても Prefix を持ち続ける", async () => {
+    const { s3, send } = fakeS3([
+      {
+        Contents: [{ Key: "org/acme/2026-09/a.wacz" }],
+        IsTruncated: true,
+        NextContinuationToken: "t1",
+      },
+      { Contents: [{ Key: "org/acme/2026-09/b.wacz" }] },
+    ]);
+
+    await listAllKeys(s3, "archives", "org/acme/2026-09/");
+
+    const second = send.mock.calls[1]?.[0] as { input: Record<string, unknown> } | undefined;
+    expect(second?.input["Prefix"]).toBe("org/acme/2026-09/");
+    expect(second?.input["ContinuationToken"]).toBe("t1");
+  });
+
+  /**
    * `encoding-type=url` を付けた以上、返る鍵は percent-encoded。復号しないと
    * `"a%01b.result.json"` のような鍵をそのまま台帳に載せてしまい、
    * BrowserHive が組む名前と突き合わせられなくなる。
