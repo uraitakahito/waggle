@@ -67,7 +67,6 @@ export interface CaptureSubmissionsTable {
   correlationId: string | null;
   orgId: string;
   submittedBy: string | null;
-  sourceUrl: string;
   submittedAt: ColumnType<Date, string | undefined, never>;
 }
 

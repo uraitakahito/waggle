@@ -28,10 +28,10 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";
-import type { Kysely } from "kysely";
+import type { Insertable, Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
-import type { Database, CrawlScope } from "../db/database.js";
+import type { CaptureSubmissionsTable, Database, CrawlScope } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
 import { admitLevel } from "../crawl/admit-level.js";
 import { acceptLinks, parseHttpUrl, type DiscoveredLink, type ParsedUrl } from "../crawl/scope.js";
@@ -478,12 +478,15 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         await db
           .insertInto("captureSubmissions")
           .values(
-            submitted.map((r) => ({
+            // **戻り値の型を書く。** 無いと excess property 検査が効かず、`.map()` を
+            // 通った object literal は**存在しない列を書いても typecheck が緑になる**
+            // (`source_url` を落としたときに実測)。waggle に DB を使う試験は 1 本も
+            // 無いので、schema とのずれを静的に捕まえるのはここだけ。
+            submitted.map((r): Insertable<CaptureSubmissionsTable> => ({
               taskId: r.taskId,
               correlationId: r.correlationId ?? crawlId,
               orgId: crawl.orgId,
               submittedBy: crawl.requestedBy,
-              sourceUrl: r.url,
             })),
           )
           .onConflict((oc) => oc.column("taskId").doNothing())
