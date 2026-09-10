@@ -11,8 +11,12 @@ description: Prerequisites, daily commands, running without Compose, and trouble
   **container-compose** (both via Homebrew) — required for the stack, not for
   host-only development. macOS only.
 - **`curl`** and **`git`** on PATH.
-- A **BrowserHive** reachable at `BROWSERHIVE_SERVER` and a **Postgres** at
-  `DATABASE_URL` for end-to-end runs. The Compose stacks bring both up; see
+- A **Postgres** at `DATABASE_URL`. The Compose stack brings one up.
+- For an end-to-end capture, a **BrowserHive** and the Windmill flow that drives
+  it. waggle no longer holds a BrowserHive address — it dispatches to
+  `WAGGLE_CRAWL_WEBHOOK_URL` instead, and the flow lives in
+  [forage](https://github.com/uraitakahito/forage). The stack still builds
+  BrowserHive because the flow needs one; see
   [Upgrading BrowserHive](/waggle/upgrading-browserhive/) for the pinned version.
 
 ## First-time setup
@@ -33,7 +37,7 @@ points at, and refuses to continue if the `waggle` DNS domain is missing.
 
 ### Environment variables
 
-The code reads **25** of them, through three different mechanisms:
+The code reads **35** of them, through three different mechanisms:
 `required()`/`optional()` in `src/config/`, commander's `.env()` (so they also
 show up in `--help`), and plain `process.env[…]` — the last of which reaches
 into `scripts/` too. Seven are mandatory.
@@ -79,22 +83,22 @@ that rule too.
 
 ## Daily commands
 
-| Command                                   | What it does                                                         |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm run capture <args>`                 | Build, then run the CLI (`tsc` then `node dist/submit-captures.js`). |
-| `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                   |
-| `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                   |
-| `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).       |
-| `pnpm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`.  |
-| `pnpm test` / `test:watch`                | Vitest unit tests under `test/`.                                     |
-| `pnpm run check`                          | typecheck + lint + format:check + test. Run before pushing.          |
-| `pnpm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                            |
-| `pnpm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                   |
-| `pnpm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).    |
-| `pnpm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).               |
-| `pnpm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                      |
-| `pnpm run site:dev` / `site:build`        | This documentation site.                                             |
-| `pnpm run site:check`                     | Build the site and verify its references.                            |
+| Command                                   | What it does                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm run api`                            | Build, then run the API (`tsc` then `node dist/api/server.js`).     |
+| `pnpm run build`                          | Emit JS/d.ts to `dist/` via `tsconfig.build.json`.                  |
+| `pnpm run typecheck`                      | `tsc --noEmit`, including tests and `*.config.ts`.                  |
+| `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked).      |
+| `pnpm run format` / `format:check`        | Prettier. `.prettierignore` skips `dist/` and `src/rpc/generated/`. |
+| `pnpm test` / `test:watch`                | Vitest unit tests under `test/`.                                    |
+| `pnpm run check`                          | typecheck + lint + format:check + test. Run before pushing.         |
+| `pnpm run db:migrate` / `db:migrate:down` | Kysely migrations against `DATABASE_URL`.                           |
+| `pnpm run db:seed` / `db:seed:down`       | Kysely seeds from `src/db/seeds/`.                                  |
+| `pnpm run proto:generate`                 | Regenerate `src/rpc/generated/` from the vendored `.proto` (buf).   |
+| `pnpm run proto:check`                    | Generate, then `git diff --exit-code` (CI drift gate).              |
+| `pnpm run proto:sync`                     | Re-copy the `.proto` from the pinned submodule.                     |
+| `pnpm run site:dev` / `site:build`        | This documentation site.                                            |
+| `pnpm run site:check`                     | Build the site and verify its references.                           |
 
 ## Working against the stack
 
@@ -109,12 +113,14 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 `up`, `down`, `build`, `version` — so there is no `exec` to drop into. It does
 not need one: the platform DNS resolves `<service>.waggle` from the host as well
 as between containers, so waggle runs on the host against the containerised
-stack. `setup.sh` writes the two connection strings into `.env`:
+stack. `setup.sh` writes the connection string into `.env`:
 
 ```sh
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=browserhive.waggle:50051
 ```
+
+There is no BrowserHive address here any more. The one gRPC endpoint the stack
+publishes, `localhost:50051`, is for grpcurl and for the flow — not for waggle.
 
 The `pnpm run` scripts read that `.env` themselves
 (`node --env-file-if-exists=.env`) — no shell `export` needed. **Variables
@@ -145,10 +151,15 @@ under _Configure…_, and inspect the target.
 ./scripts/prod-smoke.sh
 ```
 
-It brings the stack up, polls `/v1/status` until BrowserHive answers, builds
-`waggle:latest`, then runs migrate → seed → one capture with
-`container run --rm`, tears the stack down through an `EXIT` trap, and forwards
-waggle's exit code as its own.
+It brings the stack up, polls `GetStatus` until BrowserHive answers, builds
+`waggle:latest`, then runs migrate → seed → the API with `container run --rm`,
+asks the API for `/healthz`, tears the stack down through an `EXIT` trap, and
+forwards the exit code as its own.
+
+**It no longer captures anything.** waggle does not speak gRPC to BrowserHive,
+so what this script proves is that the image boots: migrations apply, the seed
+lands, the API answers. The capture path is covered end to end by forage's
+`pnpm run test:e2e`, which needs Windmill as well.
 
 The one-shot jobs are plain `container run` calls because container-compose has
 no `run` subcommand. That also retires the old
@@ -156,39 +167,46 @@ no `run` subcommand. That also retires the old
 it worked around — aborting the whole stack on the migrator's legitimate exit 0
 — has no equivalent here.
 
-## Working against external Postgres / BrowserHive
+## Working against an external Postgres
 
 ```sh
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-BROWSERHIVE_SERVER=https://browserhive.example/ \
   pnpm run db:migrate
 
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-BROWSERHIVE_SERVER=https://browserhive.example/ \
-  pnpm run capture --webp --limit 3
+WAGGLE_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
+WAGGLE_CRAWL_WEBHOOK_TOKEN=… \
+  pnpm run api
 ```
 
-For TLS with a custom CA, set `NODE_EXTRA_CA_CERTS` to the CA file before
-invoking the CLI — that env var is the authoritative knob; `--tls-ca-cert` is
-logged for visibility but does not change Node's trust store on its own. For
-Postgres TLS, encode the parameters in `DATABASE_URL` (e.g. `?sslmode=require`).
+For Postgres TLS, encode the parameters in `DATABASE_URL` (e.g.
+`?sslmode=require`).
+
+**BrowserHive's TLS is not configured here any more.** The flow holds that
+channel, so its CA lives on the Windmill side — the variable
+`u/admin/browserhive_tls_ca`, where an empty string means plaintext.
 
 ## Setting up an identity locally
 
-waggle has two entry points for identity. **Both deny everyone by default.**
+There is one entry point for identity — the API — and it **denies everyone by
+default.**
 
-| Path                     | Default | Dev header              | JWT                  |
-| ------------------------ | ------- | ----------------------- | -------------------- |
-| API (`/api`, picker)     | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
-| CLI (`pnpm run capture`) | fails   | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+| Path                 | Default | Dev header              | JWT                  |
+| -------------------- | ------- | ----------------------- | -------------------- |
+| API (`/api`, picker) | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+
+There used to be a second row for the CLI, reading `WAGGLE_DEV_SUBJECT` and
+`WAGGLE_OIDC_TOKEN` from the environment. Both variables are still written by
+`setup.sh` and declared in `.env.example`, but nothing reads them at run time
+now that the CLI is gone.
 
 **The JWT path wins over the dev header.** When both are set, an environment must not
 fall back to the weaker one, where anyone who reaches the port can be anyone.
 
 ### The dev issuer
 
-Setting `WAGGLE_OIDC_ISSUER` makes both the API and the CLI run **the same verification
-code production will run** — signature, `iss` / `aud`, expiry, and the JWKS fetch. Until a
+Setting `WAGGLE_OIDC_ISSUER` makes the API run **the same verification code
+production will run** — signature, `iss` / `aud`, expiry, and the JWKS fetch. Until a
 real IdP is chosen, the bundled issuer stands in for one.
 
 ```bash
@@ -219,7 +237,7 @@ section is what guards it instead.
 
 The spelling of the organizations claim differs per IdP (`groups` / `roles` / something
 custom). There is one place to change: `ORGANIZATIONS_CLAIM` in `src/config/identity.ts`,
-which both the API and the CLI read through `identityFromClaims`.
+which the API reads through `identityFromClaims`.
 
 ## Troubleshooting
 
@@ -232,8 +250,10 @@ which both the API and the CLI read through `identityFromClaims`.
 - **BrowserHive exits at boot** — its startup `HeadBucket` is fatal. Check that
   `WAIT_FOR_S3` is set on the service and that SeaweedFS logged
   `Bucket browserhive ready.`
-- **`Request rejected` with a `/…` path in the message** — that is BrowserHive's
-  RFC 7807 `detail` naming the offending field. The request never became a task.
+- **`/api/crawls` answers 404 to everyone** — either the caller lacks
+  `can_submit`, or the route was never registered because
+  `WAGGLE_CRAWL_WEBHOOK_URL` is unset. The startup log says which
+  (`… is not set — /api/crawls is not served`).
 - **The docs build cannot read the BrowserHive pin** — run
   `git submodule update --init --recursive`.
 

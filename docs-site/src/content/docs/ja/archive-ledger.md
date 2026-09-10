@@ -37,47 +37,54 @@ Outbox 行として記録します。両方入るか、どちらも入らない�
 送り直します。そうしないと新しいタプルが黙って失われます。
 :::
 
-## 台帳を埋める 3 つの経路
+## 台帳を埋める 2 つの経路
 
-**ポーリング** ― `waggle` は投げた capture の完了を待ち
-（`GetCapture`、完了するまで `PENDING` / `PROCESSING`）、成果物ができたものを
-登録します。速いですが、waggle が動いている間しか効きません。
-`--no-collect` で省略できます。
+かつては 3 つでした。CLI が自分の投げた capture を `GetCapture` でポーリングする
+経路がありましたが、**CLI も waggle の gRPC クライアントも消えました**。いま投げるのは
+Windmill の flow です。
 
-**Reconcile** ― `waggle-ledger reconcile` は BrowserHive が各 capture の
+**クロール** ― クロールは、flow が段を報告した時点で自分が取り込んだぶんを
+登録します（`src/crawl/admit-level.ts`）。段の報告には成果物の在り処が
+載っていないので、`.result.json` を読み直してから登録します。こちらが速い経路で、
+取り込んだページは 1 往復のうちに台帳へ入ります。
+
+**Reconcile** ― `pnpm run fga:reconcile` は BrowserHive が各 capture の
 成果物の隣に書く `.result.json` マニフェストを走査し、台帳に無いものを
 登録します。**これが台帳を自己修復させます**: waggle が何時間止まっていても、
-結果が BrowserHive のキャッシュから溢れていても、次の reconcile で拾えます。
+manifest が段の閉じた後に書かれても、次の reconcile で拾えます。
 
-**クロール** ― リンクを辿るクロールは、段を報告した時点で自分が取り込んだぶんを
-登録します（`src/crawl/admit-level.ts`）。段の報告には成果物の在り処が
-載っていないので、`.result.json` を読み直してから登録します。
-
-:::note[以前はここが抜けていました]
+:::note[クロールの経路は、以前は抜けていました]
 クロールの経路は `crawl_pages` と `capture_submissions` にしか書いておらず、
 **台帳には 1 行も入っていませんでした**。クロールしたページは reconcile を
 走らせるまで存在せず、picker にも検索にも出ませんでした。取り込んだ本人が
 台帳を書けるのに、掃除役の巡回を待っていたことになります。
 :::
 
-ポーリングは遅延のため、reconcile は正しさのためです。
+クロールは遅延のため、reconcile は正しさのためです。
 **誰も気づかない穴のある台帳は、台帳が無いより悪い**
 ― 穴はずっと後で「なぜこのアーカイブが見えないのか」として現れます。
 
 ```sh
-waggle-ledger reconcile   # バケットから抜けを埋める
-waggle-ledger drain       # 溜まったタプルを配送（API も定期的に行う）
+pnpm run fga:reconcile   # バケットから抜けを埋める
+pnpm run fga:drain       # 溜まったタプルを配送（API も定期的に行う）
 ```
 
 台帳に入るのは成功した capture だけです。失敗したものは何もアップロード
 していないので、記録すると存在しないオブジェクトへの URL を発行できて
 しまいます ― 認可は完璧に効いているのに 404、という一番わかりにくい壊れ方です。
 
+**ただし「失敗」は flow の言い分であって、bucket の言い分ではありません。**
+flow が待っている間に結果が BrowserHive のキャッシュから溢れると、成果物は
+bucket に在るのにページは `failed` と報告されます。そこで段の handler は、
+`taskId` を持つ**全件**について manifest を引き、成功していたと分かれば
+`crawl_pages` の記録を直します。
+
 ### 帰属
 
 マニフェストに組織の情報はありません。BrowserHive にその概念が無いからです。
-そこで `waggle` は投げた時点で `capture_submissions` 行（task id → 組織）を
-書き、reconciler がそれを読み戻します。`correlationId` に組織 ID を
+そこで `waggle` は段が報告された時点で `capture_submissions` 行（task id → 組織）を
+書き、reconciler がそれを読み戻します。この行は `taskId` を持つ全件に書きます ―
+すぐ上の理由で、失敗と報告されたページも含めてです。`correlationId` に組織 ID を
 埋め込む案は採りませんでした ― **約束だけで保たれる規約は、最初に手で
 capture を投げた人が破ります**。
 
@@ -123,98 +130,128 @@ S3 は署名しか見ないので、URL を署名した瞬間に判断は確定�
 一覧はそうしません。一覧に出ること自体は何の権限も与えず、
 実際に取得するには上の強整合な Check を通る必要があるからです。
 
-## 実行を起こす
+## クロールを起こす
 
-**いつ**クロールするかを決める仕事は waggle の外 —— スケジューラのもの。**何を**
-**どう**投げるかはここに残る。だから境界は、実行を起こす口と、その様子を返す口の 2 つ。
+**いつ**取り込むかを決める仕事は waggle の外 —— スケジューラのもの。**何を**
+**どう**投げるかはここに残る。だから境界は、クロールを起こす口と、その様子を返す口の 2 つ。
+
+以前はもう 1 組ありました。`POST /api/runs` と `GET /api/runs/:id` —— 「`capture_targets`
+の有効な行を全部 1 回取る」ための口です。**それは今、`fromTargets` で深さ 0 のクロール**
+になりました。概念が 1 つ、表が 1 つ、担保が 1 組。
 
 ```sh
-# 1 回起こす。すぐ返る。実行はそのまま走り続ける。
-curl -X POST http://localhost:7070/api/runs \
-     -H 'content-type: application/json' -d '{"limit": 5}'
-# → 202 { "runId": "e5f4c0bf-…" }
+# 種を明示する形。
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' \
+     -d '{"seeds":["https://example.com/"],"maxDepth":2}'
+# → 202 { "crawlId": "9072b625-…" }
 
-curl http://localhost:7070/api/runs/e5f4c0bf-…
-# → { "state": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
+# 対象一覧から起こす形。以前の run がしていたのはこれ。
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' -d '{"fromTargets":{"limit":5}}'
+
+curl http://localhost:7070/api/crawls/9072b625-…
+# → { "state": "succeeded", "stopReason": "max_depth",
+#     "seeds": ["https://…"], "pagesCaptured": 5, "pagesDiscovered": 5, … }
 ```
 
-実行は数十分に達しうる —— 受理された取り込みを 1 件ずつ待つため —— ので、この呼び出しに
-同期の形は無い。**202 は受理であって完了ではない。** 結果が住むのは `runs` の行。
-
-`state` が語るのは実行そのものであって、何が取れたかではない。投げたものが全部拒まれても
-`succeeded` で終わる —— 最後まで走ったのは事実で、何が起きたかは `accepted` / `rejected`
-が言う。`failed` になるのは実行が例外で落ちたときだけ。
+クロールは段を重ねるので数十分に達しうる。だからこの呼び出しに同期の形は無い。
+**202 は受理であって完了ではない。** 結果が住むのは `crawls` の行。
 
 :::note[なぜ `status` ではなく `state` か]
 この workspace では両方の語が使われているので、規則を書いておきます。
-**進行中の値を取りうる列は `state`。** `runs.state` / `crawls.state` /
-`crawl_pages.state` はいずれも取りうります（`running`、`pending`）。線の上の
-`PageReport.status` は取りえない（`captured` / `failed` / `skipped` だけ）ので、
-`crawl_pages.state` に書き込む値であっても `status` のままが正しい。
-
-`runs` だけが例外でした —— `runs.status` が `running` を持っていて、2 つの型は
-語が違うだけで文字通り同一でした。
+**進行中の値を取りうる列は `state`。** `crawls.state` と `crawl_pages.state` は
+いずれも取りうります（`running`、`pending`）。線の上の `PageReport.status` は
+取りえない（`captured` / `failed` / `skipped` だけ）ので、`crawl_pages.state` に
+書き込む値であっても `status` のままが正しい。
 :::
 
-### 同時に 1 本
+### 対象一覧から起こす
 
-走行中に 2 本目を起こすと **409**。これは行儀の問題ではない。gRPC の channel はプロセスに
-1 つで、`configureClient` は既存を閉じ、`runClient` は終わりにもう一度閉じる —— 1 つの
-プロセスで 2 本並べると、互いの接続を畳む。
+`fromTargets` は[`capture_targets`](/waggle/ja/databases/capture-targets/)の有効な行を
+種にする。`limit` を渡せば先頭 n 件。他とは 2 点だけ違う:
 
-担保はアプリの旗ではなく、部分 unique index:
+- **`maxDepth` の既定は 0** —— 辿らない。以前の run が意味していたのはこれ。明示した
+  値は勝つので、「対象一覧を種にして 2 段辿る」も書ける。
+- **`maxPages` は種の数を下回らない。** 既定の 30 のままだと、長い対象一覧が黙って
+  切り落とされる。
+
+読む行は呼び出し元の組織で絞る。クロールは `org_id` を 1 つ持つ行なので、別の組織の
+対象を混ぜると帰属が言えなくなる。有効な対象が 1 件も無い呼び出し元には、空のクロール
+ではなく **400** を返す —— `crawls.seeds` には `CHECK (array_length(seeds, 1) >= 1)` が
+あり、種の無いクロールはそもそも始まりようがない。
+
+:::note[`fromTargets` は必ず `max_depth` で終わる]
+深さ 0 では 1 段目が最後の段なので、`stopReason` は毎回 `max_depth` になる。
+異常ではなく、頼んだことの形がそうだというだけ。
+:::
+
+run をクロールに畳んだ帰結が 2 つ。最初の定期実行の前に知っておくとよい:
+
+- **日次の取り込みにも礼儀が効くようになった。** 以前の run は対象を全件同時に投げて
+  いたが、クロールは他と同じく `perHostDelayMs` と `hostParallelism` を守る。相手には
+  優しく、そのぶん遅い。
+- **対象一覧のページが全文検索の索引に乗る。** `crawl_pages` の行になり、索引が
+  そこを join するため。
+
+### クロールは同時に 1 本
+
+走行中に 2 本目を起こすと **409**。担保はアプリの旗ではなく、部分 unique index:
 
 ```sql
-CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE state = 'running'
+CREATE UNIQUE INDEX crawls_single_active_idx ON crawls ((true)) WHERE state = 'running'
 ```
 
-プロセスの中の旗は、プロセスが 2 つになった日まで**しか**保たない。Postgres はどちらでも
-保つ。route の仕事は、制約違反を 409 に翻訳することだけ。
+理由は礼儀。ホストあたりの間隔は 1 つの flow run の中でしか効かないので、2 本走ると
+互いの間隔が見えず、同じホストへの頻度が黙って倍になる。プロセスの中の旗は、プロセスが
+2 つになった日まで**しか**保たない。Postgres はどちらでも保つ。route の仕事は、制約違反を
+409 に翻訳することだけ。
 
-:::caution[CLI はこの担保の外に居る]
-`pnpm run capture` は別のプロセスで走り、`runs` に行を作らないので、上の index からは
-見えない。**互いを壊しはしない** —— gRPC の channel はモジュールの状態で、それはプロセス
-ごとに別なので、入口はそれぞれ自分の channel を持つ。代わりに起きるのは **同じ対象を
-2 度投げること**。どちらも `capture_targets` の有効な行を読むので、両方の選択に入った URL は
-2 度取り込まれ、2 度課金され、2 度保存される。実測: API 経由の 5 件と `--limit 1` の CLI を
-並走させると、同じ URL に `capture_submissions` の行が 2.3 秒差で 2 本並んだ。
+:::caution[日次と手動のクロールが塞ぎ合うようになった]
+以前は制約が 2 つ（run 用とクロール用）あり、手でクロールしている最中でも日次の run は
+始められた。いまは 1 つなので始められない。**礼儀の観点では正しい**（どちらも同じホストを
+叩く）が、実務上の代償として、**日次が見送られる回数は以前より増える**。
 
-channel をリクエスト単位にしても塞がらない —— 重なりはプロセスを跨いでいて、プロセス
-ごとの channel は既にそうなっているため。塞ぐなら CLI にも `runs` の行を作らせ、同じ index
-に守らせること。それまでは、2 つの入口は運用上の取り決めとして排他に扱う。
-
-実行の途中でプロセスが死ぬと、その行は `running` のまま残り、次を塞ぐ。判断できるように
+dispatch が途中で死んだクロールの行も `running` のまま残り、次を塞ぐ。判断できるように
 `GET` は `startedAt` を返す。片付けは手で行う。
 :::
 
 ### 呼び出し元が渡せるもの
 
-body が受けるのは `limit` だけ。知らない鍵は**黙って落とさず** **400**。取り込む形式は
-意図して受けない —— それは「この配備が何をするか」の一部であって、環境から来る。
+`seeds`（1 本以上の配列）か `fromTargets` の **どちらか一方**。**両方でも 400、
+どちらも無くても 400** で、この 2 つは別の間違いなので言い分を分けてある。ほかに
+`scope` / `maxDepth` / `maxPages` / `perHostDelayMs` / `hostParallelism`。
+知らない鍵は**黙って落とさず** **400**。
+
+取り込む形式は意図して受けない —— それは「この配備が何をするか」の一部であって、
+環境から来る。
 
 ```sh
-WAGGLE_API_RUN_FORMATS=wacz   # カンマ区切り: png,webp,html,links,mhtml,wacz
-WAGGLE_API_RUN_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
+WAGGLE_CAPTURE_FORMATS=wacz   # カンマ区切り: png,webp,html,links,mhtml,wacz
+WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 ```
 
 どちらも**起動時に**読んで検査するので、綴りを間違えるとその値を名指しして起動が止まる。
-実行のたびに解釈すると、打ち間違いは夜中の定期実行が「形式が 1 つも無い」で落ちて初めて
-見つかる —— しかもその文言は、原因になった設定に一言も触れない。
+クロールのたびに解釈すると、打ち間違いは夜中の定期クロールが「形式が 1 つも無い」で
+落ちて初めて見つかる —— しかもその文言は、原因になった設定に一言も触れない。
+詳しくは[キャプチャオプション](/waggle/ja/capture-options/)。
 
 ### 誰がこの口を叩くか
 
 waggle の中には誰も居ない。スケジューラは別の repo —— [forage](https://github.com/uraitakahito/forage)
-—— に住んでいて、そこで動く Windmill が cron でこの endpoint を叩くことだけをしている。
+—— に住んでいて、そこで動く Windmill が cron でこの endpoint を叩くことだけをしている
+（`trigger_crawl.ts`）。取り込みを回す flow も同じ Windmill に居て、waggle は
+`WAGGLE_CRAWL_WEBHOOK_URL` でそこへ届く。
 
 分けてあるのは意図的で、**forage が「いつ」を決め、waggle が「何を」決める**。
-body が取り込む形式を受けないのも、対象が呼び出し元の渡す一覧ではなく
+body が取り込む形式を受けないのも、`fromTargets` の対象が呼び出し元の渡す一覧ではなく
 `capture_targets` なのも、同じ線の上にある。
 
 呼ぶ側が外してはならないことが 2 つあり、forage のスクリプトはそれを形にしたもの:
 
 - **409 は失敗ではない。** 既に走っているという意味で、再試行しても答えは変わらない
   —— その 1 本が終わるまで同じ 409 が返る。
-- **202 は終わりではない。** 失敗した実行も 202 を返している。202 で止める実装は、
+- **202 は終わりではない。** 失敗したクロールも 202 を返している。202 で止める実装は、
   失敗した取り込みを成功として報告する。
 
 スケジューラで動かすということは JWT で動かすということで、代償がひとつある。
@@ -244,18 +281,19 @@ subject に 202 が出た。
 **何をしてよいか**を言うのは OpenFGA なので保存する。`grant` が `member` を書くことを拒む
 のは、まさにこのため —— 1 つの事実に住処が 2 つあると、食い違ったとき答えが無くなる。
 
-なお、許可が 1 つあれば実行は起こせて、実行は**全組織の**有効な対象を投げる。`submitter`
-は、その全部を任せられる相手にだけ与えること。
+許可が 1 つあればクロールは起こせる。クロールは呼び出し元の身元の**先頭の**組織に
+帰属し、`fromTargets` が読むのもその組織の行だけ —— `submitter` が他のテナントの
+対象を自分のクロールに引き込むことはできない。
 
 ## リンクを辿る
 
-`POST /api/crawls` は種を受け取り、そこからリンクを辿る。辿る作業は Windmill が回し、
+同じ口に深さを 1 以上で渡すと、種からリンクを辿る。辿る作業は Windmill が回し、
 **範囲・既読・打ち切り**を決めるのは waggle。
 
 ```sh
 curl -X POST http://localhost:7070/api/crawls \
      -H 'content-type: application/json' \
-     -d '{"seed":"https://example.com/","maxDepth":2,"perHostDelayMs":2000}'
+     -d '{"seeds":["https://example.com/"],"maxDepth":2,"perHostDelayMs":2000}'
 # → 202 { "crawlId": "9072b625-…" }
 
 curl http://localhost:7070/api/crawls/9072b625-…
@@ -299,12 +337,6 @@ WINDOW w AS (PARTITION BY host ORDER BY submitted_at);
 差はすべて `per_host_delay_ms` 以上で、**負であってはならない**。負の差は、同じホストへの
 取り込みが重なったという意味。どちらの失敗も、時刻が無ければ「速く動いた」と見分けが付かない。
 :::
-
-### クロールは同時に 1 本
-
-走行中に 2 本目を起こすと **409**。`runs` と同じく部分 unique index が守る。ただし理由は
-違う —— 上の間隔は **1 つの flow run の中でしか効かない**ので、2 本走ると互いの間隔が
-見えず、同じホストへの頻度が黙って倍になる。
 
 ### どこで、なぜ止まったか
 
@@ -442,26 +474,18 @@ curl -X POST http://localhost:7070/api/archives/<id>/url \
 ポートに到達できる人は誰にでもなりすませます。明示的に有効化しない限り
 動かず、起動時に警告を出します。
 
-CLI も同じ形の身元を持ちますが、経路が違います。ヘッダの来ない場所なので、
-`WAGGLE_DEV_SUBJECT` と `WAGGLE_DEV_ORGANIZATIONS` の 2 つの環境変数を読みます
-（`setup.sh` が `.env` に書きます）:
+**入口はいま API だけです。** 以前は CLI 用の経路がもう 1 本あり、ヘッダの代わりに
+`.env` の `WAGGLE_DEV_SUBJECT` と `WAGGLE_DEV_ORGANIZATIONS` を読んでいました。
+この 2 つは今も `setup.sh` が書き、`.env.example` にも宣言されていますが、
+CLI が消えたので実行時に読むものはありません。
 
-```sh
-WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run capture --wacz
-```
-
-こちらも**検証は一切しません**。`.env` を書き換えれば誰にでもなりすませます。
-それでも置いてあるのは、これが `capture_submissions.submitted_by` と
-`capture_job` の `owner` tuple になるからで、空のままだと**投げた本人ですら
+身元が**何のためにあるか**は変わりません。これが `capture_submissions.submitted_by` と
+`capture_job` の `owner` tuple になり、空のままだと**投げた本人ですら
 アーカイブを削除できません**（`can_delete` は `owner from parent` だけを見ます）。
 
-API 側の `WAGGLE_DEV_IDENTITY=1` に相当するスイッチは CLI にはありません。
-未設定なら起動時に落ちます。API はネットワークに口を開けるので既定を
-「拒否」にしていますが、CLI は手元の道具なので、危ないのは逆側 ——
-黙って空のまま通されて、記録が嘘になることです。
-
-どちらの経路も `src/config/identity.ts` の 1 つの関数に行き着きます。IdP が
-決まったとき差し替えるのはそこだけで、呼ぶ側は `Identity` 型しか見ていません。
+どの経路も最後は 1 か所に行き着きます —— `src/api/identity.ts` が resolver を選び、
+`src/config/identity.ts` が検証済みのクレームを `Identity` にする。IdP が決まったとき
+差し替えるのはそこだけで、呼ぶ側は `Identity` 型しか見ていません。
 
 所属は OpenFGA に**保存していません**。リクエストごとに呼び出し元の身元から
 contextual tuple として渡すので、入退社や組織変更を認可ストアへ同期する
@@ -559,7 +583,7 @@ pnpm run fga:deploy  # モデルを投入し、固定すべき ID を出力
 ## セットアップ
 
 ```sh
-./setup.sh                    # .env.example から .env を作る（25 個）
+./setup.sh                    # .env.example から .env を作る（35 個）
 container-compose up -d -b
 pnpm run fga:migrate          # OpenFGA のスキーマ（下記参照）
 pnpm run db:migrate

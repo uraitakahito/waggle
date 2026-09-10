@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Bring the Compose stack up, seed the capture_targets table, and submit your first capture.
+description: Bring the Compose stack up, seed the capture_targets table, and start your first crawl.
 ---
 
 The stack brings up everything waggle needs — Postgres, SeaweedFS, two headless
@@ -85,56 +85,75 @@ pnpm run fga:deploy   # push the model; prints the store id and model id
 Copy the two printed lines into `WAGGLE_FGA_STORE_ID` and `WAGGLE_FGA_MODEL_ID`
 in `.env`.
 
-:::note[Skip this if you only want to submit a capture]
-This step is only needed for the API and picker in §7. `pnpm run capture` does
-not go through OpenFGA.
+:::note[This step is not optional any more]
+There is no longer a CLI that bypasses OpenFGA. Every way into waggle is the
+API, and the API needs these two ids.
 :::
 
-## 6. Submit a capture
+## 6. Start the API
 
-```sh
-pnpm run capture --wacz --limit 1
-```
-
-Each accepted URL produces one log line, and the run ends with a summary:
-
-```json
-{"msg":"Request accepted","progress":"1/1","taskId":"e785962b-…","labels":["Apple"]}
-{"msg":"Request summary","total":1,"accepted":1,"rejected":0,"durationMs":23}
-```
-
-`accepted` means BrowserHive queued the work — not that the capture finished.
-
-## 7. See what came out
-
-The listing and the picker are served by `waggle-api`, which **runs on the
-host** — the stack has no such service, for the same reason as §5: the OpenFGA
-ids do not exist until after startup.
+The API — and the picker it serves at `/` — **runs on the host**. The stack has
+no such service, for the same reason as §5: the OpenFGA ids do not exist until
+after startup.
 
 ```sh
 pnpm run api
 open http://127.0.0.1:7070/
 ```
 
-Clicking a row opens it in [replay](https://github.com/uraitakahito/replay). The
-listing comes from the ledger (the `archives` table) and is **filtered by
-OpenFGA's `can_view`**. You can also call the API directly:
+An empty listing usually means `WAGGLE_DEV_IDENTITY=1` is missing from `.env` —
+without it the resolver admits nobody and the picker stays empty with `401`.
+
+## 7. Start a crawl
+
+Capturing is a crawl now: waggle plans it, and a Windmill flow does the
+submitting.
+
+```sh
+curl -X POST http://127.0.0.1:7070/api/crawls \
+  -H 'content-type: application/json' \
+  -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  -d '{"fromTargets":{"limit":1}}'
+# → 202 { "crawlId": "9072b625-…" }
+```
+
+`fromTargets` seeds the crawl from the rows §4 loaded, and defaults to depth 0 —
+take them, follow nothing. That is what the old `POST /api/runs` did.
+
+:::caution[This needs the scheduler stack]
+`/api/crawls` is **only served when `WAGGLE_CRAWL_WEBHOOK_URL` and
+`WAGGLE_CRAWL_WEBHOOK_TOKEN` are both set** — waggle no longer talks to
+BrowserHive itself, so without somewhere to dispatch to there is nothing to
+serve, and the route answers `404`. The flow lives in
+[forage](https://github.com/uraitakahito/forage). Everything above this step
+works without it; capturing does not.
+
+Also note `can_submit`: a caller without the grant gets `404` too. See
+[Archive ledger](/waggle/archive-ledger/#who-may-start-one).
+:::
+
+## 8. See what came out
+
+Reload the picker from §6. Clicking a row opens it in
+[replay](https://github.com/uraitakahito/replay). The listing comes from the
+ledger (the `archives` table) and is **filtered by OpenFGA's `can_view`**. You
+can also call the API directly:
 
 ```sh
 curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
   http://127.0.0.1:7070/api/archives | jq '.archives[0]'
 ```
 
-An empty listing usually means `WAGGLE_DEV_IDENTITY=1` is missing from `.env` —
-without it the resolver admits nobody and the picker stays empty with `401`.
-See [Archive ledger](/waggle/archive-ledger/) for the whole surface.
+See [Archive ledger](/waggle/archive-ledger/) for the whole surface, and
+`GET /api/crawls/<crawlId>` for how the crawl itself ended.
 
 ### While it is still running
 
-**A capture reaches the ledger only after it finishes.** If it is not in the
-picker it is either still being taken or it failed. **Progress lives only in
-BrowserHive** — that is the system of record; what waggle holds is a copy of
-finished facts.
+**A page reaches the ledger only after the flow reports the level it was in.**
+If it is not in the picker, the level is either still open or the page failed.
+**Progress lives only in BrowserHive** — that is the system of record; what
+waggle holds is a copy of finished facts. waggle does not poll it, but you
+still can:
 
 ```sh
 grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
@@ -150,7 +169,7 @@ contents are on BrowserHive's storage page.
 
 ## Next
 
-- Serve and share archives → [Archive ledger](/waggle/archive-ledger/)
+- Serve and share archives, and the whole crawl API → [Archive ledger](/waggle/archive-ledger/)
 - Add your own URLs → [URL source](/waggle/url-source/)
-- Change how pages are captured → [Capture options](/waggle/capture-options/)
+- Change what gets captured → [Capture options](/waggle/capture-options/)
 - Work without Compose → [Development environment](/waggle/development-environment/)

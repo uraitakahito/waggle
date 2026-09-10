@@ -53,7 +53,7 @@ needed before a member of the organization can reach the archive.
 
 ## Delivery
 
-`waggle-ledger drain`, or the API process's timer, drains it.
+`pnpm run fga:drain`, or the API process's timer, drains it.
 
 ```sql
 SELECT … FROM fga_outbox WHERE processed_at IS NULL
@@ -61,7 +61,7 @@ ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100
 ```
 
 **`FOR UPDATE SKIP LOCKED` lets any number of drains run at once** — the API's
-timer and a hand-run `waggle-ledger drain`. Neither processes the same row twice
+timer and a hand-run `pnpm run fga:drain`. Neither processes the same row twice
 nor waits on the other.
 
 Delivery is **at-least-once**: a row stays until OpenFGA accepts it. The other

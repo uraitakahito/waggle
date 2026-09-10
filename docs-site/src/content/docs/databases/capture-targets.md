@@ -4,7 +4,9 @@ description: The list of what to capture — the answer to the one question wagg
 ---
 
 **The list of what to capture.** The answer to the one question waggle asks —
-which URLs get captured — lives here.
+which URLs get captured — lives here. `POST /api/crawls` with `fromTargets`
+seeds a crawl from the enabled rows of this table, filtered to the caller's
+organization.
 
 ```ts file="src/db/migrations/001-create-capture-targets.ts#capture-targets-columns"
 
@@ -12,15 +14,15 @@ which URLs get captured — lives here.
 
 ## Column notes
 
-| Column                      | Note                                                                                                        |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `id`                        | `BIGSERIAL`, insertion order, which the loader's `ORDER BY` preserves                                       |
-| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empties and padding                         |
-| `url_hash`                  | **Generated column**: `digest(url, 'sha256')`, stored. It backs the unique index and is never read directly |
-| `labels`                    | `TEXT[]`, forwarded to BrowserHive and baked into artifact filenames                                        |
-| `enabled`                   | Covered by the partial index `capture_targets_enabled_id_idx`; disabled rows cost nothing                   |
-| `org_id`                    | Which organization this URL belongs to, carried through to `capture_submissions`                            |
-| `created_at` / `updated_at` | Default `now()`. There is no auto-update trigger yet                                                        |
+| Column                      | Note                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | `BIGSERIAL`, insertion order, which the loader's `ORDER BY` preserves                                                                 |
+| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empties and padding                                                   |
+| `url_hash`                  | **Generated column**: `digest(url, 'sha256')`, stored. It backs the unique index and is never read directly                           |
+| `labels`                    | `TEXT[]`. **Not read any more** — the crawl seeds itself with `url` alone, so labels reach neither BrowserHive nor artifact filenames |
+| `enabled`                   | Covered by the partial index `capture_targets_enabled_id_idx`; disabled rows cost nothing                                             |
+| `org_id`                    | Which organization this URL belongs to. `fromTargets` filters on it, so a crawl only ever seeds from its own tenant                   |
+| `created_at` / `updated_at` | Default `now()`. There is no auto-update trigger yet                                                                                  |
 
 :::note[Why the unique index is not on `url` itself]
 Long URLs can exceed an index's size limit. **Indexing the fixed 32-byte SHA-256
