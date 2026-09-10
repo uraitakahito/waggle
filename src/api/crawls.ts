@@ -41,6 +41,7 @@ import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
 import { loadTargets } from "../data/url-source.js";
 import { createChildLogger } from "../logger.js";
+import { sinkForCrawl, sinkObjectKey, type SinkConfig } from "./sink.js";
 
 const log = createChildLogger({ module: "api" });
 
@@ -94,6 +95,13 @@ export interface DispatchedCrawl {
    * 依然として waggle 側で、flow は言われたとおりに投げる。
    */
   captureFormats: CaptureFormats;
+  /**
+   * 成果物の送り先。**在れば BrowserHive はそこへ押し出し、自前の保管庫へは書かない。**
+   *
+   * 段ごとに作る —— クロールは長く続きうるので、後の段には新しい期限を配る。
+   * 無ければ従来どおり BrowserHive が自前の保管庫へ書く (2 つの経路は同時に生きる)。
+   */
+  artifactSink?: { url: string; token: string };
   signing: boolean;
 }
 
@@ -111,6 +119,8 @@ export interface CrawlRouteDeps {
   s3: S3Client;
   bucket: string;
   resolveIdentity: IdentityResolver;
+  /** 受け口の設定。無ければ送り先を配らない。 */
+  sink?: SinkConfig;
   dispatch: CrawlDispatcher;
 }
 
@@ -149,7 +159,7 @@ interface LevelBody {
 }
 
 export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps): void => {
-  const { db, fga, resolveIdentity, dispatch, capture } = deps;
+  const { db, fga, resolveIdentity, dispatch, capture, sink } = deps;
 
   /**
    * クロールを 1 本起こす。
@@ -303,6 +313,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         // 辿るつもりが無いなら `links` は要らない。取り出させても相手と S3 に無駄が出る。
         captureFormats: withLinks(capture.formats, crawl.maxDepth > 0),
         signing: capture.signing,
+        ...(sink && { artifactSink: sinkForCrawl(sink, crawlId) }),
       }).catch(async (err: unknown) => {
         log.error({ err, crawlId }, "Could not dispatch the crawl");
         await db
@@ -506,6 +517,9 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           crawlId,
           orgId: crawl.orgId,
           requestedBy: crawl.requestedBy,
+          // 受け口が受けた成果物は組織で分かれた場所に在る。**接頭辞がずれると
+          // manifest が見つからず、台帳に 1 行も入らないまま静かに終わる。**
+          ...(sink && { keyPrefix: sinkObjectKey(crawl.orgId, "") }),
         });
 
         // ── 2c. 拾えたものは記録を直す ──────────────────────────────────
@@ -651,6 +665,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           hostParallelism: crawl.hostParallelism,
           captureFormats: withLinks(capture.formats, crawl.maxDepth > nextDepth),
           signing: capture.signing,
+          ...(sink && { artifactSink: sinkForCrawl(sink, crawlId) }),
         }).catch(async (err: unknown) => {
           log.error({ err, crawlId, depth: nextDepth }, "Could not dispatch the next level");
           await db
