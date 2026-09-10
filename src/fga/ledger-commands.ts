@@ -11,15 +11,28 @@
  *   waggle-ledger grant      組織に対する権限を与える
  *   waggle-ledger revoke     それを取り消す
  */
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
+import { sql } from "kysely";
 import { fgaConfig, storageConfig } from "../config/env.js";
 import { createKyselyClient } from "../db/kysely.js";
 import { createFgaClient } from "./client.js";
 import { drainOutbox } from "./outbox-worker.js";
 import { createS3Client } from "../archive/s3.js";
-import { reconcile } from "../archive/reconcile.js";
+import { narrowingFrom, reconcile } from "../archive/reconcile.js";
 import { isAlreadyInDesiredState } from "./client.js";
 import { fatal, logger } from "../logger.js";
+
+/**
+ * 日数。**数であることをここで確かめる。** 文字列のまま渡すと SQL の側で解釈され、
+ * 誤った値が「0 件」として静かに通る。
+ */
+const positiveInt = (raw: string): number => {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new InvalidArgumentError("must be a positive integer");
+  }
+  return n;
+};
 
 const databaseUrlOption = new Option("--database-url <url>", "Postgres connection string")
   .env("DATABASE_URL")
@@ -35,11 +48,35 @@ const runDrain = async (databaseUrl: string): Promise<void> => {
   }
 };
 
-const runReconcile = async (databaseUrl: string): Promise<void> => {
+const runReconcile = async (
+  databaseUrl: string,
+  sinceDays: number | undefined,
+): Promise<void> => {
   const storage = storageConfig();
   const db = createKyselyClient(databaseUrl);
   try {
-    const result = await reconcile(db, createS3Client(storage), storage.bucket);
+    // 既定は全走査。`--since-days` を渡したときだけ、その窓のクロールが実際に使った
+    // 接頭辞を引いて、そこだけを歩く。
+    let prefixes: string[] | undefined;
+    if (sinceDays !== undefined) {
+      const rows = await db
+        .selectFrom("crawls")
+        .select("artifactKeyPrefix")
+        .where("startedAt", ">=", sql<Date>`now() - make_interval(days => ${sinceDays})`)
+        .execute();
+      prefixes = narrowingFrom(rows);
+      if (prefixes === undefined) {
+        // **黙って全走査に落ちない。** 言わずに落とすと、運用者は絞れたつもりで
+        // 速さだけを見ることになる。
+        logger.warn(
+          { sinceDays, crawls: rows.length },
+          "Some crawls in the window have no recorded artifact key prefix; walking the whole bucket",
+        );
+      } else {
+        logger.info({ sinceDays, prefixes }, "Narrowed the walk to recorded prefixes");
+      }
+    }
+    const result = await reconcile(db, createS3Client(storage), storage.bucket, prefixes);
     logger.info(result, "Reconcile finished");
   } finally {
     await db.destroy();
@@ -106,8 +143,16 @@ program
   .command("reconcile")
   .description("Register any capture whose manifest is in the bucket but missing from the ledger")
   .addOption(databaseUrlOption)
-  .action(async (opts: { databaseUrl: string }) => {
-    await runReconcile(opts.databaseUrl);
+  .addOption(
+    new Option(
+      "--since-days <n>",
+      "Only walk the key prefixes used by crawls started within the last n days " +
+        "(sink deployments only; falls back to the whole bucket if any of those " +
+        "crawls has no recorded prefix)",
+    ).argParser(positiveInt),
+  )
+  .action(async (opts: { databaseUrl: string; sinceDays?: number }) => {
+    await runReconcile(opts.databaseUrl, opts.sinceDays);
   });
 
 program

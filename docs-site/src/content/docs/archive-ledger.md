@@ -57,6 +57,26 @@ ledger is missing. This is what makes the ledger self-healing: waggle can be
 down for hours, or a manifest can be written after the level closed, and the
 next reconcile still picks it up.
 
+By default it walks the whole bucket. `--since-days <n>` narrows it to the key
+prefixes that crawls started in the last `n` days actually wrote to, read from
+`crawls.artifact_key_prefix`:
+
+```sh
+pnpm run fga:reconcile -- --since-days 30
+```
+
+Two things bound what that flag can do. S3's list can only be narrowed by
+prefix — there is no filter by extension and none by "since" — so the narrowing
+has to live in the key itself, and it does: the sink writes under
+`org/<orgId>/<YYYY-MM>/`. And a deployment where BrowserHive writes to its own
+store puts artifacts in a flat namespace with no prefix to narrow by, so
+`--since-days` only helps on the sink path.
+
+**It refuses to narrow rather than narrow wrongly.** If any crawl in the window
+has no recorded prefix, the flag falls back to the full walk and says so. A hole
+that is skipped because the walk was narrowed is a hole nobody will ever find,
+and a ledger with holes nobody notices is worse than no ledger at all.
+
 :::note[The crawl path used to be missing]
 The crawl wrote only to `crawl_pages` and `capture_submissions`; it put
 **nothing in the ledger**. Crawled pages did not exist until someone ran

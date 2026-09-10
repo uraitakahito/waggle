@@ -31,7 +31,12 @@ import type { OpenFgaClient } from "@openfga/sdk";
 import type { Insertable, Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
-import type { CaptureSubmissionsTable, Database, CrawlScope } from "../db/database.js";
+import type {
+  CaptureSubmissionsTable,
+  CrawlsTable,
+  Database,
+  CrawlScope,
+} from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
 import { admitLevel } from "../crawl/admit-level.js";
 import { acceptLinks, parseHttpUrl, type DiscoveredLink, type ParsedUrl } from "../crawl/scope.js";
@@ -41,7 +46,12 @@ import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
 import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
 import { loadTargets } from "../data/url-source.js";
 import { createChildLogger } from "../logger.js";
-import { sinkForCrawl, sinkObjectKey, type SinkConfig } from "./sink.js";
+import {
+  crawlKeyPrefix,
+  keyPrefixFor,
+  sinkForCrawl,
+  type SinkConfig,
+} from "./sink.js";
 
 const log = createChildLogger({ module: "api" });
 
@@ -256,7 +266,9 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       const parsedSeeds = seeds as ParsedUrl[];
 
       const crawlId = randomUUID();
-      const crawl = {
+      // **型注釈を付けること。** 注釈の無い変数に入れてから `.values()` へ渡すと
+      // 余剰プロパティの検査が効かず、存在しない列名を書いても typecheck が緑で通る。
+      const crawl: Insertable<CrawlsTable> = {
         id: crawlId,
         seeds: parsedSeeds.map((parsed) => parsed.normalized),
         scope: body.scope ?? DEFAULT_SCOPE,
@@ -270,6 +282,11 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         orgId,
         requestedBy: identity.subject,
         state: "running" as const,
+        // **置く場所を、いま 1 度だけ決めて書き残す。** 以後は置く側 (受け口) も
+        // 探す側 (`admitLevel`) もこの列を読む —— 両側が別々に計算すると、
+        // 受け口の設定を切り替えた配備や月をまたぐクロールでずれる。
+        // 受け口を使わない配備では書かない (NULL = 記録が無い)。
+        ...(sink && { artifactKeyPrefix: crawlKeyPrefix(orgId, new Date()) }),
       };
 
       try {
@@ -510,6 +527,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         // **失敗の報告も渡す。** flow は 15 分待つので、BrowserHive の結果キャッシュ
         // から押し出されて `NOT_FOUND` になることがある —— そのとき報告は `failed`
         // だが、取り込みは成功していて manifest が S3 に在る。
+        const keyPrefix = keyPrefixFor(crawl, sink);
         const admitted = await admitLevel(submitted, {
           db,
           s3: deps.s3,
@@ -517,9 +535,11 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           crawlId,
           orgId: crawl.orgId,
           requestedBy: crawl.requestedBy,
-          // 受け口が受けた成果物は組織で分かれた場所に在る。**接頭辞がずれると
-          // manifest が見つからず、台帳に 1 行も入らないまま静かに終わる。**
-          ...(sink && { keyPrefix: sinkObjectKey(crawl.orgId, "") }),
+          // **このクロールが実際に置いた場所を読む。** 接頭辞がずれると manifest が
+          // 見つからず、台帳に 1 行も入らないまま静かに終わる —— だから「いまの
+          // 設定から導く」のをやめ、`013` の列に書き残したものを使う。
+          // 記録の無い行 (`013` より前のクロール) だけ、従来どおり設定から導く。
+          ...(keyPrefix !== undefined && { keyPrefix }),
         });
 
         // ── 2c. 拾えたものは記録を直す ──────────────────────────────────
