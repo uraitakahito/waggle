@@ -43,7 +43,7 @@ show up in `--help`), and plain `process.env[…]` — the last of which reaches
 into `scripts/` too. Seven are mandatory.
 
 `.env.example` is the single list. `setup.sh` copies it to `.env` and
-substitutes your username into `WAGGLE_DEV_SUBJECT`; nothing else generates
+copies it verbatim, changing no values; nothing else generates
 `.env`, because a second list drifts from the first. The two OpenFGA ids stay
 empty until `pnpm run fga:deploy` prints them — see
 [Archive ledger](/waggle/archive-ledger/#setup).
@@ -196,9 +196,8 @@ default.**
 | API (`/api`, picker) | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
 
 There used to be a second row for the CLI, reading `WAGGLE_DEV_SUBJECT` and
-`WAGGLE_OIDC_TOKEN` from the environment. Both variables are still written by
-`setup.sh` and declared in `.env.example`, but nothing reads them at run time
-now that the CLI is gone.
+`WAGGLE_OIDC_TOKEN` from the environment. Both went with it, and are no longer
+declared in `.env.example` — **claiming a subject is the caller's job now.**
 
 **The JWT path wins over the dev header.** When both are set, an environment must not
 fall back to the weaker one, where anyone who reaches the port can be anyone.
@@ -212,8 +211,12 @@ real IdP is chosen, the bundled issuer stands in for one.
 ```bash
 pnpm run oidc:issuer                                   # listens on :9099
 export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
-export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 ```
+
+The token does not belong in `.env` — the API is what reads it, and the caller
+is what puts it in the `Authorization` header.
 
 Changing `--subject` lets you produce **both "a person submitted this" and "a service
 submitted this"**. In the second case the OpenFGA owner tuple becomes

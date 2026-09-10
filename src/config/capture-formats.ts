@@ -8,7 +8,7 @@
  * その付随物。1 つも選ばれていない設定は server が `INVALID_ARGUMENT` で弾くので、
  * 「形式なし」は既定になり得ない。
  *
- * ## なぜ `api/runs.ts` から出したのか
+ * ## なぜ api/runs.ts から出したのか
  *
  * クロールの経路も同じ設定を要るようになったため。**投げるのは Windmill の flow だが、
  * 何をどう投げるかを決めるのは依然として waggle** で、flow へは dispatch の payload で

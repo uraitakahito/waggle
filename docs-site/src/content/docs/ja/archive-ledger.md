@@ -476,8 +476,8 @@ curl -X POST http://localhost:7070/api/archives/<id>/url \
 
 **入口はいま API だけです。** 以前は CLI 用の経路がもう 1 本あり、ヘッダの代わりに
 `.env` の `WAGGLE_DEV_SUBJECT` と `WAGGLE_DEV_ORGANIZATIONS` を読んでいました。
-この 2 つは今も `setup.sh` が書き、`.env.example` にも宣言されていますが、
-CLI が消えたので実行時に読むものはありません。
+その 2 つは、読む側の CLI ごと畳んだときに `.env.example` と `setup.sh` からも
+消えています。
 
 身元が**何のためにあるか**は変わりません。これが `capture_submissions.submitted_by` と
 `capture_job` の `owner` tuple になり、空のままだと**投げた本人ですら

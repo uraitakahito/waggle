@@ -72,9 +72,6 @@ export interface CaptureSubmissionsTable {
 }
 
 /**
- * 取り込みの実行 1 回。走行中の行は部分 unique index により高々 1 つ。`006` を見ること。
- */
-/**
  * リンクを辿る取り込み 1 本。走行中の行は部分 unique index により高々 1 つ。`007` を見ること。
  */
 export interface CrawlsTable {

@@ -6,7 +6,7 @@ import { parseCaptureFormats } from "../src/config/capture-formats.js";
 /**
  * クロールを起こす口の検査。
  *
- * `routes-runs.test.ts` と同じ 2 層。入口の検証は張りぼて deps で、認可と単一実行は
+ * 2 層で見る。入口の検証は張りぼて deps で、認可と単一実行は
  * 偽の DB で見る。**認可そのものを見ているのではない** —— fga は「false を返せ」と
  * 言われて false を返しているだけで、`can_submit` が誰を拒むかは
  * `fga/model.fga.yaml` の assertion が見ている。
@@ -444,7 +444,7 @@ describe("対象一覧から起こす", () => {
   };
 
   it("有効な行だけを、自分の組織のぶんだけ種にする", async () => {
-    // **組織で絞る。** `run.ts` は「他組織が混じっていたら投げる」という仮の検査を
+    // **組織で絞る。** 以前の CLI 経路 (run.ts) は「他組織が混じっていたら投げる」
     // していたが、クロールは `org_id` を 1 つ持つ行なので、混ぜると帰属が言えない。
     const { res, sent } = await start({ fromTargets: {} });
     expect(res.statusCode).toBe(202);

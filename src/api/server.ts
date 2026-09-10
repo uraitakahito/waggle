@@ -158,8 +158,10 @@ const start = async (options: ServerOptions): Promise<void> => {
   /**
    * **走行中の実行は待たない。** `app.close()` が待つのは応答を返していない
    * リクエストだけで、実行は 202 を返した後に続いているので、その勘定に入らない。
-   * 途中で落ちた実行の `runs` の行は `running` のまま残り、次を塞ぐ —— 生きている
-   * ものと区別する術が行に無い。片付けは運用の仕事 (`api/runs.ts` の GET を見ること)。
+   * 途中で落ちたクロールの行は `running` のまま残り、**部分 unique index が次を全部
+   * 塞ぐ** —— 生きているものと区別する術が行に無い。締めるのは flow の failure_module で、
+   * `POST /api/crawls/:id/failed` を叩く (forage の fail_crawl.ts)。**waggle と flow が
+   * 同時に落ちたときだけ**、残った行を手で締めることになる。
    */
   const shutdown = async (): Promise<void> => {
     clearInterval(drainTimer);

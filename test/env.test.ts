@@ -9,7 +9,6 @@ import {
   storageFrom,
   type Need,
 } from "../src/config/env.js";
-import { identityFrom } from "../src/config/identity.js";
 
 /**
  * この describe が触る環境変数。テストの中で消したり足したりするので、
@@ -90,16 +89,6 @@ describe("collectEnv", () => {
         "WAGGLE_FGA_STORE_ID",
         "WAGGLE_FGA_MODEL_ID",
       ]);
-    }
-  });
-
-  // client/run.ts が identity と storage をまとめて建てる形。
-  it("collects across modules", () => {
-    try {
-      collectEnv((need: Need) => ({ identity: identityFrom(need), storage: storageFrom(need) }));
-      expect.unreachable("should have thrown");
-    } catch (caught) {
-      expect((caught as MissingEnvError).names).toEqual(["WAGGLE_DEV_SUBJECT", ...S3_REQUIRED]);
     }
   });
 

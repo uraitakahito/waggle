@@ -8,7 +8,7 @@
  * ## 本文は既に抽出されている
  *
  * BrowserHive が `pages/pages.jsonl` に `title` と `text` を書いている
- * (`storage/wacz/pages.ts`)。`text` の出どころは `document.body.innerText` ——
+ * (browserhive の storage/wacz/pages.ts)。`text` の出どころは `document.body.innerText` ——
  * **描画後の本文**であって HTML ではない。だからここで解析する必要が無いし、
  * すべきでもない: HTML から起こし直すと、アーカイブが署名して主張している内容と
  * 索引が食い違いうる。

@@ -69,9 +69,11 @@ read taskId from .result.json
 | `submitted_at` | Default `now()`                                                                                                         |
 
 :::caution[`submitted_by` is not the result of authentication]
-What fills this column is whatever the CLI read out of `WAGGLE_DEV_SUBJECT`
-(see [Identity](/waggle/archive-ledger/#identity)). **Nothing verifies it** —
-editing `.env` is enough to put any name in the column.
+What fills this column is whatever the API request claimed as its subject
+(see [Identity](/waggle/archive-ledger/#identity)). **The development header
+route verifies nothing** — with `WAGGLE_DEV_IDENTITY=1`, `X-Waggle-Subject` is
+taken at face value, so any name can land here. The JWT route does check the
+signature and expiry.
 
 It is still worth filling, because this value becomes the `owner` tuple on the
 `capture_job`. An archive without one **cannot be deleted by anyone**:

@@ -12,7 +12,7 @@
  *
  * ## なぜ「走行中は 1 行だけ」を DB に強制させるのか
  *
- * gRPC の channel が **プロセスに 1 つしかない**(`src/rpc/client.ts`)。`configureClient` は
+ * gRPC の channel が **プロセスに 1 つしかない**(当時の src/rpc/client.ts)。`configureClient` は
  * 既存の channel を閉じてから張り直し、`runClient` は終わりに必ず `closeClient()` を呼ぶ。
  * つまり 1 つのプロセスで 2 本の実行を並べると、**後から始めた方が先の channel を畳み、
  * 先に終わった方が後の channel を畳む**。これは「同時に動くと遅い」ではなく壊れる話なので、

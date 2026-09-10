@@ -40,8 +40,8 @@ pnpm run check       # typecheck + lint + format:check + env + テスト
 `--help` にも出ます）、そして素の `process.env[…]`（これは `scripts/` にもあります）。
 必須は 7 個です。
 
-一覧は `.env.example` の 1 か所だけです。`setup.sh` はこれを `.env` に写し、
-`WAGGLE_DEV_SUBJECT` を実行者の名前に置き換えます。`.env` を作るものは他にありません
+一覧は `.env.example` の 1 か所だけです。`setup.sh` はこれを `.env` に写すだけで、
+値には手を入れません。`.env` を作るものは他にありません
 —— 一覧が 2 つあれば必ずずれるからです。OpenFGA の 2 つの ID は
 `pnpm run fga:deploy` が出力するまで空のままです
 （[アーカイブ台帳](/waggle/ja/archive-ledger/#セットアップ)を参照）。
@@ -188,8 +188,8 @@ flow なので、CA は Windmill 側の変数 `u/admin/browserhive_tls_ca` に�
 | API (`/api`, picker) | 拒否 | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
 
 以前は CLI の行がもう 1 つあり、環境から `WAGGLE_DEV_SUBJECT` と
-`WAGGLE_OIDC_TOKEN` を読んでいました。この 2 つは今も `setup.sh` が書き、
-`.env.example` にも宣言されていますが、CLI が消えたので実行時に読むものはありません。
+`WAGGLE_OIDC_TOKEN` を読んでいました。その 2 つは、読む側の CLI ごと畳んだときに
+`.env.example` からも消えています。**主体を名乗るのは投げる側の仕事**になりました。
 
 **JWT の経路が開発用ヘッダより優先されます。** 両方設定された環境で、
 そのポートに届く者が誰にでもなれるほうへ落ちてはいけないためです。
@@ -203,8 +203,12 @@ flow なので、CA は Windmill 側の変数 `u/admin/browserhive_tls_ca` に�
 ```bash
 pnpm run oidc:issuer                                   # :9099 に立つ
 export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
-export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 ```
+
+トークンは `.env` に置きません —— 読むのは受け取る側の API で、投げる側が
+`Authorization` ヘッダに載せるものだからです。
 
 `--subject` を変えると **「人が投げた場合」と「サービスが投げた場合」の両方を
 作れます**。後者は OpenFGA の owner tuple が `user:<サービス名>` になり、

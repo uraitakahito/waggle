@@ -2,7 +2,7 @@
  * OpenFGA と成果物ストアに話しかける部分の、環境変数から来る設定。
  *
  * これらは配備の事実であって呼ぶ側の意図ではないので、CLI の旗ではなく環境変数に
- * 置く —— `cli-options.ts` が既に引いているのと同じ線。
+ * 置く —— 「配備が決めること」と「呼ぶ側が決めること」の線。
  *
  * どの getter も、値が無ければ既定値に落とさず throw する。store id が黙って既定値に
  * なると、認可を別のデータに対して評価することになる。bucket が黙って既定値になると、
@@ -35,13 +35,10 @@ export const OPTIONAL_ENV = [
   "WAGGLE_S3_FORCE_PATH_STYLE",
   "WAGGLE_FGA_API_URL",
   "WAGGLE_FGA_API_TOKEN",
-  "WAGGLE_DEV_SUBJECT",
-  "WAGGLE_DEV_ORGANIZATIONS",
   "WAGGLE_DEV_IDENTITY",
   "WAGGLE_DEV_ISSUER_PORT",
   "WAGGLE_OIDC_ISSUER",
   "WAGGLE_OIDC_AUDIENCE",
-  "WAGGLE_OIDC_TOKEN",
   "DATABASE_URL",
   "LOG_LEVEL",
   "REPLAY_ORIGIN",

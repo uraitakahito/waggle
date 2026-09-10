@@ -27,6 +27,7 @@
     "proto:check": "buf generate && git diff --exit-code -- src/rpc/generated",
     "proto:check-deps": "node scripts/check-generated-deps.mjs",
     "check-env": "node scripts/check-env.mjs",
+    "check-comment-refs": "node scripts/check-comment-refs.mjs",
     "stack:up": "./scripts/stack.sh up",
     "stack:down": "./scripts/stack.sh down",
     "proto:sync": "cp .upstream/browserhive/src/rpc/proto/browserhive/v1/capture.proto proto/browserhive/v1/capture.proto",
@@ -46,7 +47,7 @@
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",
     "db:seed": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js up",
     "db:seed:down": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js down",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm test",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm run check-comment-refs && pnpm test",
     "oidc:issuer": "pnpm run build && node --env-file-if-exists=.env dist/dev/issuer-cli.js",
     "oidc:token": "pnpm run build && node --env-file-if-exists=.env dist/dev/token.js"
   },

@@ -511,9 +511,8 @@ switched on explicitly, and the server warns loudly at startup.
 
 **The API is now the only route in.** There used to be a second one for the CLI,
 which read `WAGGLE_DEV_SUBJECT` and `WAGGLE_DEV_ORGANIZATIONS` from `.env`
-instead of headers. Those two variables are still written by `setup.sh` and
-still declared in `.env.example`, but with the CLI gone nothing reads them at
-run time.
+instead of headers. Both variables went with it — they are no longer declared in
+`.env.example`, and `setup.sh` no longer writes them.
 
 What the identity is _for_ has not changed: it becomes
 `capture_submissions.submitted_by` and the `owner` tuple on the `capture_job`,

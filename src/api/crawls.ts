@@ -214,8 +214,8 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       // 帰属も同じ組織に寄せる。**対象を読むときの絞り込みにも同じ値を使う。**
       const orgId = identity.organizations[0] ?? "";
 
-      // `fromTargets` なら `capture_targets` から。`run.ts` が読んでいたのと同じ表で、
-      // 絞り込みだけが変わる (組織で絞る)。
+      // `fromTargets` なら `capture_targets` から。以前の CLI 経路 (run.ts) が
+      // 読んでいたのと同じ表で、絞り込みだけが変わる (組織で絞る)。
       const rawSeeds =
         fromTargets === undefined
           ? (body.seeds ?? [])

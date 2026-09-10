@@ -3,10 +3,11 @@
  *
  * ## なぜ要るのか
  *
- * クロールの経路は **`archives` に 1 行も書いていなかった**。`admitArchive` を
- * 呼ぶのは `client/run.ts` (CLI 経路) と `archive/reconcile.ts` だけで、クロールは
- * `crawl_pages` と `capture_submissions` にしか跡を残さない。実測でも、10 ページ
- * 取り込んだクロールに対して台帳の該当行は 0 件だった。
+ * クロールの経路は **`archives` に 1 行も書いていなかった**。当時 `admitArchive` を
+ * 呼んでいたのは畳んだ CLI 経路 (client/run.ts) と `archive/reconcile.ts` だけで、
+ * クロールは `crawl_pages` と `capture_submissions` にしか跡を残さない。実測でも、
+ * 10 ページ取り込んだクロールに対して台帳の該当行は 0 件だった。**この file が
+ * 3 つ目の呼び出し元**になる。
  *
  * 結果として、クロールしたページは **`reconcile` を走らせるまで存在しない**
  * ことになっていた —— picker にも出ず、索引にも載らない。取り込んだ本人が
@@ -35,7 +36,8 @@
  *
  * manifest が見つからない `taskId` は黙って飛ばす。BrowserHive が書き終える前に
  * 段が閉じることはありうるし、そのときは `reconcile` が後で拾う ——
- * `run.ts` の "Could not collect this capture; reconcile will retry" と同じ立場。
+ * 畳んだ CLI 経路が "Could not collect this capture; reconcile will retry" と
+ * 言っていたのと同じ立場。
  * **ここで投げると、段の報告ごと 500 になって進行が止まる。** 台帳が遅れることより
  * クロールが止まることのほうが重い。
  */
@@ -90,7 +92,7 @@ export const admitLevel = async (
   const admittedUrls: string[] = [];
   for (const page of pages) {
     // クロールは `labels: []` / `correlationId: <crawlId>` で投げている
-    // (`crawl_host.ts`)。鍵はその 3 つから決まる。
+    // (forage の crawl_host.ts)。鍵はその 3 つから決まる。
     const key = manifestKey(page.taskId, page.correlationId ?? options.crawlId, []);
     try {
       const raw = await getJsonObject(options.s3, options.bucket, key);
