@@ -14,7 +14,7 @@
     "proto"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -50,7 +50,8 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm test && pnpm run build && pnpm run proto:check && pnpm run proto:check-deps && pnpm run proto:diff && pnpm run check-env && pnpm run check-comment-refs && pnpm run check:flag-style && pnpm run fga:test && pnpm run site:check",
     "oidc:issuer": "pnpm run build && node --env-file-if-exists=.env dist/dev/issuer-cli.js",
     "oidc:token": "pnpm run build && node --env-file-if-exists=.env dist/dev/token.js",
-    "check:flag-style": "node scripts/check-flag-style.mjs"
+    "check:flag-style": "node scripts/check-flag-style.mjs",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
