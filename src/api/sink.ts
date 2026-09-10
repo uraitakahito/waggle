@@ -41,6 +41,9 @@ import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api-sink" });
 
+/** `crawls.id` の形。DB へ渡す前に見る。 */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** 成果物 1 つの上限。上限を持たない口は、いずれ落とされる口になる。 */
 const MAX_ARTIFACT_BYTES = 512 * 1024 * 1024;
 
@@ -137,6 +140,14 @@ export const registerSinkRoutes = (app: FastifyInstance, deps: SinkDeps): void =
       if (!verifySinkToken(secret, crawlId, token)) {
         // **理由を分けない。** 期限切れも偽の署名も、外から見れば同じ「通らない」。
         return reply.code(401).send({ error: "invalid or expired sink token" });
+      }
+
+      // **形を先に見る。** `crawls.id` は uuid なので、UUID でない値をそのまま
+      // 問い合わせると Postgres が `invalid input syntax for type uuid` で落ち、
+      // 500 になる —— 実地の疎通確認で踏んだ。呼ぶ側から見れば「そんな crawl は無い」
+      // でしかないので、404 に畳む。
+      if (!UUID.test(crawlId)) {
+        return reply.code(404).send({ error: "no such crawl" });
       }
 
       const crawl = await db
