@@ -41,9 +41,8 @@
  */
 import type { Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
-import { manifestKey } from "../archive/watch.js";
+import { manifestKey, readManifest } from "../archive/manifest.js";
 import { getJsonObject } from "../archive/s3.js";
-import { readManifest } from "../archive/manifest.js";
 import { admitArchive } from "../archive/admit.js";
 import type { Database } from "../db/database.js";
 import { createChildLogger } from "../logger.js";

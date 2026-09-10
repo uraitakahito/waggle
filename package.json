@@ -9,17 +9,11 @@
   "engines": {
     "node": ">=24.14.1"
   },
-  "bin": {
-    "waggle": "dist/submit-captures.js",
-    "waggle-ledger": "dist/fga/ledger-commands.js",
-    "waggle-api": "dist/api/server.js"
-  },
   "files": [
     "dist",
     "proto"
   ],
   "scripts": {
-    "capture": "pnpm run build && node --env-file-if-exists=.env dist/submit-captures.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

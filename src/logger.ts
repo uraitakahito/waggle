@@ -32,8 +32,8 @@ export const createChildLogger = (bindings: LoggerBindings): Logger => {
 };
 
 /**
- * 致命的な失敗の出口。3 つのエントリ点 (submit-captures / ledger-commands /
- * api/server) が同じ形で使う。
+ * 致命的な失敗の出口。2 つのエントリ点 (ledger-commands / api/server) が
+ * 同じ形で使う。
  *
  * `MissingEnvError` だけは logger を通さず stderr にそのまま書く。**pino の
  * 出力は JSON なので、改行を含むメッセージは `\n` に潰れて 1 行の中に埋まる。**

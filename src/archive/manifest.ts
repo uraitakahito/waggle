@@ -15,3 +15,36 @@ import { CaptureResultReport } from "../rpc/generated/browserhive/v1/capture.js"
 
 export const readManifest = (raw: unknown): CaptureResultReport =>
   CaptureResultReport.fromJSON(raw);
+
+/**
+ * manifest は成果物の隣に、BrowserHive のファイル名規則で置かれる:
+ * `{taskId}_{correlationId}[_{labels}].result.json`。
+ *
+ * **correlationId の枠は空でも出る** (`{taskId}__{labels}` のように下線が並ぶ)。
+ * それが BrowserHive 側で名前を読み戻せるようにしている仕掛けで、こちらも
+ * 合わせないと存在しない鍵を作ることになる。値の中の `_` `.` `/` 空白などは
+ * `%XX` へ逃がす —— 逃がさないと区切りと衝突して、鍵が 1 文字ずれる。
+ *
+ * waggle が、server から渡された鍵を読むのではなく自分で組み立てる唯一の場所。
+ * **間違えても静かに壊れる** —— 失うのはこの代替経路だけで、reconciler のほうは
+ * listing でオブジェクトを見つけてしまうので、ログにも結果にも出ない。
+ * だから test/manifest-key.test.ts は BrowserHive と同じケースを並べてある。
+ *
+ * `\p{Cc}` (制御文字) を逃がすのは、鍵が ListObjectsV2 の **XML** で返るため。
+ * XML 1.0 は ASCII 0-8 などを表せないので、残すと「オブジェクトは在るのに
+ * 一覧に出てこない」になる。`\s` は CR/LF/TAB しか覆わない。
+ *
+ * 本体は browserhive の src/capture/artifact-name.ts (generateFilename)。
+ */
+const ESCAPED = /[%_.<>:"/\\|?*\s\p{Cc}]/gu;
+
+/** 逃がすのは 1 回の走査で。順に replace を重ねると二重符号化する。 */
+const encodeField = (value: string): string =>
+  value.replace(ESCAPED, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+
+export const manifestKey = (
+  taskId: string,
+  correlationId: string | undefined,
+  labels: string[],
+): string =>
+  [taskId, encodeField(correlationId ?? ""), ...labels.map(encodeField)].join("_") + ".result.json";

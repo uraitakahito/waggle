@@ -15,9 +15,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 vi.mock("../src/archive/s3.js", () => ({ getJsonObject: vi.fn() }));
 vi.mock("../src/archive/admit.js", () => ({ admitArchive: vi.fn() }));
-// `readManifest` も偽物にする。**本物だと `undefined` を渡された時点で投げる**ので、
+// `readManifest` だけを偽物にする。**本物だと `undefined` を渡された時点で投げる**ので、
 // 「飛ばした」と「投げて catch された」が同じ結果に見えてしまう (反証で素通りした)。
-vi.mock("../src/archive/manifest.js", () => ({ readManifest: vi.fn((raw: unknown) => raw) }));
+//
+// **`manifestKey` は本物のまま。** 鍵の綴りは BrowserHive の命名規則と 1 文字でも
+// ずれると静かに壊れる種類のもので、偽物に置き換えたら確かめる意味が無くなる。
+vi.mock("../src/archive/manifest.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/archive/manifest.js")>()),
+  readManifest: vi.fn((raw: unknown) => raw),
+}));
 
 const { getJsonObject } = await import("../src/archive/s3.js");
 const { admitArchive } = await import("../src/archive/admit.js");

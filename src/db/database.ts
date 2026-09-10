@@ -6,9 +6,7 @@
  * `insertInto` / `selectFrom` に型検査が効き、`CamelCasePlugin` が TS 側の
  * camelCase (`urlHash`) を DB 側の snake_case (`url_hash`) へ自動で写せる。
  *
- * `loadUrls` (`src/data/url-source.ts`) は意図して素の `pg.Pool` のままで、
- * この型に結びついていない —— 今日これを使うのは Kysely で動く bin スクリプト
- * (migrate / seed) だけ。
+ * 取り込む対象は `capture_targets` から読む (`src/data/url-source.ts`)。
  */
 import type { ColumnType, Generated, GeneratedAlways } from "kysely";
 
@@ -76,24 +74,6 @@ export interface CaptureSubmissionsTable {
 /**
  * 取り込みの実行 1 回。走行中の行は部分 unique index により高々 1 つ。`006` を見ること。
  */
-export interface RunsTable {
-  id: string;
-  state: RunState;
-  trigger: RunTrigger;
-  startedAt: ColumnType<Date, string | undefined, never>;
-  // 走行中は NULL。入っている＝終わっている。
-  finishedAt: ColumnType<Date | null, string | null | undefined, string | null>;
-  submitted: ColumnType<number | null, number | null | undefined, number | null>;
-  accepted: ColumnType<number | null, number | null | undefined, number | null>;
-  rejected: ColumnType<number | null, number | null | undefined, number | null>;
-  error: ColumnType<string | null, string | null | undefined, string | null>;
-}
-
-export type RunState = "running" | "succeeded" | "failed";
-
-/** 何がこの実行を起こしたか。台帳の `submittedBy` は実行の身元で、これは起動した経路。 */
-export type RunTrigger = "api" | "cli";
-
 /**
  * リンクを辿る取り込み 1 本。走行中の行は部分 unique index により高々 1 つ。`007` を見ること。
  */
@@ -162,7 +142,6 @@ export interface Database {
   archives: ArchivesTable;
   fgaOutbox: FgaOutboxTable;
   captureSubmissions: CaptureSubmissionsTable;
-  runs: RunsTable;
   crawls: CrawlsTable;
   crawlPages: CrawlPagesTable;
 }
