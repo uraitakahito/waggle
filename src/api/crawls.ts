@@ -391,15 +391,21 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       // ── 2. 帰属を書く ────────────────────────────────────────────────
       // 投げたのが waggle でなくても、記録はここに残す。reconciler が
       // `unattributed` を数える経路を壊さないため。
-      const captured = results.filter(
+      //
+      // **状態は問わない。`taskId` を持つ全件に書く。** 以前は `captured` だけに
+      // 書いていたが、それだと失敗と報告された取り込みの帰属が残らない ——
+      // 実体が S3 に在っても組織が言えず、reconciler からは `unattributed` に見える。
+      // 投入が通っている限り id は在るので、書かない理由が無い。
+      const submitted = results.filter(
         (r): r is PageReport & { taskId: string } =>
-          r.status === "captured" && typeof r.taskId === "string" && r.taskId !== "",
+          typeof r.taskId === "string" && r.taskId !== "",
       );
-      if (captured.length > 0) {
+      let recovered: string[] = [];
+      if (submitted.length > 0) {
         await db
           .insertInto("captureSubmissions")
           .values(
-            captured.map((r) => ({
+            submitted.map((r) => ({
               taskId: r.taskId,
               correlationId: r.correlationId ?? crawlId,
               orgId: crawl.orgId,
@@ -413,7 +419,11 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         // ── 2b. 台帳に載せる ──────────────────────────────────────────
         // ここが無いと、クロールしたページは `reconcile` を走らせるまで存在しない。
         // 詳しくは `crawl/admit-level.ts`。
-        await admitLevel(captured, {
+        //
+        // **失敗の報告も渡す。** flow は 15 分待つので、BrowserHive の結果キャッシュ
+        // から押し出されて `NOT_FOUND` になることがある —— そのとき報告は `failed`
+        // だが、取り込みは成功していて manifest が S3 に在る。
+        const admitted = await admitLevel(submitted, {
           db,
           s3: deps.s3,
           bucket: deps.bucket,
@@ -421,6 +431,27 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           orgId: crawl.orgId,
           requestedBy: crawl.requestedBy,
         });
+
+        // ── 2c. 拾えたものは記録を直す ──────────────────────────────────
+        // **台帳には在るのにクロールの記録では失敗している、を残さない。**
+        // どちらが正しいかを後から言えなくなる。manifest が成功を語っているなら
+        // そちらが正 —— 報告のほうは「15 分では見えなかった」でしかない。
+        const reportedFailed = new Set(
+          results.filter((r) => r.status !== "captured").map((r) => r.url),
+        );
+        recovered = admitted.admittedUrls.filter((url) => reportedFailed.has(url));
+        if (recovered.length > 0) {
+          await db
+            .updateTable("crawlPages")
+            .set({ state: "captured", skipReason: null })
+            .where("crawlId", "=", crawlId)
+            .where("url", "in", recovered)
+            .execute();
+          log.info(
+            { crawlId, depth, recovered: recovered.length },
+            "recovered captures the flow could not see",
+          );
+        }
       }
 
       // ── 3. 見つけたリンクを読み、絞る ────────────────────────────────
@@ -482,7 +513,10 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
               .execute();
 
       // ── 6. 集計と、終わったなら締める ────────────────────────────────
-      const capturedCount = results.filter((r) => r.status === "captured").length;
+      // **拾い直したぶんも数える。** 報告だけを数えると、台帳に入った件数と
+      // `pages_captured` が食い違う。
+      const capturedCount =
+        results.filter((r) => r.status === "captured").length + recovered.length;
       const done = inserted.length === 0;
 
       // **最初に効いた理由を残す。上書きしない。**

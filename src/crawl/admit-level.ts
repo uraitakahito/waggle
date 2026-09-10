@@ -1,5 +1,5 @@
 /**
- * クロールで取り込めたページを台帳に載せる。
+ * クロールで取り込めたページを台帳に載せる。**失敗の報告も一度は当たってみる。**
  *
  * ## なぜ要るのか
  *
@@ -19,6 +19,17 @@
  * 入っていない。だから **S3 の manifest を読み直す**。
  *
  * 同じ handler が `.links.json` を S3 から読んでいるので、経路は増えない。
+ *
+ * ## 失敗の報告も渡してよい
+
+ * 渡すのは「`taskId` を持つ全件」で、報告上の状態は問わない。BrowserHive の結果
+ * キャッシュには上限があり、flow が 15 分待つ間に押し出されうる —— そのとき flow は
+ * `NOT_FOUND` を受け取って `failed` と報告するが、**取り込み自体は成功していて
+ * 成果物は S3 に在る**。manifest はそれを知っているので、ここで拾い直せる。
+ *
+ * 拾えたかどうかは `admittedUrls` が答える。呼ぶ側はそれを見て `crawl_pages` の
+ * 状態を上げる —— そこまでやらないと、台帳には在るのにクロールの記録では
+ * 失敗している、という食い違いが残る。
  *
  * ## 無いものは飛ばす
  *
@@ -55,8 +66,18 @@ export interface AdmitLevelOptions {
   requestedBy: string;
 }
 
+export interface AdmitLevelResult {
+  /** 台帳に入った件数。 */
+  registered: number;
+  /**
+   * **実際に成功していたと分かった URL。** 報告が `failed` でも、manifest が
+   * 成功を語っていればここに入る。呼ぶ側はこれを見て記録を直す。
+   */
+  admittedUrls: string[];
+}
+
 /**
- * 取り込めたページを順に台帳へ。返すのは実際に入った件数。
+ * 渡されたページを順に台帳へ。
  *
  * `admitArchive` は `(bucket, object_key)` の unique で冪等なので、同じ段が
  * 二度報告されても増えない。**逐次で回す** —— 段あたり高々ホスト数ぶんで、
@@ -65,8 +86,9 @@ export interface AdmitLevelOptions {
 export const admitLevel = async (
   pages: CapturedPage[],
   options: AdmitLevelOptions,
-): Promise<number> => {
+): Promise<AdmitLevelResult> => {
   let registered = 0;
+  const admittedUrls: string[] = [];
   for (const page of pages) {
     // クロールは `labels: []` / `correlationId: <crawlId>` で投げている
     // (`crawl_host.ts`)。鍵はその 3 つから決まる。
@@ -83,7 +105,10 @@ export const admitLevel = async (
         options.orgId,
         options.requestedBy,
       );
-      if (result.archiveId !== undefined) registered += 1;
+      if (result.archiveId !== undefined) {
+        registered += 1;
+        admittedUrls.push(page.url);
+      }
     } catch (err) {
       // 1 件の失敗で段を落とさない。上の docstring のとおり、遅れて拾えるものは遅れてよい。
       log.warn(
@@ -93,5 +118,5 @@ export const admitLevel = async (
     }
   }
   log.info({ crawlId: options.crawlId, reported: pages.length, registered }, "level registered");
-  return registered;
+  return { registered, admittedUrls };
 };
