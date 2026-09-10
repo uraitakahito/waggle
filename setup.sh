@@ -89,7 +89,7 @@ cat <<'EOF'
 
 Setup complete.
 
-  container-compose up -d -b                  # build and start the stack
+  pnpm run stack:up                           # build and start the stack
   until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
     localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
 

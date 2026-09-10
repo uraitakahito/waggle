@@ -37,7 +37,7 @@ upstream source arrives that way), and writes `.env`. Mandatory before any
 ## 3. Start the stack
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 ```
 
 The first build compiles BrowserHive and the Chromium image from source, so

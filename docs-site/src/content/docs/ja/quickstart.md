@@ -36,7 +36,7 @@ container-compose は `container exec` で **各コンテナの中の** `/etc/ho
 ## 3. スタックを起動する
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 ```
 
 初回は BrowserHive と Chromium イメージをソースからビルドするため、数分かかります。

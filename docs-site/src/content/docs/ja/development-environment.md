@@ -98,7 +98,7 @@ NAME=value     # 値を渡す
 ## スタックで作業する
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 # grpcurl は vendored の契約を読む。準備完了の判定は GetStatus。
 until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
   localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
@@ -254,7 +254,7 @@ API は `identityFromClaims` を通してそこを読みます。
 profile 付きで入っている。見知らぬサイトに向けずにクロールを試せる:
 
 ```sh
-container-compose --profile meadow up -d -b
+pnpm run stack:up --profile meadow
 ```
 
 port は publish していない。`meadow.waggle:8080` はコンテナからも host からも引ける。
@@ -274,6 +274,37 @@ curl -s http://meadow.waggle:8080/__request-counts
 meadow は `.upstream/browserhive` 経由ではなく `.upstream/meadow` に**直接** vendor して
 いる。あちらが抱える meadow はずっと古く、2 つの pin は別々の都合で動くので、
 どちらももう一方を待つ理由が無い。
+
+### 署名を試す
+
+署名には 2 つのことが同時に要ります —— `capping` と `tsa` が起きていること、
+BrowserHive が署名の宛先を知っていること。**1 行で両方が立ちます。**
+
+```sh
+# .env
+WAGGLE_CAPTURE_SIGNING=1
+```
+
+`pnpm run stack:up` がこの行を読み、`--profile signing`（capping と tsa を起こす）と
+`--env-file signing.env`（BrowserHive に宛先を渡す）を足します。何を足したかを印字するので、
+capping が起きている理由が分からなくなることはありません。
+
+**片方だけを渡す道はありません。**そこが眼目で、以前は設定が互いを知らない 3 か所に
+分かれていました —— `.env` の旗、profile、そして `docker-compose.yml` に直書きされた
+`BROWSERHIVE_SIGNING_*` の 4 つ。profile を起こさずに署名を on にすると、取り込みが全部
+`ENOTFOUND capping.waggle` で落ちました。**DNS の誤りに見えますが、そうではありません** ——
+名前は正しく、サービスが起きていなかっただけです。
+
+署名の設定を `docker-compose.yml` へ戻すことはできません。空にしても駄目です。これは
+[空文字の罠](#空文字は値が無いとは別の状態)がもう一段外側で再来したもので、BrowserHive の
+分岐は `signing.url === undefined` なのに、commander は `envVar in process.env` で
+判定するため `- BROWSERHIVE_SIGNING_URL=` は**設定済み**として通ります。結果は
+`fetch("")` と `TypeError: Failed to parse URL from ` —— 上の `DATABASE_URL=` の話と
+同じで、**変数の名前を一度も出さない誤り**になります。項目そのものが無ければ
+BrowserHive は `no signing service is configured on this server` と言います。
+
+署名は fail-closed です —— 署名を求めて得られなかった取り込みは、署名なしのアーカイブを
+出すのではなく失敗します。
 
 ## リポジトリの約束
 

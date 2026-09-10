@@ -103,7 +103,7 @@ that rule too.
 ## Working against the stack
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 # grpcurl reads the vendored contract; GetStatus is the readiness probe.
 until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
   localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
@@ -264,7 +264,7 @@ behind a profile, so a crawl can be exercised without pointing it at a stranger'
 site:
 
 ```sh
-container-compose --profile meadow up -d -b
+pnpm run stack:up --profile meadow
 ```
 
 It publishes no port; `meadow.waggle:8080` resolves from containers and from the
@@ -286,6 +286,40 @@ have been fetched and dropped.
 meadow is vendored directly at `.upstream/meadow` rather than through
 `.upstream/browserhive`, which carries its own much older copy. The two pins move
 for different reasons and neither should wait on the other.
+
+### Signing an archive
+
+Signing needs two things at once: `capping` and `tsa` running, and BrowserHive
+knowing where to ask. **One line turns on both.**
+
+```sh
+# .env
+WAGGLE_CAPTURE_SIGNING=1
+```
+
+`pnpm run stack:up` reads that line and adds `--profile signing` (which starts
+`capping` and `tsa`) together with `--env-file signing.env` (which tells
+BrowserHive where to ask). It prints what it added, so the reason `capping` is
+running is never a mystery.
+
+**There is no way to pass one without the other**, and that is the point. The
+settings used to live in three places that did not know about each other — the
+`.env` flag, the profile, and four `BROWSERHIVE_SIGNING_*` entries hardcoded into
+`docker-compose.yml`. Turning signing on without starting the profile made every
+capture fail with `ENOTFOUND capping.waggle`, which reads like a DNS fault and is
+not one: the name is correct, the service simply was not running.
+
+The signing settings cannot go back into `docker-compose.yml`, not even blanked
+out. This is [the empty-value trap](#an-empty-value-is-not-the-same-as-no-value)
+again, one level out: BrowserHive branches on `signing.url === undefined`, but
+commander decides with `envVar in process.env`, so `- BROWSERHIVE_SIGNING_URL=`
+counts as _set_. The result is `fetch("")` and `TypeError: Failed to parse URL
+from ` — an error that never names the variable, exactly like the `DATABASE_URL=`
+story above. With the entry genuinely absent, BrowserHive says `no signing
+service is configured on this server`.
+
+Signing is fail-closed: a capture that asked for a signature and could not get
+one fails rather than producing an unsigned archive.
 
 ## Repo conventions
 
