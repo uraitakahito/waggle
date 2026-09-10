@@ -62,7 +62,7 @@ prefixes that crawls started in the last `n` days actually wrote to, read from
 `crawls.artifact_key_prefix`:
 
 ```sh
-pnpm run fga:reconcile -- --since-days 30
+pnpm run fga:reconcile --since-days 30
 ```
 
 Two things bound what that flag can do. S3's list can only be narrowed by

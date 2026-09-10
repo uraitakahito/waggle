@@ -58,7 +58,7 @@ manifest が段の閉じた後に書かれても、次の reconcile で拾えま
 `crawls.artifact_key_prefix` に書き残してあります:
 
 ```sh
-pnpm run fga:reconcile -- --since-days 30
+pnpm run fga:reconcile --since-days 30
 ```
 
 この旗にできることは 2 つの事情で決まります。S3 の list は **prefix でしか
