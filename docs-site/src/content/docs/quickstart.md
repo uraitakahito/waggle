@@ -104,6 +104,21 @@ open http://127.0.0.1:7070/
 An empty listing usually means `WAGGLE_DEV_IDENTITY=1` is missing from `.env` —
 without it the resolver admits nobody and the picker stays empty with `401`.
 
+:::caution[A scheduler cannot reach a loopback bind]
+The default bind is `127.0.0.1`, and **a container cannot reach it**. To let
+forage's Windmill run the daily crawl, start the API on all interfaces:
+
+```sh
+WAGGLE_API_HOST=0.0.0.0 pnpm run api
+```
+
+The container then points at bridge100 — `http://192.168.64.1:7070`. **A host
+name will not resolve there.** That address is already forage's default for
+`WAGGLE_API_URL`, so `pnpm run windmill:waggle-token` wires it up with nothing
+to configure. Opening the API beyond loopback puts it in front of whatever
+authentication you have configured — check that first.
+:::
+
 ## 7. Start a crawl
 
 Capturing is a crawl now: waggle plans it, and a Windmill flow does the
