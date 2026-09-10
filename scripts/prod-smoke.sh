@@ -54,6 +54,14 @@ teardown() {
 }
 trap teardown EXIT
 
+# Pass the submodule versions as build args. Without them the image calls itself
+# "unknown", and that value is baked into every archive it produces. This script
+# does not go through scripts/stack.sh, so it has to source the same helper —
+# one place computes the answer, both entry points read it.
+# shellcheck source=scripts/submodule-versions.sh
+. "$(dirname "$0")/submodule-versions.sh"
+export_submodule_versions
+
 log "Starting the stack..."
 container-compose up -d -b
 
