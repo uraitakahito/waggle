@@ -5,7 +5,12 @@
  * 署名付き URL は `api/presign.ts` に在る —— この client は共有するが、関心は別
  * (あちらはオブジェクトを一度も読まず、署名するだけ)。
  */
-import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import type { StorageConfig } from "../config/env.js";
 
 export const createS3Client = (config: StorageConfig): S3Client =>
@@ -110,4 +115,30 @@ export const listAllKeys = async (s3: S3Client, bucket: string): Promise<string[
     continuationToken = page.IsTruncated === true ? page.NextContinuationToken : undefined;
   } while (continuationToken !== undefined);
   return keys;
+};
+
+/**
+ * オブジェクトを 1 つ書く。
+ *
+ * **冪等であること。** 同じ鍵に 2 度書けば上書きされる —— BrowserHive が再送しうるので、
+ * 連番を振ると再送のたびに object が増える。鍵は呼ぶ側が決める。
+ *
+ * waggle が S3 に**書く**のはここだけ。他はすべて読み取りで、書くのは BrowserHive の
+ * 仕事だった —— 成果物を受け口で受け取る構成にしたときに、この 1 か所が要る。
+ */
+export const putObject = async (
+  s3: S3Client,
+  bucket: string,
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<void> => {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
 };

@@ -65,6 +65,8 @@ export interface AdmitLevelOptions {
   crawlId: string;
   orgId: string;
   requestedBy: string;
+  /** 成果物の置き場所の接頭辞。受け口が受ける構成でのみ付く。 */
+  keyPrefix?: string;
 }
 
 export interface AdmitLevelResult {
@@ -93,7 +95,12 @@ export const admitLevel = async (
   for (const page of pages) {
     // クロールは `labels: []` / `correlationId: <crawlId>` で投げている
     // (forage の crawl_host.ts)。鍵はその 3 つから決まる。
-    const key = manifestKey(page.taskId, page.correlationId ?? options.crawlId, []);
+    const key = manifestKey(
+      page.taskId,
+      page.correlationId ?? options.crawlId,
+      [],
+      options.keyPrefix,
+    );
     try {
       const raw = await getJsonObject(options.s3, options.bucket, key);
       if (raw === undefined) {

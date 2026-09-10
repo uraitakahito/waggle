@@ -20,6 +20,7 @@ import { registerPicker, replayOriginFromEnv } from "./picker.js";
 import { parseCaptureFormats } from "../config/capture-formats.js";
 import { registerCrawlRoutes } from "./crawls.js";
 import { registerSearchRoutes } from "./search.js";
+import { registerSinkRoutes, type SinkConfig } from "./sink.js";
 import { createSearchClient } from "../search/client.js";
 import { createWindmillDispatcher } from "../crawl/dispatch.js";
 import { optional } from "../config/env.js";
@@ -100,6 +101,27 @@ const start = async (options: ServerOptions): Promise<void> => {
   });
 
   registerRoutes(app, { db, fga, s3, resolveIdentity });
+
+  // 成果物の受け口。**BrowserHive が保管庫を持たずに済むための口。**
+  //
+  // **両方揃ったときだけ生きる。** 鍵だけでは口を出せない (誰でも書ける受け口になる)。
+  // 宛先だけでも配れない (署名できない)。片方だけ設定できる道を残すと
+  // 「宛先は在るが誰も検めない」が作れてしまう —— 署名の設定で一度踏んだ形。
+  const sinkOrigin = optional("WAGGLE_SINK_ORIGIN", "");
+  const sinkSecret = optional("WAGGLE_SINK_SECRET", "");
+  const sink: SinkConfig | undefined =
+    sinkOrigin !== "" && sinkSecret !== "" ? { origin: sinkOrigin, secret: sinkSecret } : undefined;
+  if (sink) {
+    registerSinkRoutes(app, { db, s3, bucket: storage.bucket, secret: sink.secret });
+  } else if (sinkOrigin !== "" || sinkSecret !== "") {
+    // **片方だけは設定の誤り。声を上げて止まる。** 黙って従来経路へ落とすと、送り先を
+    // 配ったつもりの配備が「なぜか自前の保管庫へ書かれている」状態になり、気づく
+    // 手がかりが無い。`crawl/dispatch.ts` が webhook の 2 つに対して同じことをしている。
+    throw new Error(
+      "WAGGLE_SINK_ORIGIN and WAGGLE_SINK_SECRET must be set together " +
+        "(one without the other cannot hand out a sink)",
+    );
+  }
   registerPicker(app, replayOriginFromEnv());
 
   // **形式は起動時に 1 回だけ解釈する。** 綴りの誤りをここで落とすため
@@ -127,6 +149,7 @@ const start = async (options: ServerOptions): Promise<void> => {
       bucket: storage.bucket,
       resolveIdentity,
       dispatch,
+      ...(sink && { sink }),
       capture,
     });
   }

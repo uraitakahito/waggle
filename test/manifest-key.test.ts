@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { manifestKey } from "../src/archive/manifest.js";
+import { sinkObjectKey } from "../src/api/sink.js";
 
 /**
  * BrowserHive の `generateFilename` (src/capture/artifact-name.ts) を写したもの:
@@ -86,5 +87,31 @@ describe("manifestKey", () => {
   it("鍵に制御文字が残らない", () => {
     expect(manifestKey(TASK, undefined, ["a\u0001b"])).not.toMatch(/\p{Cc}/u);
     expect(manifestKey(TASK, "a\u007Fb", [])).not.toMatch(/\p{Cc}/u);
+  });
+});
+
+/**
+ * **置く側と探す側が一致していること。**
+ *
+ * 受け口は `org/<orgId>/<filename>` へ置き、台帳は `manifestKey(..., keyPrefix)` で
+ * 探す。片方だけ変えると manifest が見つからず、**台帳に 1 行も入らないまま
+ * 「成功」で終わる** —— 取り込みは動いているので、気づく手がかりが無い。
+ */
+describe("受け口の置き場所と manifest の鍵", () => {
+  const TASK = "00000000-0000-4000-8000-000000000001";
+  it("同じ場所を指す", () => {
+    const filename = `${TASK}_abc123de.result.json`;
+
+    // 置く側
+    const written = sinkObjectKey("acme", filename);
+    // 探す側
+    const looked = manifestKey(TASK, "abc123de", [], sinkObjectKey("acme", ""));
+
+    expect(looked).toBe(written);
+    expect(looked).toBe(`org/acme/${TASK}_abc123de.result.json`);
+  });
+
+  it("接頭辞が無ければ従来どおり平ら", () => {
+    expect(manifestKey(TASK, "abc123de", [])).toBe(`${TASK}_abc123de.result.json`);
   });
 });
