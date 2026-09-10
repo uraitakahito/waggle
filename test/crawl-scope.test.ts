@@ -37,24 +37,24 @@ describe("範囲の判定", () => {
   it("treats a different scheme as a different origin", () => {
     // http と https は別 origin。混在するサイトでは same-host を選ぶことになる。
     const candidate = parseHttpUrl("http://example.com/a")!;
-    expect(inScope(candidate, seed, "same-origin")).toBe(false);
-    expect(inScope(candidate, seed, "same-host")).toBe(true);
+    expect(inScope(candidate, [seed], "same-origin")).toBe(false);
+    expect(inScope(candidate, [seed], "same-host")).toBe(true);
   });
 
   it("treats a different port as a different origin", () => {
     const candidate = parseHttpUrl("https://example.com:8443/a")!;
-    expect(inScope(candidate, seed, "same-origin")).toBe(false);
+    expect(inScope(candidate, [seed], "same-origin")).toBe(false);
   });
 
   it("treats a subdomain as outside", () => {
     // `same-host` でも外。ホストが違えば別のサーバで、負荷の宛先も別。
     const candidate = parseHttpUrl("https://www.example.com/a")!;
-    expect(inScope(candidate, seed, "same-origin")).toBe(false);
-    expect(inScope(candidate, seed, "same-host")).toBe(false);
+    expect(inScope(candidate, [seed], "same-origin")).toBe(false);
+    expect(inScope(candidate, [seed], "same-host")).toBe(false);
   });
 
   it("accepts the same origin on a different path", () => {
-    expect(inScope(parseHttpUrl("https://example.com/deep/a")!, seed, "same-origin")).toBe(true);
+    expect(inScope(parseHttpUrl("https://example.com/deep/a")!, [seed], "same-origin")).toBe(true);
   });
 });
 
@@ -66,7 +66,7 @@ describe("辿るリンクの選び方", () => {
         { href: "https://other.com/b" },
         { href: "mailto:a@example.com" },
       ],
-      seed,
+      [seed],
       "same-origin",
     );
     expect(accepted.map((a) => a.url)).toEqual(["https://example.com/a"]);
@@ -78,7 +78,7 @@ describe("辿るリンクの選び方", () => {
         { href: "https://example.com/a", rel: "nofollow" },
         { href: "https://example.com/b", rel: "noopener nofollow" },
       ],
-      seed,
+      [seed],
       "same-origin",
     );
     expect(accepted).toEqual([]);
@@ -88,7 +88,7 @@ describe("辿るリンクの選び方", () => {
     // 部分一致で書くとこれが落ちる。`rel` は空白区切りの語の並び。
     const accepted = acceptLinks(
       [{ href: "https://example.com/a", rel: "nofollowme" }],
-      seed,
+      [seed],
       "same-origin",
     );
     expect(accepted.map((a) => a.url)).toEqual(["https://example.com/a"]);
@@ -97,14 +97,14 @@ describe("辿るリンクの選び方", () => {
   it("collapses links that differ only by fragment", () => {
     const accepted = acceptLinks(
       [{ href: "https://example.com/a" }, { href: "https://example.com/a#x" }],
-      seed,
+      [seed],
       "same-origin",
     );
     expect(accepted).toHaveLength(1);
   });
 
   it("carries the host so the caller does not have to parse again", () => {
-    const accepted = acceptLinks([{ href: "https://example.com/a" }], seed, "same-origin");
+    const accepted = acceptLinks([{ href: "https://example.com/a" }], [seed], "same-origin");
     expect(accepted[0]?.host).toBe("example.com");
   });
 
@@ -112,9 +112,46 @@ describe("辿るリンクの選び方", () => {
     // BrowserHive は rel が無いとき null を入れてくる。
     const accepted = acceptLinks(
       [{ href: "https://example.com/a", rel: null }],
-      seed,
+      [seed],
       "same-origin",
     );
     expect(accepted).toHaveLength(1);
+  });
+});
+
+describe("種が複数のとき", () => {
+  const a = parseHttpUrl("https://a.example.com/start")!;
+  const b = parseHttpUrl("https://b.example.com/start")!;
+
+  it("どれか 1 つの種の範囲に入れば入る", () => {
+    // **範囲は種の数だけ広がる。** それでも「依頼時に決まって後から動かない」
+    // という性質は変わらない —— 端のページが新しい中心になることは無い。
+    expect(inScope(parseHttpUrl("https://b.example.com/deep")!, [a, b], "same-origin")).toBe(true);
+  });
+
+  it("どの種の範囲にも入らなければ入らない", () => {
+    expect(inScope(parseHttpUrl("https://c.example.com/x")!, [a, b], "same-origin")).toBe(false);
+  });
+
+  it("種が 0 本なら何も入らない", () => {
+    // `011` の CHECK が作らせないので実際には来ないが、来たときに全部を範囲内と
+    // 読むよりは、何も入らないほうがよい。
+    expect(inScope(parseHttpUrl("https://a.example.com/x")!, [], "same-origin")).toBe(false);
+  });
+
+  it("acceptLinks も複数の種で絞る", () => {
+    const accepted = acceptLinks(
+      [
+        { href: "https://a.example.com/1" },
+        { href: "https://b.example.com/2" },
+        { href: "https://c.example.com/3" },
+      ],
+      [a, b],
+      "same-origin",
+    );
+    expect(accepted.map((l) => l.url)).toEqual([
+      "https://a.example.com/1",
+      "https://b.example.com/2",
+    ]);
   });
 });

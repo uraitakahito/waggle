@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { manifestKey } from "../src/archive/watch.js";
+import { manifestKey } from "../src/archive/manifest.js";
 
 /**
  * BrowserHive の `generateFilename` (src/capture/artifact-name.ts) を写したもの:

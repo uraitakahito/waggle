@@ -1,9 +1,9 @@
 ---
 title: waggle
-description: A capture orchestrator that reads URLs from Postgres and submits them to BrowserHive.
+description: A capture orchestrator that decides which URLs get captured, and keeps the ledger of what came back.
 template: splash
 hero:
-  tagline: Reads URLs from a Postgres table and tells the hive what to capture.
+  tagline: Decides what the hive captures, and keeps the record of what came back.
   actions:
     - text: Quickstart
       link: /waggle/quickstart/
@@ -13,9 +13,10 @@ hero:
 
 ## What waggle is
 
-waggle answers one question: **which URLs get captured**. It selects the enabled
-rows of a Postgres `capture_targets` table and submits one `SubmitCapture` call per row to a
-BrowserHive server, in parallel.
+waggle answers one question: **which URLs get captured**. A caller asks for a
+crawl; waggle works out the seeds — an explicit list, or the enabled rows of a
+Postgres `capture_targets` table — decides what is in scope, and hands one level
+at a time to a Windmill flow that does the submitting.
 
 The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance)
 bees use to point hive-mates at nectar.
@@ -27,20 +28,21 @@ one of those is **BrowserHive's responsibility**. BrowserHive's docs are not
 published on the web — build them from the BrowserHive checkout with
 `pnpm run docs:local`.
 
-The submission itself is asynchronous: `SubmitCapture` returns a `taskId`
-immediately and the capture runs on BrowserHive's worker pool. waggle then waits
-for each accepted capture and records the ones that produced an archive in the
-[archive ledger](/waggle/archive-ledger/). `--no-collect` submits and exits
-instead; whatever is missed is picked up later by `waggle-ledger reconcile`,
-which sweeps the bucket's result manifests.
+**Submitting is not waggle's either, any more.** The Windmill flow in
+[forage](https://github.com/uraitakahito/forage) holds the gRPC channel, and
+waggle has no BrowserHive address in its configuration at all. Each level the
+flow reports comes back with a `taskId` per page, and waggle registers what
+produced an archive in the [archive ledger](/waggle/archive-ledger/). Anything
+missed is picked up later by `pnpm run fga:reconcile`, which sweeps the bucket's
+result manifests.
 
 ## Where things are
 
-| I want to…                       | Page                                                        |
-| -------------------------------- | ----------------------------------------------------------- |
-| run a capture for the first time | [Quickstart](/waggle/quickstart/)                           |
-| set up the dev environment       | [Development environment](/waggle/development-environment/) |
-| manage the URL list              | [URL source](/waggle/url-source/)                           |
-| shape how a run captures         | [Capture options](/waggle/capture-options/)                 |
-| move to a newer BrowserHive      | [Upgrading BrowserHive](/waggle/upgrading-browserhive/)     |
-| understand the moving parts      | [Architecture](/waggle/architecture/)                       |
+| I want to…                            | Page                                                        |
+| ------------------------------------- | ----------------------------------------------------------- |
+| bring the stack up for the first time | [Quickstart](/waggle/quickstart/)                           |
+| set up the dev environment            | [Development environment](/waggle/development-environment/) |
+| manage the URL list                   | [URL source](/waggle/url-source/)                           |
+| shape how a crawl captures            | [Capture options](/waggle/capture-options/)                 |
+| move to a newer BrowserHive           | [Upgrading BrowserHive](/waggle/upgrading-browserhive/)     |
+| understand the moving parts           | [Architecture](/waggle/architecture/)                       |

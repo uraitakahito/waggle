@@ -9,14 +9,17 @@ external pipeline, or the bundled seed.
 
 ## The query
 
-Every run is this, and nothing more:
+A crawl started with `fromTargets` is this, and nothing more:
 
 ```sql
-SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
+SELECT url FROM capture_targets WHERE enabled AND org_id = $1 ORDER BY id ASC [LIMIT $2]
 ```
 
-`ORDER BY id ASC` means rows are submitted in insertion order, and `--limit`
-takes the first _n_ — so a smoke test always exercises the same URLs.
+`ORDER BY id ASC` means rows are seeded in insertion order, and
+`fromTargets.limit` takes the first _n_ — so a smoke test always exercises the
+same URLs. The `org_id` filter is what keeps a crawl inside one tenant: a crawl
+carries a single organization, so seeding it from another one's rows would leave
+attribution unanswerable.
 
 ## Schema
 
@@ -27,9 +30,9 @@ takes the first _n_ — so a smoke test always exercises the same URLs.
 | Column                      | Notes                                                                                                                       |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `id`                        | `BIGSERIAL` primary key. Insertion order, preserved by the loader's `ORDER BY`.                                             |
-| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empty and untrimmed values, so the CLI does not have to.    |
+| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — the database rejects empty and untrimmed values, so no caller has to.            |
 | `url_hash`                  | Generated `digest(url, 'sha256')` (pgcrypto), stored. Backs the unique index; nothing reads it directly.                    |
-| `labels`                    | `TEXT[]`. Sent as-is to BrowserHive, which composes them into artifact filenames.                                           |
+| `labels`                    | `TEXT[]`. **Nothing reads them any more** — see below.                                                                      |
 | `enabled`                   | The hot path is `WHERE enabled`, covered by the partial index `capture_targets_enabled_id_idx`. Disabled rows cost nothing. |
 | `created_at` / `updated_at` | `now()` defaults. No auto-update trigger today.                                                                             |
 
@@ -37,13 +40,19 @@ takes the first _n_ — so a smoke test always exercises the same URLs.
 
 ## Labels
 
-Labels are free-form and end up in the artifact filename, which makes them the
-natural place for an external key. Free-form is literal here: BrowserHive
-escapes anything that would collide with the filename's structure, so `_`, `.`,
-`/`, spaces and non-ASCII all survive the round trip. The one limit is length —
-the whole artifact name must fit in 255 UTF-8 bytes, and a submission that
-would exceed it is refused up front. The bundled fixture uses a securities code
-alongside a company name:
+:::caution[Labels no longer travel]
+The column is still here, the seed still fills it, and the ledger still has a
+`labels` column of its own — but **the crawl path selects `url` alone** and
+submits with an empty label list. So labels reach neither BrowserHive nor the
+artifact filenames today. Treat the column as annotation on the target row, not
+as something that will show up downstream.
+:::
+
+They were free-form and ended up in the artifact filename, which made them the
+natural place for an external key: BrowserHive escapes anything that would
+collide with the filename's structure, so `_`, `.`, `/`, spaces and non-ASCII all
+survived the round trip, with the whole artifact name limited to 255 UTF-8 bytes.
+The bundled fixture still uses a securities code alongside a company name:
 
 ```ts
 { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"] }

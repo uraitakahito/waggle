@@ -9,17 +9,11 @@
   "engines": {
     "node": ">=24.14.1"
   },
-  "bin": {
-    "waggle": "dist/submit-captures.js",
-    "waggle-ledger": "dist/fga/ledger-commands.js",
-    "waggle-api": "dist/api/server.js"
-  },
   "files": [
     "dist",
     "proto"
   ],
   "scripts": {
-    "capture": "pnpm run build && node --env-file-if-exists=.env dist/submit-captures.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -33,6 +27,9 @@
     "proto:check": "buf generate && git diff --exit-code -- src/rpc/generated",
     "proto:check-deps": "node scripts/check-generated-deps.mjs",
     "check-env": "node scripts/check-env.mjs",
+    "check-comment-refs": "node scripts/check-comment-refs.mjs",
+    "stack:up": "./scripts/stack.sh up",
+    "stack:down": "./scripts/stack.sh down",
     "proto:sync": "cp .upstream/browserhive/src/rpc/proto/browserhive/v1/capture.proto proto/browserhive/v1/capture.proto",
     "site:dev": "pnpm --filter waggle-docs-site run dev",
     "site:build": "pnpm --filter waggle-docs-site run build",
@@ -50,7 +47,7 @@
     "db:migrate:down": "pnpm run build && node --env-file-if-exists=.env dist/db/migrate.js down",
     "db:seed": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js up",
     "db:seed:down": "pnpm run build && node --env-file-if-exists=.env dist/db/seed.js down",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm test",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run proto:check-deps && pnpm run check-env && pnpm run check-comment-refs && pnpm test",
     "oidc:issuer": "pnpm run build && node --env-file-if-exists=.env dist/dev/issuer-cli.js",
     "oidc:token": "pnpm run build && node --env-file-if-exists=.env dist/dev/token.js"
   },

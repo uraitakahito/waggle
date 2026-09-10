@@ -3,8 +3,14 @@
 # End-to-end smoke test of the production image against a real stack.
 #
 # Brings the stack up with container-compose, waits for BrowserHive to answer,
-# then runs migrate → seed → one capture from the freshly built waggle image,
-# and tears everything down through an EXIT trap.
+# then runs migrate → seed → the API from the freshly built waggle image, and
+# tears everything down through an EXIT trap.
+#
+# **It no longer captures anything.** waggle does not speak gRPC to BrowserHive
+# any more — the Windmill flow submits, and waggle plans and records. What this
+# script proves is that the image boots: migrations apply, the seed lands, and
+# the API answers. The capture path is covered end to end by forage's
+# `pnpm run test:e2e`, which needs Windmill as well.
 #
 # The one-shot jobs are `container run` rather than compose services:
 # container-compose has exactly four subcommands (up / down / build / version),
@@ -17,7 +23,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DATABASE_URL="postgres://waggle:waggle@postgres.waggle:5432/waggle"
-BROWSERHIVE_SERVER="browserhive.waggle:50051"
 HEALTH_TARGET="localhost:50051"
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
 
@@ -78,14 +83,13 @@ log "BrowserHive is ready."
 log "Building the waggle image..."
 container build -t waggle:latest .
 
-# The image's ENTRYPOINT is `node dist/submit-captures.js`, so the db jobs have to override
-# it; the capture just passes flags straight through.
+# The image's ENTRYPOINT is `node dist/api/server.js`, so the db jobs have to
+# override it.
 run_job() {
   local label="$1"; shift
   log "Running ${label}..."
   container run --rm --entrypoint node \
     -e "DATABASE_URL=${DATABASE_URL}" \
-    -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
     -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
     waggle:latest "$@"
 }
@@ -93,16 +97,32 @@ run_job() {
 run_job "migrations" dist/db/migrate.js up
 run_job "seed" dist/db/seed.js up
 
-log "Running the capture..."
-set +e
-container run --rm \
+# The API is a server, not a job: run it detached, ask it one question, stop it.
+# `/healthz` needs neither a token nor FGA, which is what makes it usable here.
+log "Starting the API..."
+API_ID=$(container run -d --rm \
   -e "DATABASE_URL=${DATABASE_URL}" \
-  -e "BROWSERHIVE_SERVER=${BROWSERHIVE_SERVER}" \
   -e "LOG_LEVEL=${LOG_LEVEL:-info}" \
+  -e "WAGGLE_API_HOST=0.0.0.0" \
   "${S3_ENV[@]}" \
-  waggle:latest --wacz --limit 3
-WAGGLE_EXIT=$?
-set -e
+  -p 7070:7070 \
+  waggle:latest)
+trap 'container stop "${API_ID}" >/dev/null 2>&1 || true' EXIT
+
+log "Waiting for the API..."
+WAGGLE_EXIT=1
+for _ in $(seq 1 30); do
+  if curl -fsS "http://localhost:7070/healthz" >/dev/null 2>&1; then
+    WAGGLE_EXIT=0
+    break
+  fi
+  sleep 2
+done
+
+if [ "${WAGGLE_EXIT}" -ne 0 ]; then
+  log "The API did not answer /healthz. Recent output:"
+  container logs "${API_ID}" 2>&1 | tail -40
+fi
 
 log "All done. waggle exit code: ${WAGGLE_EXIT}"
 exit "${WAGGLE_EXIT}"

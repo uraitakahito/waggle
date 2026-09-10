@@ -10,9 +10,12 @@ description: 前提・日々のコマンド・Compose を使わない実行・�
 - **[Apple Container](https://github.com/apple/container)** と **container-compose**
   （どちらも Homebrew）— スタックに必要。ホストだけの開発には不要。macOS 専用です。
 - **`curl`** と **`git`** が PATH にあること。
-- エンドツーエンドの実行には、`BROWSERHIVE_SERVER` で届く **BrowserHive** と
-  `DATABASE_URL` で届く **Postgres**。Compose スタックは両方を立ち上げます。
-  固定バージョンは [BrowserHive の更新](/waggle/ja/upgrading-browserhive/)を参照。
+- `DATABASE_URL` で届く **Postgres**。Compose スタックが立ち上げます。
+- 実際に取り込むには **BrowserHive** と、それを回す Windmill の flow。waggle は
+  もう BrowserHive の在り処を持たず、`WAGGLE_CRAWL_WEBHOOK_URL` へ投げるだけです。
+  flow は [forage](https://github.com/uraitakahito/forage) に居ます。スタックが今も
+  BrowserHive を build するのは flow が要るからで、固定バージョンは
+  [BrowserHive の更新](/waggle/ja/upgrading-browserhive/)を参照。
 
 ## 初回セットアップ
 
@@ -32,13 +35,13 @@ pnpm run check       # typecheck + lint + format:check + env + テスト
 
 ### 環境変数
 
-コードが読む環境変数は **25 個**あり、読み取りの仕組みは 3 つに分かれています。
+コードが読む環境変数は **35 個**あり、読み取りの仕組みは 3 つに分かれています。
 `src/config/` の `required()`/`optional()`、commander の `.env()`（こちらは
 `--help` にも出ます）、そして素の `process.env[…]`（これは `scripts/` にもあります）。
 必須は 7 個です。
 
-一覧は `.env.example` の 1 か所だけです。`setup.sh` はこれを `.env` に写し、
-`WAGGLE_DEV_SUBJECT` を実行者の名前に置き換えます。`.env` を作るものは他にありません
+一覧は `.env.example` の 1 か所だけです。`setup.sh` はこれを `.env` に写すだけで、
+値には手を入れません。`.env` を作るものは他にありません
 —— 一覧が 2 つあれば必ずずれるからです。OpenFGA の 2 つの ID は
 `pnpm run fga:deploy` が出力するまで空のままです
 （[アーカイブ台帳](/waggle/ja/archive-ledger/#セットアップ)を参照）。
@@ -77,7 +80,7 @@ NAME=value     # 値を渡す
 
 | コマンド                                  | 内容                                                                    |
 | ----------------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm run capture <args>`                 | ビルドしてから CLI を実行 (`tsc` → `node dist/submit-captures.js`)。    |
+| `pnpm run api`                            | ビルドしてから API を実行 (`tsc` → `node dist/api/server.js`)。         |
 | `pnpm run build`                          | `tsconfig.build.json` で `dist/` に JS/d.ts を出力。                    |
 | `pnpm run typecheck`                      | `tsc --noEmit`。テストと `*.config.ts` も含む。                         |
 | `pnpm run lint` / `lint:fix`              | ESLint flat config (typescript-eslint recommendedTypeChecked)。         |
@@ -95,7 +98,7 @@ NAME=value     # 値を渡す
 ## スタックで作業する
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 # grpcurl は vendored の契約を読む。準備完了の判定は GetStatus。
 until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
   localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
@@ -109,8 +112,10 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 
 ```sh
 DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
-BROWSERHIVE_SERVER=browserhive.waggle:50051
 ```
+
+BrowserHive の在り処はもうここにありません。スタックが公開している唯一の gRPC の
+口 `localhost:50051` は、grpcurl と flow のためのもので、waggle のためではありません。
 
 `pnpm run` 系のコマンドはこの `.env` を自分で読みます
 （`node --env-file-if-exists=.env`）。シェルで `export` する必要はありません。
@@ -141,56 +146,69 @@ Chromium ワーカーは **headless** です。描画を見たいときは、ロ
 ./scripts/prod-smoke.sh
 ```
 
-スタックを起動し、`/v1/status` が応答するまでポーリングし、`waggle:latest` を
-ビルドしてから migrate → seed → キャプチャ 1 本を `container run --rm` で
-順に実行し、`EXIT` トラップでスタックを片付け、waggle の終了コードを自分の
-終了コードとして返します。
+スタックを起動し、BrowserHive が `GetStatus` に応答するまでポーリングし、
+`waggle:latest` をビルドしてから migrate → seed → API を `container run --rm` で
+順に実行し、API に `/healthz` を訊き、`EXIT` トラップでスタックを片付け、
+終了コードを自分の終了コードとして返します。
+
+**もう取り込みはしません。** waggle は BrowserHive と gRPC で話さないので、
+このスクリプトが示すのは「イメージが起動すること」—— migration が当たり、seed が
+入り、API が答えること —— です。取り込みの経路は forage の `pnpm run test:e2e` が
+端から端まで見ます（あちらは Windmill も要ります）。
 
 一発ジョブが素の `container run` なのは、container-compose に `run` が無いから
 です。これにより、以前の `--profile run --exit-code-from waggle` の回避策も
 不要になりました — 回避対象だった Docker Compose の挙動（migrator の正当な
 exit 0 でスタック全体が停止する）が、こちらには存在しないためです。
 
-## 外部の Postgres / BrowserHive に対して動かす
+## 外部の Postgres に対して動かす
 
 ```sh
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-BROWSERHIVE_SERVER=https://browserhive.example/ \
   pnpm run db:migrate
 
 DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-BROWSERHIVE_SERVER=https://browserhive.example/ \
-  pnpm run capture --webp --limit 3
+WAGGLE_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
+WAGGLE_CRAWL_WEBHOOK_TOKEN=… \
+  pnpm run api
 ```
 
-独自 CA での TLS には、CLI を叩く前に `NODE_EXTRA_CA_CERTS` に CA ファイルを
-指定します。信頼ストアを実際に変えるのはこの環境変数で、`--tls-ca-cert` は
-ログに出すためのものです。Postgres の TLS は `DATABASE_URL` にパラメータを
-書きます (例: `?sslmode=require`)。
+Postgres の TLS は `DATABASE_URL` にパラメータを書きます (例: `?sslmode=require`)。
+
+**BrowserHive の TLS はもうここで設定しません。** そのチャンネルを持っているのは
+flow なので、CA は Windmill 側の変数 `u/admin/browserhive_tls_ca` に置きます
+（空文字なら平文）。
 
 ## ローカルで身元を用意する
 
-waggle には身元の入口が 2 つあります。**どちらも既定では全員を拒みます。**
+身元の入口は API の 1 つだけで、**既定では全員を拒みます。**
 
-| 経路                     | 既定   | 開発用ヘッダ            | JWT                  |
-| ------------------------ | ------ | ----------------------- | -------------------- |
-| API (`/api`, picker)     | 拒否   | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
-| CLI (`pnpm run capture`) | 落ちる | `WAGGLE_DEV_SUBJECT`    | `WAGGLE_OIDC_TOKEN`  |
+| 経路                 | 既定 | 開発用ヘッダ            | JWT                  |
+| -------------------- | ---- | ----------------------- | -------------------- |
+| API (`/api`, picker) | 拒否 | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+
+以前は CLI の行がもう 1 つあり、環境から `WAGGLE_DEV_SUBJECT` と
+`WAGGLE_OIDC_TOKEN` を読んでいました。その 2 つは、読む側の CLI ごと畳んだときに
+`.env.example` からも消えています。**主体を名乗るのは投げる側の仕事**になりました。
 
 **JWT の経路が開発用ヘッダより優先されます。** 両方設定された環境で、
 そのポートに届く者が誰にでもなれるほうへ落ちてはいけないためです。
 
 ### 開発用の issuer
 
-`WAGGLE_OIDC_ISSUER` を設定すると、API も CLI も **本番と同じ検証コード** を通ります
+`WAGGLE_OIDC_ISSUER` を設定すると、API は **本番と同じ検証コード** を通ります
 —— 署名、`iss` / `aud` の照合、有効期限、JWKS の取得。本物の IdP が決まるまでは
 同梱の issuer を使います。
 
 ```bash
 pnpm run oidc:issuer                                   # :9099 に立つ
 export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
-export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+TOKEN=$(pnpm run oidc:token --subject alice --org acme)
+curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 ```
+
+トークンは `.env` に置きません —— 読むのは受け取る側の API で、投げる側が
+`Authorization` ヘッダに載せるものだからです。
 
 `--subject` を変えると **「人が投げた場合」と「サービスが投げた場合」の両方を
 作れます**。後者は OpenFGA の owner tuple が `user:<サービス名>` になり、
@@ -213,8 +231,8 @@ export WAGGLE_OIDC_TOKEN=$(pnpm run oidc:token --subject alice --org acme)
 この節の手順を実際に通すことがその代わりになります。
 
 組織のクレームの綴りは IdP ごとに違います (`groups` / `roles` / 独自)。
-差し替えるのは `src/config/identity.ts` の `ORGANIZATIONS_CLAIM` 1 か所です ——
-API も CLI も `identityFromClaims` を通してそこを読みます。
+差し替えるのは `src/config/identity.ts` の `ORGANIZATIONS_CLAIM` 1 か所だけです ——
+API は `identityFromClaims` を通してそこを読みます。
 
 ## トラブルシュート
 
@@ -227,9 +245,10 @@ API も CLI も `identityFromClaims` を通してそこを読みます。
 - **BrowserHive が起動直後に落ちる** — 起動時の `HeadBucket` は fatal です。
   サービスに `WAIT_FOR_S3` が設定されているか、SeaweedFS が
   `Bucket browserhive ready.` を出しているか確認してください。
-- **`Request rejected` のメッセージに `/…` のパスが出る** — それは BrowserHive の
-  RFC 7807 の `detail` が問題のフィールドを名指ししています。リクエストはタスクに
-  なっていません。
+- **`/api/crawls` が誰に対しても 404 を返す** — 呼び出し元に `can_submit` が
+  無いか、`WAGGLE_CRAWL_WEBHOOK_URL` が未設定で route がそもそも登録されて
+  いないかのどちらかです。どちらかは起動時のログが言います
+  （`… is not set — /api/crawls is not served`）。
 - **docs のビルドが BrowserHive のピンを読めない** —
   `git submodule update --init --recursive` を実行。
 
@@ -239,7 +258,7 @@ API も CLI も `identityFromClaims` を通してそこを読みます。
 profile 付きで入っている。見知らぬサイトに向けずにクロールを試せる:
 
 ```sh
-container-compose --profile meadow up -d -b
+pnpm run stack:up --profile meadow
 ```
 
 port は publish していない。`meadow.waggle:8080` はコンテナからも host からも引ける。
@@ -259,6 +278,37 @@ curl -s http://meadow.waggle:8080/__request-counts
 meadow は `.upstream/browserhive` 経由ではなく `.upstream/meadow` に**直接** vendor して
 いる。あちらが抱える meadow はずっと古く、2 つの pin は別々の都合で動くので、
 どちらももう一方を待つ理由が無い。
+
+### 署名を試す
+
+署名には 2 つのことが同時に要ります —— `capping` と `tsa` が起きていること、
+BrowserHive が署名の宛先を知っていること。**1 行で両方が立ちます。**
+
+```sh
+# .env
+WAGGLE_CAPTURE_SIGNING=1
+```
+
+`pnpm run stack:up` がこの行を読み、`--profile signing`（capping と tsa を起こす）と
+`--env-file signing.env`（BrowserHive に宛先を渡す）を足します。何を足したかを印字するので、
+capping が起きている理由が分からなくなることはありません。
+
+**片方だけを渡す道はありません。**そこが眼目で、以前は設定が互いを知らない 3 か所に
+分かれていました —— `.env` の旗、profile、そして `docker-compose.yml` に直書きされた
+`BROWSERHIVE_SIGNING_*` の 4 つ。profile を起こさずに署名を on にすると、取り込みが全部
+`ENOTFOUND capping.waggle` で落ちました。**DNS の誤りに見えますが、そうではありません** ——
+名前は正しく、サービスが起きていなかっただけです。
+
+署名の設定を `docker-compose.yml` へ戻すことはできません。空にしても駄目です。これは
+[空文字の罠](#空文字は値が無いとは別の状態)がもう一段外側で再来したもので、BrowserHive の
+分岐は `signing.url === undefined` なのに、commander は `envVar in process.env` で
+判定するため `- BROWSERHIVE_SIGNING_URL=` は**設定済み**として通ります。結果は
+`fetch("")` と `TypeError: Failed to parse URL from ` —— 上の `DATABASE_URL=` の話と
+同じで、**変数の名前を一度も出さない誤り**になります。項目そのものが無ければ
+BrowserHive は `no signing service is configured on this server` と言います。
+
+署名は fail-closed です —— 署名を求めて得られなかった取り込みは、署名なしのアーカイブを
+出すのではなく失敗します。
 
 ## リポジトリの約束
 

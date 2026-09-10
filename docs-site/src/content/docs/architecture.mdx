@@ -7,44 +7,53 @@ description: How waggle, Postgres, BrowserHive and the artifact store fit togeth
 
 ```mermaid
 flowchart LR
-  PG[("Postgres<br/>capture_targets table")] -->|SELECT url, labels| W
+  U((caller)) -->|"POST /api/crawls"| W
+  PG[("Postgres<br/>capture_targets / crawls / crawl_pages")] <--> W
   subgraph W["waggle (Node 24 / TypeScript)"]
     direction TB
-    US[url-source<br/>pg query] --> CO[cli-options<br/>flags → CaptureSettings]
-    CO --> RUN[run.ts → submit.ts<br/>parallel]
-    RUN --> SDK[generated stubs<br/>buf / ts-proto / grpc-js]
+    API["api/crawls.ts<br/>scope, dedup, budget"]
+    DIS["crawl/dispatch.ts<br/>one webhook POST"]
+    API --> DIS
   end
-  SDK -->|SubmitCapture| BH
+  DIS -->|"webhook + token"| WM["Windmill flow<br/>(forage)"]
+  WM -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]
   end
   COORD -->|CDP| C1[chromium-server-1]
   COORD -->|CDP| C2[chromium-server-2]
   COORD -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
-  W -.->|log only| OUT["Request accepted × N<br/>Request summary"]
+  WM -->|"POST /api/crawls/:id/pages"| API
+  S3 -.->|".links.json / .result.json"| API
 ```
 
 ## From submission to outcome
 
-`SubmitCapture` returns a `taskId` as soon as the request is queued, and the
-capture runs asynchronously.
+**waggle does not speak gRPC to BrowserHive any more.** The Windmill flow
+submits, waits, and reports; waggle plans the next level and records what
+happened. There is no BrowserHive address in waggle's configuration at all.
 
-The outcome is collected afterwards through `GetCapture`, whose `state` says
-`PENDING` / `PROCESSING` while a task is in flight and `DONE` once it finished,
-carrying the status and every artifact location. The same report is also written
-to the bucket as `{taskId}_{correlationId}[_{labels}].result.json`, which survives a
-BrowserHive restart — and is what `waitForCapture` falls back to when the
-in-memory result has already been evicted.
+One level is one round trip. The flow captures the URLs it was handed and posts
+`POST /api/crawls/:id/pages` with a `taskId` and a status per page. waggle writes
+`crawl_pages`, attributes the submissions, filters the discovered links, applies
+the budget, and answers with the next level — or with a `stopReason`.
+
+The level report does **not** carry artifact locations, so waggle re-reads the
+`{taskId}_{correlationId}[_{labels}].result.json` manifest BrowserHive writes
+next to the artifacts. That file survives a BrowserHive restart and outlives the
+server's bounded result cache, which is what makes it usable here.
 
 Consequences worth knowing:
 
-- A `Request summary` of `accepted: 3` means three tasks were **queued**, not
-  that three captures succeeded.
-- A submission that is accepted can still fail its capture. That outcome
-  reaches the ledger through `GetCapture`, or later through the reconciler —
-  never through the summary line.
-- `correlationId` (8 hex characters, generated per submission) is the thread
-  between a waggle log line and the artifact filename.
+- **A page reported `failed` may still have produced an archive.** If the result
+  aged out of BrowserHive's cache while the flow was waiting, the flow sees
+  `NOT_FOUND` and reports a failure — but the manifest is in the bucket, so
+  waggle admits it anyway and corrects the `crawl_pages` row.
+- A manifest that is not there yet is skipped rather than raised. Throwing would
+  turn a late write into a 500 on the level report, stopping the crawl; the
+  reconciler picks it up instead.
+- `capture_submissions` is written for **every** page that carried a `taskId`,
+  not only the successful ones — attribution is what the reconciler later needs.
 
 ## The ledger and authorization
 
@@ -57,7 +66,7 @@ flowchart LR
   S3[(SeaweedFS<br/>bucket: browserhive)]
   subgraph W["waggle"]
     direction TB
-    REG["watch.ts → register.ts<br/>wait for the result, register it"]
+    REG["crawl/admit-level.ts<br/>admit what a level captured"]
     RC["reconcile.ts<br/>sweep the bucket, fill the gaps"]
     OW["outbox-worker.ts<br/>deliver tuples"]
     API["api/routes.ts<br/>signing endpoint"]
@@ -86,36 +95,41 @@ How to read it:
   exactly why the outbox exists.
 - **Membership is not stored.** Which organizations a caller belongs to arrives
   from their token and is passed as a contextual tuple on every Check.
-- Two paths lead into the ledger: `waggle` waiting for the result (fast), and
-  `reconcile` sweeping the bucket (picks up whatever landed while waggle was down).
+- Two paths lead into the ledger: a **crawl** admitting what a level captured
+  (fast, `src/crawl/admit-level.ts`), and `reconcile` sweeping the bucket (picks
+  up whatever landed while waggle was down). Both go through `admitArchive`, and
+  `(bucket, object_key)` is unique, so reaching the same capture twice is a no-op.
 
 See [Archive ledger](/waggle/archive-ledger/) for the details.
 
 ## Module layout
 
-| Module                      | Responsibility                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/submit-captures.ts`    | The `waggle` entry point. Parses flags, submits captures, exits non-zero on a fatal error.                   |
-| `src/config/cli-options.ts` | Flag definitions, `ClientOptions`, and the `CaptureSettings` the request body spreads.                       |
-| `src/data/url-source.ts`    | The one SQL query. Returns `{ url, labels }[]`.                                                              |
-| `src/client/run.ts`         | Orchestration: load, configure, submit all, summarise.                                                       |
-| `src/client/submit.ts`      | One request. Never throws — failures come back as `accepted: false`.                                         |
-| `src/rpc/`                  | The gRPC channel, the promise wrappers, and `generated/` — from the vendored `.proto`, never edited by hand. |
-| `src/db/`                   | Pool, Kysely wiring, migrations, seeds.                                                                      |
+| Module                          | Responsibility                                                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/api/server.ts`             | The only entry point. Reads the capture settings once, registers the routes, drains the outbox on a timer. |
+| `src/api/crawls.ts`             | Start a crawl, report a level, hand back the next one. Authorization, policy, and record-keeping.          |
+| `src/crawl/`                    | Scope, budget, level admission, and the Windmill dispatch.                                                 |
+| `src/config/capture-formats.ts` | `WAGGLE_CAPTURE_FORMATS` / `_SIGNING` → the `captureFormats` every dispatch carries.                       |
+| `src/data/url-source.ts`        | The one SQL query over `capture_targets`. Returns `{ url }[]` for the organization asking.                 |
+| `src/archive/`                  | Manifests, admission into the ledger, and the reconciler.                                                  |
+| `src/rpc/generated/`            | Types only, from the vendored `.proto` — the manifest is a `CaptureResultReport`. Never edited by hand.    |
+| `src/db/`                       | Pool, Kysely wiring, migrations, seeds.                                                                    |
 
 ## Error handling
 
-Rejected requests and unreachable servers alike surface as `accepted: false`
-with a message — `submitRequest` never throws at the caller. The message prefers
-the `ServiceError`'s `details` over its `message`, because the latter is the
-status glued onto the front of the former: `"3 INVALID_ARGUMENT: url is empty"`
-where the detail alone says `url is empty`.
+Telling a rejection apart from an outage is the flow's job now — it is the side
+holding the gRPC channel. waggle's half is what happens to the `crawls` row.
 
-`GetCapture` is the other half, and it does **not** follow that rule. Only
-`NOT_FOUND` is handled — that one means "unknown task, or evicted from the
-result cache", which is answered by reading the durable manifest. Every other
-failure propagates, so an outage cannot be mistaken for a run in which no
-capture produced anything.
+A dispatch that cannot be delivered closes the row as `failed` with the message
+on it. **It is never left `running`**: the partial unique index means an unclosed
+row blocks every later crawl, and nothing in the row distinguishes a live crawl
+from an abandoned one.
+
+Unexpected failures on the API surface as a bare `500 { "error": "internal
+error" }`. Fastify's default would return `err.message` and `err.code`, and
+Postgres puts column types and mangled values in there — a client-side mistake
+would become a window onto the server's internals. 4xx bodies pass through
+unchanged: those are written for the caller.
 
 ## Network layout
 
@@ -132,9 +146,10 @@ host**, which is why waggle itself needs no container.
 | browserhive | `browserhive.waggle` | 50051 (gRPC)       | 50051             |
 | waggle      | — (runs on the host) | —                  | —                 |
 
-There is one compose file. The one-shot migrate/seed/capture jobs are not
-services: `scripts/prod-smoke.sh` invokes them with `container run --rm`,
-because container-compose has no `run` subcommand.
+There is one compose file. The one-shot migrate/seed jobs are not services:
+`scripts/prod-smoke.sh` invokes them with `container run --rm`, because
+container-compose has no `run` subcommand. The image's `ENTRYPOINT` is
+`node dist/api/server.js`, so those jobs override it.
 
 Bucket creation is **not** a separate service. BrowserHive's SeaweedFS entrypoint
 spawns its `init-bucket.sh` alongside `weed server`, and its retry loop does the

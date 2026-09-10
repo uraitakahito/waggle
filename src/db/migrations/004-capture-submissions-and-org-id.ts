@@ -1,5 +1,5 @@
 /**
- * 004-create-capture-submissions
+ * 004-capture-submissions-and-org-id
  *
  * 投げた時点で、その取り込みがどの組織のためのものだったかを覚えておく。
  *
@@ -16,6 +16,22 @@
  *
  * リクエストを送る前に書くので、直後に waggle が死んでも、BrowserHive が受理した
  * 取り込みの帰属は必ず言える。
+ *
+ * ## `source_url` は最初から作らない —— **履歴を書き換えた**
+ *
+ * かつてここに `source_url` があった。**誰も読んでいなかった** —— この表を引くのは
+ * `archive/reconcile.ts` だけで、取るのは `org_id` と `submitted_by`（帰属）であって
+ * URL ではない。落とす migration を別に足す形も採れたが、そうすると docs が埋め込む
+ * この抜粋は「作った時点の形」を映し続け、**存在しない列を見せ続ける**。
+ *
+ * だから列ごと歴史から消した。`001` で `urls` を `capture_targets` に改めたときと同じ手。
+ *
+ * **ファイル名も変えてある。** 中身だけ変えると、既に migrate 済みの DB では
+ * kysely が何も言わずに通り、列が残ったまま食い違う。名前を変えれば
+ * `corrupted migrations` で**声を上げて止まる** —— 古い DB は作り直すこと。
+ *
+ * 投げた URL を後から知りたくなったら `crawl_pages`（`url` と `task_id` を持つ）から
+ * 引く。`crawl_pages.task_id` は `text`、こちらは `uuid` なので `::text` の cast が要る。
  *
  * ## `capture_targets.org_id`
  *
@@ -42,7 +58,6 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn("org_id", "text", (col) => col.notNull())
     // それを求めた利用者。居た場合に限る。人ではなく組織に属する定期実行では NULL。
     .addColumn("submitted_by", "text")
-    .addColumn("source_url", "text", (col) => col.notNull())
     .addColumn("submitted_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))
     // #endregion capture-submissions-columns
     .execute();

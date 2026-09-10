@@ -45,7 +45,7 @@ correct.**
 
 Two paths fill the ledger.
 
-- **the poller** — `waggle` waits for the captures it submitted and registers them (fast)
+- **the crawl** — admits what a level captured as soon as the flow reports it (fast)
 - **the reconciler** — sweeps the bucket's manifests for anything the ledger lacks
 
 **Both can reach the same capture, and either can be re-run.**

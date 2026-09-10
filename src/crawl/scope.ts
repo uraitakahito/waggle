@@ -9,6 +9,10 @@
  * あるページから外へ 1 歩出た瞬間に、そこが新しい中心になって際限なく広がる。
  * 種を基準にすれば、範囲はクロールを頼んだ時点で決まり、後から動かない。
  *
+ * 種は複数ありうるので、判定は「**どれか 1 つの種の範囲に入れば入る**」。範囲は
+ * 種の数だけ広がるが、依頼時に決まって後から動かないという性質は変わらない ——
+ * 端のページが新しい中心になることは無い。
+ *
  * ## 正規化はフラグメントを落とすだけ
  *
  * `#section` は同じ資源の中の位置で、別の資源ではない。落とさないと同じページを
@@ -51,13 +55,18 @@ export const parseHttpUrl = (raw: string): ParsedUrl | undefined => {
 };
 
 /**
- * `candidate` が `seed` の範囲に入るか。
+ * `candidate` が種のどれかの範囲に入るか。
  *
  * `same-origin` は scheme+host+port が一致すること。`http://` と `https://` は別の
  * origin なので、混在するサイトでは `same-host` を選ぶことになる。
+ *
+ * **種が 0 本なら何も入らない。** そういうクロールは `011` の `CHECK` が作らせない
+ * ので実際には来ないが、来たときに全部を範囲内と読むよりは、何も入らないほうがよい。
  */
-export const inScope = (candidate: ParsedUrl, seed: ParsedUrl, scope: Scope): boolean =>
-  scope === "same-host" ? candidate.host === seed.host : candidate.origin === seed.origin;
+export const inScope = (candidate: ParsedUrl, seeds: readonly ParsedUrl[], scope: Scope): boolean =>
+  seeds.some((seed) =>
+    scope === "same-host" ? candidate.host === seed.host : candidate.origin === seed.origin,
+  );
 
 /** BrowserHive の `.links.json` の 1 件。`rel` はそのまま渡ってくる。 */
 export interface DiscoveredLink {
@@ -82,7 +91,7 @@ export interface AcceptedLink {
  */
 export const acceptLinks = (
   links: readonly DiscoveredLink[],
-  seed: ParsedUrl,
+  seeds: readonly ParsedUrl[],
   scope: Scope,
 ): AcceptedLink[] => {
   const seen = new Set<string>();
@@ -94,7 +103,7 @@ export const acceptLinks = (
 
     const parsed = parseHttpUrl(link.href);
     if (parsed === undefined) continue;
-    if (!inScope(parsed, seed, scope)) continue;
+    if (!inScope(parsed, seeds, scope)) continue;
     if (seen.has(parsed.normalized)) continue;
 
     seen.add(parsed.normalized);

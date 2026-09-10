@@ -7,43 +7,53 @@ description: waggle・Postgres・BrowserHive・成果物ストアの関係。
 
 ```mermaid
 flowchart LR
-  PG[("Postgres<br/>capture_targets テーブル")] -->|SELECT url, labels| W
+  U((呼び出し元)) -->|"POST /api/crawls"| W
+  PG[("Postgres<br/>capture_targets / crawls / crawl_pages")] <--> W
   subgraph W["waggle (Node 24 / TypeScript)"]
     direction TB
-    US[url-source<br/>pg クエリ] --> CO[cli-options<br/>フラグ → CaptureSettings]
-    CO --> RUN[run.ts → submit.ts<br/>並列]
-    RUN --> SDK[生成スタブ<br/>buf / ts-proto / grpc-js]
+    API["api/crawls.ts<br/>範囲・重複排除・上限"]
+    DIS["crawl/dispatch.ts<br/>webhook を 1 回 POST"]
+    API --> DIS
   end
-  SDK -->|SubmitCapture| BH
+  DIS -->|"webhook + token"| WM["Windmill の flow<br/>(forage)"]
+  WM -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]
   end
   COORD -->|CDP| C1[chromium-server-1]
   COORD -->|CDP| C2[chromium-server-2]
   COORD -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
-  W -.->|ログのみ| OUT["Request accepted × N<br/>Request summary"]
+  WM -->|"POST /api/crawls/:id/pages"| API
+  S3 -.->|".links.json / .result.json"| API
 ```
 
 ## 投げてから、結末を回収するまで
 
-`SubmitCapture` はリクエストをキューに載せた時点で `taskId` を返し、キャプチャは
-非同期に走ります。
+**waggle はもう BrowserHive と gRPC で話しません。** 投げて待って報告するのは
+Windmill の flow で、waggle は次の段を組み立てて記録します。waggle の設定に
+BrowserHive の在り処は 1 つも入っていません。
 
-結末は後から `GetCapture` で回収します。`state` が処理中なら `PENDING` /
-`PROCESSING`、完了していれば `DONE` で、成否と全成果物の場所が入っています。
-同じ内容は `{taskId}_{correlationId}[_{labels}].result.json` としてバケットにも書かれ、
-こちらは BrowserHive の再起動にも耐えます —— メモリ上の結果が既に追い出されて
-いたとき `waitForCapture` が落ちる先がこれです。
+1 段が 1 往復です。flow は渡された URL を取り込み、`POST /api/crawls/:id/pages` に
+ページごとの `taskId` と状態を載せて返します。waggle は `crawl_pages` を書き、
+帰属を記録し、見つかったリンクを範囲で絞り、上限を当て、次の段を答えます ——
+あるいは `stopReason` を返します。
+
+段の報告に**成果物の在り処は載っていません**。そこで waggle は、BrowserHive が
+成果物の隣に書く `{taskId}_{correlationId}[_{labels}].result.json` を読み直します。
+この file は BrowserHive の再起動にも、有界な結果キャッシュの追い出しにも耐えるので、
+ここで使えます。
 
 知っておくべき帰結:
 
-- `Request summary` の `accepted: 3` は 3 件が**キューに入った**という意味で、
-  3 件のキャプチャが成功したという意味ではありません。
-- 受理されたリクエストでも、キャプチャ自体は失敗しえます。その結末は
-  `GetCapture` か、後から reconciler 経由で台帳に届きます —— サマリ行では
-  ありません。
-- `correlationId` (送信ごとに採番される 16 進 8 桁) が、waggle のログ行と
-  成果物のファイル名を結ぶ糸です。
+- **`failed` と報告されたページでも、アーカイブができていることがあります。**
+  flow が待っている間に結果がキャッシュから溢れると、flow は `NOT_FOUND` を
+  受け取って失敗と報告しますが、manifest は bucket に在るので waggle が拾い直し、
+  `crawl_pages` の記録を直します。
+- まだ manifest が無い `taskId` は、投げずに飛ばします。ここで投げると、書き込みが
+  少し遅れただけで段の報告が 500 になり、クロールが止まります。遅れたぶんは
+  reconcile が拾います。
+- `capture_submissions` は `taskId` を持つ**全件**に書きます（成功したものだけでは
+  ありません）。後で reconciler が要るのは、まさにこの帰属です。
 
 ## 台帳と認可
 
@@ -85,35 +95,40 @@ flowchart LR
   だから outbox が要ること —— を目に見えるようにするためです。
 - **所属は保存しません。** 「この人はどの組織か」はトークンから来て、Check のたびに
   contextual tuple として渡されます。
-- 台帳へ入る道は 2 本あります。`waggle` が結果を待つ経路（速い）と、
-  `reconcile` が bucket を走査する経路（waggle が止まっていた間の取りこぼしを拾う）。
+- 台帳へ入る道は 2 本あります。**クロール**が段で取り込んだぶんを載せる経路
+  （速い。`src/crawl/admit-level.ts`）と、`reconcile` が bucket を走査する経路
+  （waggle が止まっていた間の取りこぼしを拾う）。どちらも `admitArchive` を通り、
+  `(bucket, object_key)` が unique なので、同じ取り込みに 2 度届いても増えません。
 
 詳しくは[アーカイブ台帳](/waggle/ja/archive-ledger/)を参照してください。
 
 ## モジュール構成
 
-| モジュール                  | 責務                                                                                               |
-| --------------------------- | -------------------------------------------------------------------------------------------------- |
-| `src/submit-captures.ts`    | `waggle` の入口。旗を解析して取り込みを投げ、致命的エラーで非ゼロ終了。                            |
-| `src/config/cli-options.ts` | フラグ定義、`ClientOptions`、リクエストボディに展開される `CaptureSettings`。                      |
-| `src/data/url-source.ts`    | 唯一の SQL クエリ。`{ url, labels }[]` を返す。                                                    |
-| `src/client/run.ts`         | オーケストレーション: 読み込み → 設定 → 全件送信 → サマリ。                                        |
-| `src/client/submit.ts`      | 1 リクエスト。例外を投げず、失敗は `accepted: false` で返す。                                      |
-| `src/rpc/`                  | gRPC チャンネル、Promise ラッパ、`generated/`。vendored の `.proto` からの生成物で手で編集しない。 |
-| `src/db/`                   | プール、Kysely の配線、マイグレーション、seed。                                                    |
+| モジュール                      | 責務                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `src/api/server.ts`             | 唯一の入口。取り込みの設定を起動時に 1 度読み、route を登録し、outbox をタイマーで掃き出す。     |
+| `src/api/crawls.ts`             | クロールを起こす / 段を受ける / 次の段を返す。認可・方針・記録。                                 |
+| `src/crawl/`                    | 範囲、上限、段の台帳登録、Windmill への dispatch。                                               |
+| `src/config/capture-formats.ts` | `WAGGLE_CAPTURE_FORMATS` / `_SIGNING` を、毎回載せる `captureFormats` にする。                   |
+| `src/data/url-source.ts`        | 唯一の SQL クエリ。`capture_targets` から、頼んだ組織のぶんだけ `{ url }[]` を返す。             |
+| `src/archive/`                  | manifest、台帳への受け入れ、reconciler。                                                         |
+| `src/rpc/generated/`            | 型だけ。vendored の `.proto` からの生成物で手で編集しない（manifest が `CaptureResultReport`）。 |
+| `src/db/`                       | プール、Kysely の配線、マイグレーション、seed。                                                  |
 
 ## エラーの扱い
 
-拒否されたリクエストも、繋がらないサーバも、メッセージ付きの
-`accepted: false` として返ります — `submitRequest` は呼び出し側に例外を投げません。
-メッセージは `ServiceError` の `message` より `details` を優先します。前者は後者に
-status を前置きしたもので、`"3 INVALID_ARGUMENT: url is empty"` に対して detail は
-`url is empty` だけだからです。
+拒否と障害の見分けは、いまや flow の仕事です —— gRPC のチャンネルを持っているのが
+あちらだからです。waggle の側の関心事は、`crawls` の行がどうなるかです。
 
-`GetCapture` の側は**この規則に従いません**。扱うのは `NOT_FOUND` だけで、これは
-「知らない task、または結果キャッシュから追い出された」を意味するので、耐久性の
-あるマニフェストを読んで答えます。それ以外の失敗はそのまま投げます —— 障害が
-「成果物が 1 つもできなかった実行」と区別できなくなるのを防ぐためです。
+投げられなかった dispatch は、その行をメッセージ付きで `failed` にして締めます。
+**`running` のまま放置しません。** 部分 unique index が効いているので、締め忘れた
+行は以後のクロールを永久に塞ぎますし、生きているものとの区別が行に無いからです。
+
+API 側の予期しない失敗は、素の `500 { "error": "internal error" }` で返します。
+Fastify の既定は `err.message` と `err.code` をそのまま返しますが、Postgres の
+エラーはそこに列の型と値の成れの果てを載せてくるので、client 側の誤りが
+**サーバ内部の形を教える窓**になります。4xx はそのまま通します —— あれは client に
+向けて書かれた文言です。
 
 ## ネットワーク構成
 
@@ -130,9 +145,10 @@ status を前置きしたもので、`"3 INVALID_ARGUMENT: url is empty"` に対
 | browserhive | `browserhive.waggle` | 50051 (gRPC)       | 50051        |
 | waggle      | —（ホストで動く）    | —                  | —            |
 
-compose ファイルは 1 つです。migrate / seed / キャプチャの一発ジョブはサービス
-ではなく、`scripts/prod-smoke.sh` が `container run --rm` で起動します
-（container-compose に `run` が無いため）。
+compose ファイルは 1 つです。migrate / seed の一発ジョブはサービスではなく、
+`scripts/prod-smoke.sh` が `container run --rm` で起動します（container-compose に
+`run` が無いため）。イメージの `ENTRYPOINT` は `node dist/api/server.js` なので、
+これらのジョブはそれを上書きして走らせます。
 
 バケットの作成は**独立したサービスではありません**。BrowserHive の SeaweedFS
 entrypoint が `weed server` と並行して `init-bucket.sh` を起動し、そのリトライ

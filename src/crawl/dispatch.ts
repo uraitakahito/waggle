@@ -65,6 +65,10 @@ export const createWindmillDispatcher = (): CrawlDispatcher | undefined => {
         frontier: crawl.frontier,
         per_host_delay_ms: crawl.perHostDelayMs,
         host_parallelism: crawl.hostParallelism,
+        // **形式と署名は必ず送る。** flow の schema の既定値は webhook 起動では
+        // 埋まらないので、送らなければ `undefined` が届く。決めるのは waggle 側。
+        capture_formats: crawl.captureFormats,
+        signing: crawl.signing,
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });

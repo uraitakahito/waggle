@@ -1,7 +1,8 @@
 /**
  * 台帳の穴を、bucket に永続化された結果 manifest から埋める。
  *
- * `run.ts` の polling は waggle が動いている間しか働かない。落ちていた、再起動した、
+ * 取り込みの結果を待つ polling は、flow が動いている間しか働かない。落ちていた、
+ * 再起動した、
  * あるいは見に行く前に結果が BrowserHive の有界キャッシュから溢れた —— そのとき
  * その取り込みは台帳に届かず、しかも後から「欠けている」と教えてくれるものが何も
  * 無い。気づかれない穴のある台帳は、台帳が無いより悪い。穴は「なぜこのアーカイブが
@@ -22,7 +23,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { readManifest } from "./manifest.js";
 import type { Database } from "../db/database.js";
 import { getJsonObject, listAllKeys } from "./s3.js";
-import { registerArchive } from "./register.js";
+import { admitArchive } from "./admit.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "archive-reconcile" });
@@ -106,7 +107,7 @@ export const reconcile = async (
     // identity はここでは作らない。reconcile は掃除役で、いま動かしている人と
     // 取り込みを頼んだ人は別 —— 投げた時点の記録から読む。`org_id` が既に
     // 取っているのと同じ形。
-    const registered = await registerArchive(
+    const registered = await admitArchive(
       db,
       readManifest(raw),
       submission.orgId,

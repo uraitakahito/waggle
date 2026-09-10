@@ -1,99 +1,100 @@
 ---
 title: Capture options
-description: Which waggle flag maps to which BrowserHive request field.
+description: How this deployment decides what BrowserHive captures — formats and signing come from the environment.
 ---
 
-waggle does not capture anything itself, so this page is a **mapping**, not an
-explanation. Each flag sets one field on the `SubmitCapture` request; what the
-field _does_ is BrowserHive's to define, and its documentation is the only place
-that stays correct when the behaviour changes.
+waggle does not capture anything itself, and since the CLI was removed it does
+not talk to BrowserHive either: the Windmill flow submits. What is left here is
+**one decision** — which formats to ask for, and whether to require a signature —
+and waggle makes it from the environment, then puts it on every dispatch.
 
-Flags are per run, not per URL: the command line states the intent once and
-every row in the run inherits it.
+The split is the same one the crawl API draws: **the caller decides _when_,
+waggle decides _what_.** Formats are a property of the deployment, not of the
+request, so they are deliberately not accepted from a caller.
 
 ## Formats
 
-At least one must be true, or BrowserHive rejects the request.
+Set by `WAGGLE_CAPTURE_FORMATS`, a comma-separated list. The default is `wacz` —
+this pipeline produces replayable archives and the other formats are incidental.
 
-| Flag      | `captureFormats` key |
-| --------- | -------------------- |
-| `--png`   | `png`                |
-| `--webp`  | `webp`               |
-| `--html`  | `html`               |
-| `--links` | `links`              |
-| `--mhtml` | `mhtml`              |
-| `--wacz`  | `wacz`               |
+```sh
+WAGGLE_CAPTURE_FORMATS=wacz   # png, webp, html, links, mhtml, wacz
+WAGGLE_CAPTURE_SIGNING=1      # require a wacz-auth signature; needs wacz
+```
 
-## Capture behaviour
+| Value   | `captureFormats` key |
+| ------- | -------------------- |
+| `png`   | `png`                |
+| `webp`  | `webp`               |
+| `html`  | `html`               |
+| `links` | `links`              |
+| `mhtml` | `mhtml`              |
+| `wacz`  | `wacz`               |
 
-| Flag                           | `CaptureRequest` field    | What it means                      |
-| ------------------------------ | ------------------------- | ---------------------------------- |
-| `--device-pixel-ratios <list>` | `devicePixelRatios`       | BrowserHive: Behaviors             |
-| `--operation-delay-ms <ms>`    | `operationDelayMs`        | BrowserHive: Environment variables |
-| `--behaviors <ids>`            | `behaviors.builtins`      | BrowserHive: Behaviors             |
-| `--no-site-behaviors`          | `behaviors.siteBehaviors` | BrowserHive: Behaviors             |
-| `--dismiss-banners`            | `dismissBanners`          | BrowserHive: Behaviors             |
-| `--accept-language <bcp47>`    | `acceptLanguage`          | BrowserHive: Quickstart            |
-| `--session <mode>`             | `session`                 | BrowserHive: Sessions              |
-| `--signing`                    | `signing`                 | BrowserHive: Signing a WACZ        |
+All six keys are sent explicitly on every dispatch — **unset and `false` are not
+the same thing** to BrowserHive. At least one must be true, or the server
+rejects the request.
 
-## `--signing` fails the capture rather than dropping the signature
+## Read once, at startup
 
-`--signing` requires `--wacz`, because the signature covers the WACZ archive.
-waggle rejects the combination locally rather than letting the server answer
-`INVALID_ARGUMENT`.
+`WAGGLE_CAPTURE_FORMATS` is parsed when the API starts, not per crawl. A
+misspelling stops the server with the bad value named. Parsed per crawl instead,
+`waxz` would surface as a scheduled crawl failing at 3am with "no capture format
+enabled" — a message that never mentions the setting that caused it.
+
+## `links` is added when the crawl follows links
+
+A crawl with `maxDepth` above 0 gets `links: true` whatever the environment says.
+Without it the first level always stops, and it stops looking as though the page
+had no links at all — a configuration mistake made indistinguishable from a fact
+about the site.
+
+A depth-0 crawl does not get it. Extracting links nobody will follow only costs
+the other end and the bucket.
+
+## Signing fails the capture rather than dropping the signature
+
+`WAGGLE_CAPTURE_SIGNING=1` requires `wacz` in the format list, and waggle refuses
+to start on the combination rather than letting the server answer
+`INVALID_ARGUMENT` later.
 
 **If the server cannot obtain a signature, the capture fails.** BrowserHive
 throws before it writes the zip, so an unsigned archive is never produced in
 place of a signed one. That is the intended behaviour, and it has an operational
-consequence worth stating plainly: passing `--signing` at a deployment with no
-signing service configured makes **every** capture in the run fail.
+consequence worth stating plainly: turning signing on at a deployment with no
+signing service configured makes **every** capture fail.
 
-Omitting the flag leaves the decision to the server's `--signing-policy`. A
+Leaving it off leaves the decision to the server's `--signing-policy`. A
 deployment running `required` signs everything without waggle saying anything.
 
 The ledger records the outcome. `archives.signed` is `true` when a signature was
-obtained, `null` when none was asked for — so "this run produced evidence-grade
-archives" is answerable without opening a single zip.
+obtained, `null` when none was asked for — so "did this crawl produce
+evidence-grade archives" is answerable without opening a single zip.
 
-## Omitted means "server default"
+## What waggle no longer decides
 
-A flag you do not pass is **left out of the request body entirely** — not sent as
-`null`. Every one of these fields has a default on the BrowserHive side, so
-omitting a flag means "whatever that server is configured to do", and waggle
-never has to track what those defaults currently are.
+The old CLI mapped a flag onto every field of the `SubmitCapture` request:
+`--device-pixel-ratios`, `--operation-delay-ms`, `--behaviors`,
+`--no-site-behaviors`, `--dismiss-banners`, `--accept-language`, `--session`.
+**None of those exist any more.** waggle sends `captureFormats` and `signing`,
+and nothing else about how a page is rendered — everything unsent falls to
+whatever that BrowserHive server is configured to do, which is what BrowserHive's
+own documentation describes.
 
-```ts file="src/config/cli-options.ts#capture-settings"
+Changing how pages are rendered is now a BrowserHive-side or flow-side change,
+not a waggle one.
 
-```
+## What a caller can still set, per crawl
 
-## Run configuration
+Pacing and reach, in the `POST /api/crawls` body — see
+[Archive ledger](/waggle/archive-ledger/#following-links):
 
-These are deployment settings rather than per-run intent, so they also read from
-the environment.
+| Field             | Default                             | Meaning                            |
+| ----------------- | ----------------------------------- | ---------------------------------- |
+| `scope`           | `same-origin`                       | `same-host` relaxes it to the host |
+| `maxDepth`        | 2, or 0 with `fromTargets`          | How far to follow                  |
+| `maxPages`        | 30, never below the number of seeds | Total pages                        |
+| `perHostDelayMs`  | 2000                                | Gap between pages on one host      |
+| `hostParallelism` | 4                                   | Distinct hosts touched at once     |
 
-| Flag                        | Env                       | Purpose                                                                                                     |
-| --------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--database-url <url>`      | `DATABASE_URL`            | Where the `capture_targets` table lives. Required.                                                          |
-| `--server <url>`            | `BROWSERHIVE_SERVER`      | BrowserHive base URL. Defaults to `DEFAULT_TARGET` in `src/rpc/client.ts`.                                  |
-| `--tls-ca-cert <path>`      | `BROWSERHIVE_TLS_CA_CERT` | Logged for visibility. Node's trust store is set by `NODE_EXTRA_CA_CERTS`, which is the authoritative knob. |
-| `--limit <n>`               | —                         | Read only the first _n_ enabled rows. Useful for smoke tests.                                               |
-| `--no-collect`              | —                         | Submit and exit without waiting; `fga:reconcile` picks the results up from the bucket later.                |
-| `--capture-timeout-ms <ms>` | —                         | Cap the wait for one capture, overriding the budget the server declares.                                    |
-
-## Examples
-
-```sh
-# Loaded twice (1x then 2x), slow enough to watch over chrome://inspect.
-# Order matters: PNG/WebP come out at the last ratio, so this leaves them 2x.
-pnpm run capture --wacz --limit 1 --device-pixel-ratios 1,2 --operation-delay-ms 250
-
-# No behaviors at all — "" is not the same as omitting the flag
-pnpm run capture --png --limit 1 --behaviors "" --no-site-behaviors
-```
-
-A rejected request reports the reason from BrowserHive's problem response:
-
-```json
-{ "msg": "Request rejected", "error": "/captureFormats must be object" }
-```
+An unknown key is **400**, not silently dropped.

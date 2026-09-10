@@ -5,7 +5,7 @@ description: Records who a capture was submitted for, at the moment it is submit
 
 **This records who a capture was submitted for, at the moment it is submitted.**
 
-```ts file="src/db/migrations/004-create-capture-submissions.ts#capture-submissions-columns"
+```ts file="src/db/migrations/004-capture-submissions-and-org-id.ts#capture-submissions-columns"
 
 ```
 
@@ -65,13 +65,14 @@ read taskId from .result.json
 | `task_id`      | **Primary key.** BrowserHive's id, the join back to the result report                                                   |
 | `org_id`       | `not null`. **The reason this table exists**                                                                            |
 | `submitted_by` | The user who asked, when there was one. **NULL for scheduled runs that belong to an organization rather than a person** |
-| `source_url`   | Not a foreign key to `capture_targets` — the row survives the URL being removed                                         |
 | `submitted_at` | Default `now()`                                                                                                         |
 
 :::caution[`submitted_by` is not the result of authentication]
-What fills this column is whatever the CLI read out of `WAGGLE_DEV_SUBJECT`
-(see [Identity](/waggle/archive-ledger/#identity)). **Nothing verifies it** —
-editing `.env` is enough to put any name in the column.
+What fills this column is whatever the API request claimed as its subject
+(see [Identity](/waggle/archive-ledger/#identity)). **The development header
+route verifies nothing** — with `WAGGLE_DEV_IDENTITY=1`, `X-Waggle-Subject` is
+taken at face value, so any name can land here. The JWT route does check the
+signature and expiry.
 
 It is still worth filling, because this value becomes the `owner` tuple on the
 `capture_job`. An archive without one **cannot be deleted by anyone**:
