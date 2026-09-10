@@ -670,4 +670,77 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       });
     },
   );
+
+  /**
+   * 段が落ちたことを受け取り、クロールを締める。
+   *
+   * ## なぜ要るのか
+   *
+   * flow が段の途中で落ちると `POST /pages` に辿り着かないので、**waggle は何も
+   * 知らされない**。行は `running` のまま残り、部分 unique index が以後のクロールを
+   * 全部塞ぐ。実測で踏んだ: BrowserHive を止めてクロールを起こすと、`crawl_host` が
+   * `UNAVAILABLE` で落ちて flow ごと失敗し、行は永久に走行中になった。
+   *
+   * 以前 (`runs`) は同じ状況で「全ページ失敗の**成功した**実行」になっていた ——
+   * 静かに間違うよりは止まるほうがよいが、止まったまま塞ぐのも同じくらい困る。
+   * flow に締めさせる。
+   *
+   * ## 走行中のものしか締めない
+   *
+   * 終わった行に後から `failed` を被せない。段の失敗が遅れて届くことはありうるし、
+   * そのとき既に別の段が締めていれば、**そちらの理由のほうが正しい**。
+   *
+   * ## 取り込めたぶんは失われない
+   *
+   * 落ちた段でも、そこまでに成功した取り込みの成果物は S3 に在る。報告が来ないので
+   * `crawl_pages` は `pending` のままだが、`reconcile` が manifest を走査して台帳には
+   * 入れる。**台帳は自己修復し、クロールの記録だけが欠ける。**
+   */
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    "/api/crawls/:id/failed",
+    {
+      schema: {
+        params: {
+          type: "object",
+          properties: { id: { type: "string", format: "uuid" } },
+          required: ["id"],
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: { reason: { type: "string", maxLength: 2000 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const identity = await resolveIdentity(request);
+      if (!identity) return unauthorized(reply);
+      if (!(await maySubmit(fga, identity))) {
+        return reply.code(404).send({ error: "not found" });
+      }
+
+      const crawlId = request.params.id;
+      const closed = await db
+        .updateTable("crawls")
+        .set({
+          state: "failed",
+          stopReason: "failed",
+          finishedAt: new Date().toISOString(),
+          error: request.body?.reason ?? "the flow failed without saying why",
+        })
+        .where("id", "=", crawlId)
+        // **走行中のものだけ。** 終わった行に後から被せない。
+        .where("state", "=", "running")
+        .returning("id")
+        .execute();
+
+      if (closed.length === 0) {
+        // 既に終わっているか、そもそも無い。どちらでも「締めるものが無い」で同じ。
+        log.info({ crawlId }, "Nothing to close");
+        return reply.code(200).send({ closed: false });
+      }
+      log.warn({ crawlId, reason: request.body?.reason }, "Crawl closed by the flow");
+      return reply.code(200).send({ closed: true });
+    },
+  );
 };

@@ -172,7 +172,30 @@ const fakeDb = (crawls: FakeCrawl[], targets: FakeTarget[] = []) => ({
     }),
   }),
   updateTable: () => ({
-    set: () => ({ where: () => ({ execute: async (): Promise<void> => Promise.resolve() }) }),
+    set: () => {
+      /**
+       * `where` は何度でも続き、`returning(...).execute()` で「実際に当たった行」を返す。
+       *
+       * **`state = 'running'` の条件まで写す。** 素通しにすると、終わったクロールに
+       * 後から `failed` を被せる誤りが試験で見えなくなる。
+       */
+      const build = (conds: [string, unknown][]) => ({
+        where: (column: string, _op: unknown, value: unknown) => build([...conds, [column, value]]),
+        execute: async (): Promise<void> => Promise.resolve(),
+        returning: () => ({
+          execute: async (): Promise<{ id: string }[]> => {
+            const id = conds.find(([c]) => c === "id")?.[1];
+            const wantState = conds.find(([c]) => c === "state")?.[1];
+            const row = crawls.find((c) => c.id === id);
+            if (!row) return Promise.resolve([]);
+            if (wantState !== undefined && row.state !== wantState) return Promise.resolve([]);
+            row.state = "failed";
+            return Promise.resolve([{ id: row.id }]);
+          },
+        }),
+      });
+      return build([]);
+    },
   }),
   selectFrom: (table: string) => ({
     selectAll: () => ({
@@ -476,6 +499,67 @@ describe("対象一覧から起こす", () => {
 
   it("どちらも無ければ拒む", async () => {
     const { res } = await start({});
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("落ちた段を受けて締める", () => {
+  const running = (): FakeCrawl[] => [{ id: UUID, state: "running" }] as unknown as FakeCrawl[];
+
+  const post = async (crawls: FakeCrawl[], body: Record<string, unknown> = {}) => {
+    const app = await buildApp(depsWith({ crawls, allowed: true }));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/crawls/${UUID}/failed`,
+      payload: body,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("走行中のものを締める", async () => {
+    // **これが無いと、flow が段の途中で落ちたクロールが永久に走行中になる。**
+    // 部分 unique index が以後のクロールを全部塞ぐ (実測で踏んだ)。
+    const crawls = running();
+    const res = await post(crawls, { reason: "BrowserHive に届きません" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":true');
+    expect(crawls[0]?.state).toBe("failed");
+  });
+
+  it("終わったものには被せない", async () => {
+    // 段の失敗が遅れて届くことはある。そのとき既に別の段が締めていれば、
+    // **そちらの理由のほうが正しい。**
+    const crawls = [{ id: UUID, state: "succeeded" }] as unknown as FakeCrawl[];
+    const res = await post(crawls);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":false');
+    expect(crawls[0]?.state).toBe("succeeded");
+  });
+
+  it("知らない id でも 200 で「締めるものが無い」と答える", async () => {
+    // 締める相手が無いのは異常ではない。呼ぶ側 (failure_module) は
+    // どのみち投げない立場なので、ここで 404 にしても誰も読まない。
+    const res = await post([]);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":false');
+  });
+
+  it("権限が無ければ 404", async () => {
+    const app = await buildApp(depsWith({ crawls: running(), allowed: false }));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/crawls/${UUID}/failed`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("知らない鍵は拒む", async () => {
+    const res = await post(running(), { reason: "x", extra: 1 });
     expect(res.statusCode).toBe(400);
   });
 });
