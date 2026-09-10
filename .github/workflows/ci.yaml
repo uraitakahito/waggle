@@ -151,6 +151,15 @@ jobs:
       - name: Environment variable check
         run: pnpm run check-env
 
+      # ソースのコメントが名指しするファイルが、まだ実在するか。
+      #
+      # docs については check-doc-refs.mjs が同じことを見ているが、**コメントは
+      # 誰も見ていなかった。** run を crawl に畳んだとき、識別子は追随したのに
+      # コメントには消えたファイルを現在形で指す記述が 19 箇所残り、うち 1 つは
+      # 運用手順として「片付けは api/runs.ts の GET を見ること」と指示していた。
+      - name: Comment reference check
+        run: pnpm run check-comment-refs
+
       # `fga model test` runs the model in-process — no OpenFGA server needed.
       # These assertions are what stands between a one-line edit to
       # `fga/model.fga` and another organization's archives becoming readable,

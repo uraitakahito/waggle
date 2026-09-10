@@ -185,27 +185,26 @@ services:
       # 無い —— v4 を先に引かせないと、worker の WS URL が到達できない v6 アドレスに
       # 着地する。
       - NODE_OPTIONS=--dns-result-order=ipv4first
-      # `--signing` を付けた実行が署名を貰いに行く先。このサービスは "signing"
-      # profile でしか起動しない。**起動していない状態で `--signing` を渡すと、
-      # 取り込みは全部失敗する** —— BrowserHive は署名を求められて得られなければ
-      # zip を書く前に落ちるので、署名の無いアーカイブが代わりに出ることはない。
       # 取り込み対象がこのスタックの中に居るので、私設アドレスへの取り込みを許す
       # (seaweedfs の filer、replay など。クロールの往復もこれが無いと組めない)。
       # **メタデータ(169.254)とループバックはこれでも閉じたまま。**
       # 開発スタック限定で、本番の既定は off (SSRF 対策)。browserhive の compose にも
       # 同じ設定が同じ理由で入っている。
       - BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true
-      - BROWSERHIVE_SIGNING_URL=http://capping.waggle:8080/sign
-      - BROWSERHIVE_SIGNING_TOKEN=dev-token
-      # この 2 つが無いと chain と timestamp の検査が `skipped` になる。指しているのは
-      # capping が署名に使うのと同じ identity —— **それ以外の CA による署名はここで
-      # 弾かれる**のが眼目で、本番サーバが開発用 CA を拒むのと同じ形になる。
-      - BROWSERHIVE_SIGNING_TRUST_ANCHOR=/dev-ca/insecure-dev-ca.crt
-      - BROWSERHIVE_SIGNING_TIMESTAMP_ANCHOR=/dev-ca/insecure-dev-tsa-ca.crt
+      #
+      # **署名の設定はここに書かない。** `signing.env` に在り、`scripts/stack.sh` が
+      # `WAGGLE_CAPTURE_SIGNING=1` のときだけ `--env-file` で注ぐ。
+      #
+      # ここに無条件で置くと、"signing" profile を起こしていないスタックが
+      # 「宛先は在るが相手が居ない」状態になる —— 実際にそうなっていて、
+      # 署名を有効にした取り込みが全部 `ENOTFOUND capping.waggle` で落ちた。
+      # **空文字で無効化することはできない**（理由は `signing.env` の冒頭）。
     volumes:
-      # 上の 2 つの anchor は **このコンテナの中の** パスなので、capping が署名に使う
-      # identity はここからも読めなければならない。mount しないと anchor が何も指さず、
-      # chain と timestamp が `skipped` に落ちる。
+      # 署名の anchor は **このコンテナの中の** パスなので、capping が署名に使う
+      # identity はここからも読めなければならない。
+      #
+      # **mount は無条件のまま。** 読み取り専用の fixture で、`signing.env` が
+      # 指さない限り誰も読まない —— 起動の条件を 1 つ増やすほうが害が大きい。
       - ./.upstream/browserhive/test/fixtures/dev-ca:/dev-ca:ro
     depends_on:
       - seaweedfs

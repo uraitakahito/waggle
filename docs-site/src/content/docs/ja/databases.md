@@ -1,15 +1,15 @@
 ---
 title: データベース
-description: waggle と OpenFGA がそれぞれ持つ Postgres と、その中にある 14 のテーブル。
+description: waggle と OpenFGA がそれぞれ持つ Postgres と、その中にある 16 のテーブル。
 ---
 
 waggle の開発スタックには **Postgres が 2 つ**あります。別々のものを入れる、
 別々のデータベースです。
 
-| コンテナ            | 中身                                                        | 誰が SQL で触るか |
-| ------------------- | ----------------------------------------------------------- | ----------------- |
-| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` ほか **8 表** | waggle            |
-| `openfga-db.waggle` | `tuple` / `authorization_model` ほか **6 表**               | OpenFGA だけ      |
+| コンテナ            | 中身                                                         | 誰が SQL で触るか |
+| ------------------- | ------------------------------------------------------------ | ----------------- |
+| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` ほか **10 表** | waggle            |
+| `openfga-db.waggle` | `tuple` / `authorization_model` ほか **6 表**                | OpenFGA だけ      |
 
 重なるテーブルは 1 つもありません。資格情報も相互に通らず、`openfga-db` は
 ポートを公開していないので、覗くには `container exec` が要ります。
@@ -27,13 +27,15 @@ waggle の開発スタックには **Postgres が 2 つ**あります。別々�
 
 ### waggle の DB
 
-| テーブル                                                           | 役割                                 |
-| ------------------------------------------------------------------ | ------------------------------------ |
-| [`capture_targets`](/waggle/ja/databases/capture-targets/)         | 撮る対象の一覧                       |
-| [`capture_submissions`](/waggle/ja/databases/capture-submissions/) | 投げた記録。組織を知る唯一の出どころ |
-| [`archives`](/waggle/ja/databases/archives/)                       | 台帳。アーカイブを生んだ取り込みだけ |
-| [`fga_outbox`](/waggle/ja/databases/fga-outbox/)                   | OpenFGA へ送る予定のタプル           |
-| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`          | Kysely が作る帳簿（下記）            |
+| テーブル                                                           | 役割                                                             |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [`capture_targets`](/waggle/ja/databases/capture-targets/)         | 撮る対象の一覧                                                   |
+| [`capture_submissions`](/waggle/ja/databases/capture-submissions/) | 投げた記録。組織を知る唯一の出どころ                             |
+| [`archives`](/waggle/ja/databases/archives/)                       | 台帳。アーカイブを生んだ取り込みだけ                             |
+| [`fga_outbox`](/waggle/ja/databases/fga-outbox/)                   | OpenFGA へ送る予定のタプル                                       |
+| `crawls`                                                           | クロール 1 本につき 1 行。方針・状態・停止理由                   |
+| `crawl_pages`                                                      | クロールが到達したページ 1 件につき 1 行。重複排除の索引でもある |
+| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`          | Kysely が作る帳簿（下記）                                        |
 
 ### OpenFGA の DB
 

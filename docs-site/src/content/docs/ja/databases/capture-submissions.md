@@ -5,7 +5,7 @@ description: 投げた瞬間に「誰のために投げたか」を残すテー�
 
 **投げた瞬間に「誰のために投げたか」を残すための表です。**
 
-```ts file="src/db/migrations/004-create-capture-submissions.ts#capture-submissions-columns"
+```ts file="src/db/migrations/004-capture-submissions-and-org-id.ts#capture-submissions-columns"
 
 ```
 
@@ -60,18 +60,18 @@ await db
 
 ## 列の要点
 
-| 列             | 要点                                                                            |
-| -------------- | ------------------------------------------------------------------------------- |
-| `task_id`      | **主キー。** BrowserHive が採番したもので、結果の報告へ戻る join の鍵           |
-| `org_id`       | `not null`。**この表が在る理由そのもの**                                        |
-| `submitted_by` | それを求めた利用者。**人ではなく組織に属する定期実行では NULL**                 |
-| `source_url`   | 投げた URL。`capture_targets` への外部キーではない（後から URL が消えても残る） |
-| `submitted_at` | `now()` 既定                                                                    |
+| 列             | 要点                                                                  |
+| -------------- | --------------------------------------------------------------------- |
+| `task_id`      | **主キー。** BrowserHive が採番したもので、結果の報告へ戻る join の鍵 |
+| `org_id`       | `not null`。**この表が在る理由そのもの**                              |
+| `submitted_by` | それを求めた利用者。**人ではなく組織に属する定期実行では NULL**       |
+| `submitted_at` | `now()` 既定                                                          |
 
 :::caution[`submitted_by` は認証の結果ではありません]
-この列を埋めているのは、CLI が `WAGGLE_DEV_SUBJECT` から読んだ値です
-（[身元](/waggle/ja/archive-ledger/#身元)）。**検証は一切されません** ——
-`.env` を書き換えれば誰の名前でも入ります。
+この列を埋めているのは、API のリクエストが名乗った主体です
+（[身元](/waggle/ja/archive-ledger/#身元)）。**開発用のヘッダ経路では検証されません**
+—— `WAGGLE_DEV_IDENTITY=1` のとき `X-Waggle-Subject` はそのまま信じられ、誰の名前でも
+入ります。JWT の経路では署名と期限が検証されます。
 
 それでも `null` のままにしないのは、この値がそのまま `capture_job` の
 `owner` tuple になるからです。埋まっていないアーカイブは、

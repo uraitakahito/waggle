@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { registerCrawlRoutes, type CrawlRouteDeps } from "../src/api/crawls.js";
+import { parseCaptureFormats } from "../src/config/capture-formats.js";
 
 /**
  * クロールを起こす口の検査。
  *
- * `routes-runs.test.ts` と同じ 2 層。入口の検証は張りぼて deps で、認可と単一実行は
+ * 2 層で見る。入口の検証は張りぼて deps で、認可と単一実行は
  * 偽の DB で見る。**認可そのものを見ているのではない** —— fga は「false を返せ」と
  * 言われて false を返しているだけで、`can_submit` が誰を拒むかは
  * `fga/model.fga.yaml` の assertion が見ている。
@@ -56,29 +57,32 @@ describe("クロール route の入力検証", () => {
   const post = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/crawls", headers: SUBJECT, payload });
 
-  it("requires a seed", async () => {
-    expect((await post({})).statusCode).toBe(400);
+  it("空の seeds を拒む", async () => {
+    // 「どちらか一方」の判定は handler に置いてある (ajv の `oneOf` だと
+    // 「どちらでもない」と「両方」が同じ 400 になり、言い分を分けられない)。
+    // schema の層で落ちるのは、**配列として空**のときだけ。
+    expect((await post({ seeds: [] })).statusCode).toBe(400);
   });
 
   it("rejects a body key that is not on the allowlist", async () => {
-    expect((await post({ seed: SEED, signing: true })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], signing: true })).statusCode).toBe(400);
   });
 
   it("rejects a scope it does not know", async () => {
     // 範囲は挙動を決めるので、綴りの誤りを通すと黙って別の範囲になる。
-    expect((await post({ seed: SEED, scope: "same-site" })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], scope: "same-site" })).statusCode).toBe(400);
   });
 
   it("rejects limits outside their range", async () => {
-    expect((await post({ seed: SEED, maxPages: 0 })).statusCode).toBe(400);
-    expect((await post({ seed: SEED, maxDepth: -1 })).statusCode).toBe(400);
-    expect((await post({ seed: SEED, hostParallelism: 0 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], maxPages: 0 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], maxDepth: -1 })).statusCode).toBe(400);
+    expect((await post({ seeds: [SEED], hostParallelism: 0 })).statusCode).toBe(400);
   });
 
   it("allows a zero delay so a test can take it away on purpose", async () => {
     // 0 を弾くと「間隔が効いている」の反証が書けなくなる。schema は通し、
     // 通った先で deps に触れて落ちる。
-    expect((await post({ seed: SEED, perHostDelayMs: 0 })).statusCode).toBe(500);
+    expect((await post({ seeds: [SEED], perHostDelayMs: 0 })).statusCode).toBe(500);
   });
 
   it("rejects a crawl id that is not a uuid", async () => {
@@ -94,7 +98,7 @@ describe("クロール route の入力検証", () => {
 /** 認可と単一実行を見るための、最小の偽物。 */
 interface FakeCrawl {
   id: string;
-  seed: string;
+  seeds: string[];
   scope: string;
   state: string;
   maxDepth: number;
@@ -118,9 +122,34 @@ interface FakeCrawl {
  * **index そのものはここでは証明できない** —— 制約を持っているのが偽物のほうだから。
  * 本物の Postgres に対して別途確かめること。
  */
-const fakeDb = (crawls: FakeCrawl[]) => ({
+/** `capture_targets` の 1 行。組織で絞れることを見るために `orgId` を持つ。 */
+interface FakeTarget {
+  url: string;
+  enabled: boolean;
+  orgId: string;
+}
+
+const fakeDb = (crawls: FakeCrawl[], targets: FakeTarget[] = []) => ({
   insertInto: (table: string) => ({
-    values: (row: Record<string, unknown>) => ({
+    values: (row: Record<string, unknown> | Record<string, unknown>[]) => ({
+      /**
+       * 深さ 0 の行は `onConflict(...).returning(...)` で入れる。
+       *
+       * **重複排除まで写す。** 本物は `(crawl_id, url_hash)` の unique index が
+       * 落とすので、ここで素通しにすると「同じ URL を 2 つ種に書いても 2 回取る」
+       * という、本物では起きない振る舞いを試験が肯定してしまう。
+       */
+      onConflict: () => ({
+        returning: () => ({
+          execute: async (): Promise<{ url: string; host: string }[]> => {
+            const rows = (Array.isArray(row) ? row : [row]) as { url: string; host: string }[];
+            const seen = new Set<string>();
+            return Promise.resolve(
+              rows.filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true))),
+            );
+          },
+        }),
+      }),
       execute: async (): Promise<void> => {
         if (table === "crawlPages") return Promise.resolve();
         if (crawls.some((c) => c.state === "running")) {
@@ -143,15 +172,65 @@ const fakeDb = (crawls: FakeCrawl[]) => ({
     }),
   }),
   updateTable: () => ({
-    set: () => ({ where: () => ({ execute: async (): Promise<void> => Promise.resolve() }) }),
+    set: () => {
+      /**
+       * `where` は何度でも続き、`returning(...).execute()` で「実際に当たった行」を返す。
+       *
+       * **`state = 'running'` の条件まで写す。** 素通しにすると、終わったクロールに
+       * 後から `failed` を被せる誤りが試験で見えなくなる。
+       */
+      const build = (conds: [string, unknown][]) => ({
+        where: (column: string, _op: unknown, value: unknown) => build([...conds, [column, value]]),
+        execute: async (): Promise<void> => Promise.resolve(),
+        returning: () => ({
+          execute: async (): Promise<{ id: string }[]> => {
+            const id = conds.find(([c]) => c === "id")?.[1];
+            const wantState = conds.find(([c]) => c === "state")?.[1];
+            const row = crawls.find((c) => c.id === id);
+            if (!row) return Promise.resolve([]);
+            if (wantState !== undefined && row.state !== wantState) return Promise.resolve([]);
+            row.state = "failed";
+            return Promise.resolve([{ id: row.id }]);
+          },
+        }),
+      });
+      return build([]);
+    },
   }),
-  selectFrom: () => ({
+  selectFrom: (table: string) => ({
     selectAll: () => ({
       where: (_c: unknown, _o: unknown, id: string) => ({
         executeTakeFirst: async (): Promise<FakeCrawl | undefined> =>
           Promise.resolve(crawls.find((c) => c.id === id)),
       }),
     }),
+    /**
+     * `loadTargets` の読み方を写す。
+     *
+     * **問い合わせが指定した条件だけを当てる。** 最初は `enabled` を無条件に
+     * 絞っていたが、それだと**本物から `enabled` の条件を外しても試験が緑のまま**に
+     * なる (反証で素通りした)。偽物が制約を持っていると、消したことに気づけない。
+     */
+    select: () => {
+      const build = (where: [string, unknown][], limit: number | undefined) => ({
+        where: (column: string, _op: unknown, value: unknown) =>
+          build([...where, [column, value]], limit),
+        orderBy: () => build(where, limit),
+        limit: (n: number) => build(where, n),
+        execute: async (): Promise<{ url: string }[]> => {
+          const matched = targets.filter((t) =>
+            where.every(
+              ([column, value]) => (t as unknown as Record<string, unknown>)[column] === value,
+            ),
+          );
+          return Promise.resolve(
+            (limit === undefined ? matched : matched.slice(0, limit)).map((t) => ({ url: t.url })),
+          );
+        },
+      });
+      expect(table).toBe("captureTargets");
+      return build([], undefined);
+    },
   }),
 });
 
@@ -159,12 +238,16 @@ const depsWith = (opts: {
   crawls: FakeCrawl[];
   allowed: boolean;
   dispatch?: CrawlRouteDeps["dispatch"];
+  targets?: FakeTarget[];
 }): CrawlRouteDeps =>
   ({
-    db: fakeDb(opts.crawls),
+    db: fakeDb(opts.crawls, opts.targets),
     fga: { check: async () => Promise.resolve({ allowed: opts.allowed }) },
     resolveIdentity: () => Promise.resolve({ subject: "alice", organizations: ["acme"] }),
     dispatch: opts.dispatch ?? (() => Promise.resolve()),
+    // **本物の設定を使う。** 手書きの literal だと、`capture-formats.ts` が
+    // 6 つ全部を返す約束を破っても、この試験は気づかない。
+    capture: parseCaptureFormats("wacz", false),
   }) as unknown as CrawlRouteDeps;
 
 describe("クロール route の認可と単一実行", () => {
@@ -174,14 +257,22 @@ describe("クロール route の認可と単一実行", () => {
       ...depsWith({ crawls: [], allowed: true }),
       resolveIdentity: () => Promise.resolve(undefined),
     });
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
   it("hides the endpoint from a caller without permission", async () => {
     const app = await buildApp(depsWith({ crawls: [], allowed: false }));
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
@@ -192,7 +283,67 @@ describe("クロール route の認可と単一実行", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: "ftp://example.com/x" },
+      payload: { seeds: ["ftp://example.com/x"] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("種を複数受け取り、全部を最初の段に渡す", async () => {
+    // run を畳むための土台。`capture_targets` の一覧はここに複数の種として入る。
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls: [],
+        allowed: true,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: ["https://a.example.com/1", "https://b.example.com/2"] },
+    });
+    expect(sent[0]?.map((f) => f.url)).toEqual([
+      "https://a.example.com/1",
+      "https://b.example.com/2",
+    ]);
+    await app.close();
+  });
+
+  it("同じ種を 2 度渡しても 1 度しか取らない", async () => {
+    // 本物では `(crawl_id, url_hash)` の unique index が落とす。**種の段にも
+    // 同じ守りが要る** —— 対象一覧に同じ URL が 2 行あることは普通にありうる。
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls: [],
+        allowed: true,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED, SEED] },
+    });
+    expect(sent[0]).toHaveLength(1);
+    await app.close();
+  });
+
+  it("読めない種が 1 本でもあれば拒む", async () => {
+    // **黙って落とさない。** 落とすと、投げた側は全部辿ったつもりで結果を読む。
+    const app = await buildApp(depsWith({ crawls: [], allowed: true }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED, "ftp://example.com/x"] },
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -201,7 +352,11 @@ describe("クロール route の認可と単一実行", () => {
   it("accepts a crawl and answers 202 without waiting for it", async () => {
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    const res = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     expect(res.statusCode).toBe(202);
     expect(res.json()).toHaveProperty("crawlId");
     expect(crawls[0]?.state).toBe("running");
@@ -212,7 +367,7 @@ describe("クロール route の認可と単一実行", () => {
     // 既定は控えめな側。**30 が効いていること**が、上限で止まる普通の姿を作る。
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    await app.inject({ method: "POST", url: "/api/crawls", payload: { seeds: [SEED] } });
     expect(crawls[0]).toMatchObject({
       scope: "same-origin",
       maxDepth: 2,
@@ -229,20 +384,24 @@ describe("クロール route の認可と単一実行", () => {
     await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: "https://example.com/start#top" },
+      payload: { seeds: ["https://example.com/start#top"] },
     });
-    expect(crawls[0]?.seed).toBe("https://example.com/start");
+    expect(crawls[0]?.seeds?.[0]).toBe("https://example.com/start");
     await app.close();
   });
 
   it("refuses a second crawl while one is in flight", async () => {
     const crawls: FakeCrawl[] = [];
     const app = await buildApp(depsWith({ crawls, allowed: true }));
-    const first = await app.inject({ method: "POST", url: "/api/crawls", payload: { seed: SEED } });
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { seeds: [SEED] },
+    });
     const second = await app.inject({
       method: "POST",
       url: "/api/crawls",
-      payload: { seed: SEED },
+      payload: { seeds: [SEED] },
     });
     expect(first.statusCode).toBe(202);
     expect(second.statusCode).toBe(409);
@@ -255,5 +414,152 @@ describe("クロール route の認可と単一実行", () => {
     const res = await app.inject({ method: "GET", url: `/api/crawls/${UUID}` });
     expect(res.statusCode).toBe(404);
     await app.close();
+  });
+});
+
+describe("対象一覧から起こす", () => {
+  const targets: FakeTarget[] = [
+    { url: "https://a.example.com/1", enabled: true, orgId: "acme" },
+    { url: "https://b.example.com/2", enabled: true, orgId: "acme" },
+    { url: "https://c.example.com/3", enabled: false, orgId: "acme" },
+    { url: "https://d.example.com/4", enabled: true, orgId: "other" },
+  ];
+
+  const start = async (payload: Record<string, unknown>, crawls: FakeCrawl[] = []) => {
+    const sent: { url: string }[][] = [];
+    const app = await buildApp(
+      depsWith({
+        crawls,
+        allowed: true,
+        targets,
+        dispatch: (crawl) => {
+          sent.push(crawl.frontier);
+          return Promise.resolve();
+        },
+      }),
+    );
+    const res = await app.inject({ method: "POST", url: "/api/crawls", payload });
+    await app.close();
+    return { res, sent, crawls };
+  };
+
+  it("有効な行だけを、自分の組織のぶんだけ種にする", async () => {
+    // **組織で絞る。** 以前の CLI 経路 (run.ts) は「他組織が混じっていたら投げる」
+    // していたが、クロールは `org_id` を 1 つ持つ行なので、混ぜると帰属が言えない。
+    const { res, sent } = await start({ fromTargets: {} });
+    expect(res.statusCode).toBe(202);
+    expect(sent[0]?.map((f) => f.url)).toEqual([
+      "https://a.example.com/1",
+      "https://b.example.com/2",
+    ]);
+  });
+
+  it("既定では辿らない（max_depth = 0）", async () => {
+    // それが `runs` の意味だった —— 深さも範囲も持たない 1 回。
+    const { crawls } = await start({ fromTargets: {} });
+    expect(crawls[0]?.maxDepth).toBe(0);
+  });
+
+  it("明示された深さは勝つ", async () => {
+    // 「一覧を種にして 2 段辿る」も書ける。畳んだことで表せる幅が減っていない。
+    const { crawls } = await start({ fromTargets: {}, maxDepth: 2 });
+    expect(crawls[0]?.maxDepth).toBe(2);
+  });
+
+  it("max_pages が種の数を下回らない", async () => {
+    // 既定の 30 のままだと、対象が 30 件を超えた瞬間に黙って切り落とされる。
+    const { crawls } = await start({ fromTargets: {} });
+    expect(crawls[0]?.maxPages).toBeGreaterThanOrEqual(2);
+  });
+
+  it("limit は種の数を絞る", async () => {
+    const { sent } = await start({ fromTargets: { limit: 1 } });
+    expect(sent[0]).toHaveLength(1);
+  });
+
+  it("対象が 1 件も無ければ 400（500 ではない）", async () => {
+    // `011` の CHECK に当たって 500 にすると、呼ぶ側から見て「壊れた」になる。
+    // 実際には「取るものが無い」なので、そう言う。
+    const app = await buildApp(depsWith({ crawls: [], allowed: true, targets: [] }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/crawls",
+      payload: { fromTargets: {} },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain("no enabled capture targets");
+    await app.close();
+  });
+
+  it("seeds と fromTargets の両方は拒む", async () => {
+    // どちらを使うかをこちらが決めることになる。
+    const { res } = await start({ seeds: [SEED], fromTargets: {} });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("どちらも無ければ拒む", async () => {
+    const { res } = await start({});
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("落ちた段を受けて締める", () => {
+  const running = (): FakeCrawl[] => [{ id: UUID, state: "running" }] as unknown as FakeCrawl[];
+
+  const post = async (crawls: FakeCrawl[], body: Record<string, unknown> = {}) => {
+    const app = await buildApp(depsWith({ crawls, allowed: true }));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/crawls/${UUID}/failed`,
+      payload: body,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("走行中のものを締める", async () => {
+    // **これが無いと、flow が段の途中で落ちたクロールが永久に走行中になる。**
+    // 部分 unique index が以後のクロールを全部塞ぐ (実測で踏んだ)。
+    const crawls = running();
+    const res = await post(crawls, { reason: "BrowserHive に届きません" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":true');
+    expect(crawls[0]?.state).toBe("failed");
+  });
+
+  it("終わったものには被せない", async () => {
+    // 段の失敗が遅れて届くことはある。そのとき既に別の段が締めていれば、
+    // **そちらの理由のほうが正しい。**
+    const crawls = [{ id: UUID, state: "succeeded" }] as unknown as FakeCrawl[];
+    const res = await post(crawls);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":false');
+    expect(crawls[0]?.state).toBe("succeeded");
+  });
+
+  it("知らない id でも 200 で「締めるものが無い」と答える", async () => {
+    // 締める相手が無いのは異常ではない。呼ぶ側 (failure_module) は
+    // どのみち投げない立場なので、ここで 404 にしても誰も読まない。
+    const res = await post([]);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"closed":false');
+  });
+
+  it("権限が無ければ 404", async () => {
+    const app = await buildApp(depsWith({ crawls: running(), allowed: false }));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/crawls/${UUID}/failed`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("知らない鍵は拒む", async () => {
+    const res = await post(running(), { reason: "x", extra: 1 });
+    expect(res.statusCode).toBe(400);
   });
 });

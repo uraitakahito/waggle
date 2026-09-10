@@ -19,7 +19,7 @@
  * 関数型を代入するときにしか効かないので、ここでの Result の使い方では書き味と
  * 生態系との一致のほうが勝つ。
  *
- * 上流の BrowserHive `src/result.ts` からの移植。
+ * 上流の BrowserHive の src/result.ts からの移植。
  */
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 

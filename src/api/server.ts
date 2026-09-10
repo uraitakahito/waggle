@@ -17,12 +17,11 @@ import { createS3Client } from "../archive/s3.js";
 import { resolveIdentityResolver } from "./identity.js";
 import { registerRoutes } from "./routes.js";
 import { registerPicker, replayOriginFromEnv } from "./picker.js";
-import { parseRunFormats, registerRunRoutes } from "./runs.js";
+import { parseCaptureFormats } from "../config/capture-formats.js";
 import { registerCrawlRoutes } from "./crawls.js";
 import { registerSearchRoutes } from "./search.js";
 import { createSearchClient } from "../search/client.js";
 import { createWindmillDispatcher } from "../crawl/dispatch.js";
-import { runClient } from "../client/run.js";
 import { optional } from "../config/env.js";
 import { fatal, logger } from "../logger.js";
 
@@ -30,16 +29,15 @@ const DEFAULT_PORT = 7070;
 const DEFAULT_DRAIN_INTERVAL_MS = 5_000;
 /**
  * 待ち受けるアドレス。既定はループバックのまま —— 外に出すのは配備の判断で、
- * このプロセスは実行を起こせる口を持つ(`api/runs.ts`)。既定で広げない。
+ * このプロセスは取り込みを起こせる口を持つ(`api/crawls.ts`)。既定で広げない。
  */
 const DEFAULT_HOST = "127.0.0.1";
 
 /**
- * API から起こした実行が既定で取る形式。CLI に既定は無い (旗を書かなければ何も
- * 取らない) ので、ここが唯一の既定。`wacz` なのは、このパイプラインが作るのが
- * 再生できるアーカイブだから。
+ * この配備が既定で取る形式。`wacz` なのは、このパイプラインが作るのが
+ * 再生できるアーカイブで、他の形式はその付随物だから。
  */
-const DEFAULT_RUN_FORMATS = "wacz";
+const DEFAULT_CAPTURE_FORMATS = "wacz";
 
 interface ServerOptions {
   databaseUrl: string;
@@ -78,7 +76,7 @@ const start = async (options: ServerOptions): Promise<void> => {
     logger: false,
     // 知らない鍵は **落とさずに拒む**。fastify の ajv は既定で `removeAdditional`
     // が立っており、`additionalProperties: false` は「黙って削る」意味になる ——
-    // すると `POST /api/runs` に効かない設定を渡した呼び出し元が、渡ったつもりの
+    // すると `POST /api/crawls` に効かない設定を渡した呼び出し元が、渡ったつもりの
     // まま 202 を受け取る。頼んだことが無視されたなら、そう言うべき。
     ajv: { customOptions: { removeAdditional: false } },
   });
@@ -103,22 +101,14 @@ const start = async (options: ServerOptions): Promise<void> => {
 
   registerRoutes(app, { db, fga, s3, resolveIdentity });
   registerPicker(app, replayOriginFromEnv());
-  // 実行を起こす口。取り込みの身元は今までどおり環境から来るので、ここでは渡さない
-  // (`api/runs.ts` の冒頭を見ること)。渡すのは「どこの DB を読むか」だけ。
-  registerRunRoutes(app, {
-    db,
-    fga,
-    resolveIdentity,
-    launch: runClient,
-    // **起動時に解釈する。** 綴りの誤りをここで落とすため (`parseRunFormats` を見ること)。
-    baseOptions: {
-      databaseUrl: options.databaseUrl,
-      ...parseRunFormats(
-        optional("WAGGLE_API_RUN_FORMATS", DEFAULT_RUN_FORMATS),
-        optional("WAGGLE_API_RUN_SIGNING", "") === "1",
-      ),
-    },
-  });
+
+  // **形式は起動時に 1 回だけ解釈する。** 綴りの誤りをここで落とすため
+  // (`config/capture-formats.ts` を見ること)。実行のたびに解釈すると、`waxz` のような
+  // 打ち間違いは夜中の定期実行が失敗して初めて見つかる。
+  const capture = parseCaptureFormats(
+    optional("WAGGLE_CAPTURE_FORMATS", DEFAULT_CAPTURE_FORMATS),
+    optional("WAGGLE_CAPTURE_SIGNING", "") === "1",
+  );
 
   // リンクを辿るクロールの口。実行は Windmill の flow が回すので、ここが渡すのは
   // 「頼んだ」という事実だけ。dispatcher は **起動時に** 設定を読む —— 頼まれた瞬間に
@@ -130,7 +120,15 @@ const start = async (options: ServerOptions): Promise<void> => {
   if (dispatch === undefined) {
     logger.info("WAGGLE_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
   } else {
-    registerCrawlRoutes(app, { db, fga, s3, bucket: storage.bucket, resolveIdentity, dispatch });
+    registerCrawlRoutes(app, {
+      db,
+      fga,
+      s3,
+      bucket: storage.bucket,
+      resolveIdentity,
+      dispatch,
+      capture,
+    });
   }
 
   // 全文検索の口。クロールと同じ形 —— 設定が無ければ出さない。索引を持たない配備が
@@ -160,8 +158,10 @@ const start = async (options: ServerOptions): Promise<void> => {
   /**
    * **走行中の実行は待たない。** `app.close()` が待つのは応答を返していない
    * リクエストだけで、実行は 202 を返した後に続いているので、その勘定に入らない。
-   * 途中で落ちた実行の `runs` の行は `running` のまま残り、次を塞ぐ —— 生きている
-   * ものと区別する術が行に無い。片付けは運用の仕事 (`api/runs.ts` の GET を見ること)。
+   * 途中で落ちたクロールの行は `running` のまま残り、**部分 unique index が次を全部
+   * 塞ぐ** —— 生きているものと区別する術が行に無い。締めるのは flow の failure_module で、
+   * `POST /api/crawls/:id/failed` を叩く (forage の fail_crawl.ts)。**waggle と flow が
+   * 同時に落ちたときだけ**、残った行を手で締めることになる。
    */
   const shutdown = async (): Promise<void> => {
     clearInterval(drainTimer);

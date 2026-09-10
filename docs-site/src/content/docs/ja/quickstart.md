@@ -1,6 +1,6 @@
 ---
 title: クイックスタート
-description: Compose スタックを立ち上げ、capture_targets を seed し、最初のキャプチャを投げるまで。
+description: Compose スタックを立ち上げ、capture_targets を seed し、最初のクロールを起こすまで。
 ---
 
 スタックは waggle に必要なものを一式立ち上げます — Postgres、SeaweedFS、
@@ -36,7 +36,7 @@ container-compose は `container exec` で **各コンテナの中の** `/etc/ho
 ## 3. スタックを起動する
 
 ```sh
-container-compose up -d -b
+pnpm run stack:up
 ```
 
 初回は BrowserHive と Chromium イメージをソースからビルドするため、数分かかります。
@@ -84,30 +84,14 @@ pnpm run fga:deploy   # model を送り、store id と model id を印字する
 印字された 2 行を `.env` の `WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID` に
 書き写してください。
 
-:::note[取り込みを投げるだけなら飛ばせます]
-この段が要るのは §7 の API と picker です。`pnpm run capture` は OpenFGA を
-通りません。
+:::note[この段はもう飛ばせません]
+OpenFGA を通らない CLI は無くなりました。waggle への入口はすべて API で、
+API はこの 2 つの ID を要ります。
 :::
 
-## 6. キャプチャを投げる
+## 6. API を起動する
 
-```sh
-pnpm run capture --wacz --limit 1
-```
-
-受理された URL ごとに 1 行、最後にサマリが出ます。
-
-```json
-{"msg":"Request accepted","progress":"1/1","taskId":"e785962b-…","labels":["Apple"]}
-{"msg":"Request summary","total":1,"accepted":1,"rejected":0,"durationMs":23}
-```
-
-`accepted` は BrowserHive がキューに入れたという意味で、**キャプチャが完了した
-という意味ではありません**。
-
-## 7. 結果を見る
-
-一覧と picker は `waggle-api` が出します。**host 側で動かします** —— スタックに
+API と、それが `/` に出す picker は **host 側で動かします**。スタックに
 そのサービスはありません（§5 と同じ理由で、OpenFGA の ID が起動後にしか
 決まらないため）。
 
@@ -116,7 +100,40 @@ pnpm run api
 open http://127.0.0.1:7070/
 ```
 
-行をクリックすると [replay](https://github.com/uraitakahito/replay) で開きます。
+一覧が空なら `.env` の `WAGGLE_DEV_IDENTITY=1` を確かめてください。無いと
+resolver が誰も通さず、picker は `401` で空のままになります。
+
+## 7. クロールを起こす
+
+取り込みはクロールとして起こします。段取りを決めるのは waggle で、実際に投げるのは
+Windmill の flow です。
+
+```sh
+curl -X POST http://127.0.0.1:7070/api/crawls \
+  -H 'content-type: application/json' \
+  -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  -d '{"fromTargets":{"limit":1}}'
+# → 202 { "crawlId": "9072b625-…" }
+```
+
+`fromTargets` は §4 で入れた行を種にします。既定は深さ 0 —— 取るだけで辿りません。
+以前の `POST /api/runs` がしていたのはこれです。
+
+:::caution[この段にはスケジューラ側のスタックが要ります]
+`/api/crawls` は **`WAGGLE_CRAWL_WEBHOOK_URL` と `WAGGLE_CRAWL_WEBHOOK_TOKEN` の
+両方が設定されているときにしか出ません**。waggle はもう BrowserHive と直接
+話さないので、投げる先が無ければ出す口も無く、route は `404` を返します。flow は
+[forage](https://github.com/uraitakahito/forage) に居ます。ここより前の段は
+それ無しで動きますが、取り込みだけは動きません。
+
+`can_submit` にも注意してください。許可の無い呼び出し元にも `404` が返ります。
+[アーカイブ台帳](/waggle/ja/archive-ledger/#誰が起こしてよいか)を参照。
+:::
+
+## 8. 結果を見る
+
+§6 の picker を読み込み直します。行をクリックすると
+[replay](https://github.com/uraitakahito/replay) で開きます。
 一覧は台帳（`archives` テーブル）から来ていて、**OpenFGA の `can_view` で
 絞ってあります**。API を直に叩くこともできます。
 
@@ -125,15 +142,15 @@ curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
   http://127.0.0.1:7070/api/archives | jq '.archives[0]'
 ```
 
-一覧が空なら `.env` の `WAGGLE_DEV_IDENTITY=1` を確かめてください。無いと
-resolver が誰も通さず、picker は `401` で空のままになります。詳しくは
-[アーカイブ台帳](/waggle/ja/archive-ledger/)。
+API の全体は[アーカイブ台帳](/waggle/ja/archive-ledger/)に、クロール自体の
+終わり方は `GET /api/crawls/<crawlId>` にあります。
 
 ### まだ終わっていないとき
 
-**台帳に載るのは取り込みが終わった後**です。picker に出てこないなら、まだ
-撮っている最中か、失敗しています。**進行中の状態は BrowserHive にしか
-ありません** —— そちらが正本で、waggle が持っているのは終わった事実の写しです。
+**ページが台帳に載るのは、そのページの居た段を flow が報告した後**です。picker に
+出てこないなら、段がまだ開いているか、そのページが失敗しています。**進行中の状態は
+BrowserHive にしかありません** —— そちらが正本で、waggle が持っているのは終わった
+事実の写しです。waggle はもう問い合わせませんが、手で訊くことはできます。
 
 ```sh
 grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
@@ -149,7 +166,7 @@ WACZ の中身は BrowserHive のストレージのページにあります。
 
 ## 次に読むもの
 
-- アーカイブを配る・共有する → [アーカイブ台帳](/waggle/ja/archive-ledger/)
+- アーカイブを配る・共有する、クロール API の全体 → [アーカイブ台帳](/waggle/ja/archive-ledger/)
 - 自分の URL を追加する → [URL ソース](/waggle/ja/url-source/)
-- 撮り方を変える → [キャプチャオプション](/waggle/ja/capture-options/)
+- 何を撮るかを変える → [キャプチャオプション](/waggle/ja/capture-options/)
 - Compose を使わずに動かす → [開発環境](/waggle/ja/development-environment/)

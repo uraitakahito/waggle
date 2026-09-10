@@ -1,15 +1,15 @@
 ---
 title: Databases
-description: The two Postgres instances behind waggle and OpenFGA, and the fourteen tables in them.
+description: The two Postgres instances behind waggle and OpenFGA, and the sixteen tables in them.
 ---
 
 The waggle dev stack runs **two Postgres instances**. They hold different things
 and are different databases.
 
-| Container           | Holds                                                                   | Who touches it with SQL |
-| ------------------- | ----------------------------------------------------------------------- | ----------------------- |
-| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` and 5 more — **8 tables** | waggle                  |
-| `openfga-db.waggle` | `tuple` / `authorization_model` and 4 more — **6 tables**               | OpenFGA only            |
+| Container           | Holds                                                                    | Who touches it with SQL |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------- |
+| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` and 7 more — **10 tables** | waggle                  |
+| `openfga-db.waggle` | `tuple` / `authorization_model` and 4 more — **6 tables**                | OpenFGA only            |
 
 No table appears in both. The credentials do not cross either, and `openfga-db`
 publishes no port, so reaching it takes `container exec`.
@@ -27,13 +27,15 @@ what makes [`fga_outbox`](/waggle/databases/fga-outbox/) necessary.
 
 ### waggle's database
 
-| Table                                                           | Role                                                 |
-| --------------------------------------------------------------- | ---------------------------------------------------- |
-| [`capture_targets`](/waggle/databases/capture-targets/)         | What to capture                                      |
-| [`capture_submissions`](/waggle/databases/capture-submissions/) | What was submitted; the only source of organizations |
-| [`archives`](/waggle/databases/archives/)                       | The ledger — captures that produced an archive       |
-| [`fga_outbox`](/waggle/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                      |
-| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`       | Kysely's own bookkeeping (below)                     |
+| Table                                                           | Role                                                   |
+| --------------------------------------------------------------- | ------------------------------------------------------ |
+| [`capture_targets`](/waggle/databases/capture-targets/)         | What to capture                                        |
+| [`capture_submissions`](/waggle/databases/capture-submissions/) | What was submitted; the only source of organizations   |
+| [`archives`](/waggle/databases/archives/)                       | The ledger — captures that produced an archive         |
+| [`fga_outbox`](/waggle/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                        |
+| `crawls`                                                        | One row per crawl — its policy, state and stop reason  |
+| `crawl_pages`                                                   | One row per page a crawl reached; also the dedup index |
+| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`       | Kysely's own bookkeeping (below)                       |
 
 ### OpenFGA's database
 

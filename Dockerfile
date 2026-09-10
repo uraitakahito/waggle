@@ -1,16 +1,18 @@
 # syntax=docker/dockerfile:1.7
 #
-# Production image for the waggle CLI.
+# Production image for the waggle API.
 #
 # Build:
 #   container build -t waggle:latest .
 #
-# Run (one-shot capture against an existing BrowserHive). The URLs come from
-# Postgres, so both addresses have to be given:
-#   container run --rm \
+# Run (the API; it does not capture anything itself — Windmill's flow does):
+#   container run --rm -p 7070:7070 \
 #     -e DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle \
-#     -e BROWSERHIVE_SERVER=browserhive.waggle:50051 \
-#     waggle:latest --wacz --limit 1
+#     waggle:latest
+#
+# waggle no longer speaks gRPC to BrowserHive. Captures are submitted by the
+# Windmill flow (forage), which reaches BrowserHive on its own; waggle plans the
+# crawl, records it and admits the archives.
 #
 # The migration and seed jobs share this image but not its ENTRYPOINT — see
 # `run_job` in scripts/prod-smoke.sh, which drives the whole stack end to end.
@@ -73,4 +75,4 @@ COPY package.json ./
 
 USER node
 
-ENTRYPOINT ["node", "dist/submit-captures.js"]
+ENTRYPOINT ["node", "dist/api/server.js"]

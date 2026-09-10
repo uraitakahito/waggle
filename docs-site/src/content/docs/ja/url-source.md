@@ -9,14 +9,16 @@ waggle の入力は Postgres のテーブル 1 つだけです。**waggle 自身
 
 ## クエリ
 
-毎回の実行はこれだけです。
+`fromTargets` で起こしたクロールが読むのは、これだけです。
 
 ```sql
-SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
+SELECT url FROM capture_targets WHERE enabled AND org_id = $1 ORDER BY id ASC [LIMIT $2]
 ```
 
-`ORDER BY id ASC` なので**登録順に投げられ**、`--limit` は先頭 n 件を取ります。
-つまり動作確認では常に同じ URL が対象になります。
+`ORDER BY id ASC` なので**登録順に種になり**、`fromTargets.limit` は先頭 n 件を
+取ります。つまり動作確認では常に同じ URL が対象になります。`org_id` で絞るのが
+テナントの境目です —— クロールは組織を 1 つしか持たないので、別の組織の行を
+種にすると帰属が言えなくなります。
 
 ## スキーマ
 
@@ -27,9 +29,9 @@ SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
 | カラム                      | 補足                                                                                                                  |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `id`                        | `BIGSERIAL` 主キー。投入順で、ローダの `ORDER BY` がそれを保つ。                                                      |
-| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — 空文字と前後空白をデータベースが拒否するので、CLI 側で検査する必要がない。 |
+| `url`                       | `CHECK (url <> '' AND url = btrim(url))` — 空文字と前後空白をデータベースが拒否するので、呼ぶ側で検査する必要がない。 |
 | `url_hash`                  | 生成列 `digest(url, 'sha256')` (pgcrypto) を stored 保存。ユニークインデックスの土台で、直接読むことはない。          |
-| `labels`                    | `TEXT[]`。そのまま BrowserHive に送られ、成果物のファイル名に組み込まれる。                                           |
+| `labels`                    | `TEXT[]`。**もう誰も読みません** —— 下記を参照。                                                                      |
 | `enabled`                   | ホットパスは `WHERE enabled` で、部分インデックス `capture_targets_enabled_id_idx` が覆う。無効行はコストにならない。 |
 | `created_at` / `updated_at` | `now()` 既定。自動更新トリガは今のところ無い。                                                                        |
 
@@ -37,11 +39,18 @@ SELECT url, labels FROM capture_targets WHERE enabled ORDER BY id ASC [LIMIT $1]
 
 ## labels の使い方
 
-labels は自由形式で、成果物のファイル名に入ります。そのため**外部キーを持たせる
-場所**として自然です。「自由形式」は文字どおりで、ファイル名の構造とぶつかる文字
-（`_` `.` `/` 空白）は BrowserHive が逃がすため、非 ASCII も含めてそのまま往復します。
-制限は長さだけで、成果物の名前全体が 255 UTF-8 バイトに収まる必要があり、超える
-登録は受け付ける段で断られます。同梱のサンプルは証券コードと社名を並べています。
+:::caution[labels はもう運ばれません]
+列は残っていますし seed も埋めますし、台帳にも `labels` 列があります —— ですが
+**クロールの経路が読むのは `url` だけ**で、投げるときの labels は空です。つまり今の
+labels は BrowserHive にも成果物のファイル名にも届きません。対象の行に付けた注記で
+あって、下流に出てくるものだとは考えないでください。
+:::
+
+かつては自由形式で成果物のファイル名に入り、**外部キーを持たせる場所**として自然でした。
+「自由形式」は文字どおりで、ファイル名の構造とぶつかる文字（`_` `.` `/` 空白）は
+BrowserHive が逃がすため、非 ASCII も含めてそのまま往復し、制限は「成果物の名前全体が
+255 UTF-8 バイトに収まること」だけでした。同梱のサンプルは今も証券コードと社名を
+並べています。
 
 ```ts
 { url: "https://www.ana.co.jp/group/", labels: ["9202", "ANAHoldings"] }

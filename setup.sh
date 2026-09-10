@@ -78,18 +78,13 @@ git submodule status --recursive | sed 's/^/  /'
 # 検証は一切されない —— .env を書き換えれば誰にでも成りすませる。本物の
 # identity provider が決まるまでの繋ぎなので、そのつもりで扱うこと。
 cp .env.example .env
-
-# subject だけは実行者の名前にする。雛形には中立な `dev` が入っている。
-# `sed -i` の書式が BSD と GNU で違うので、一時ファイルを経由する。
-sed "s/^WAGGLE_DEV_SUBJECT=.*/WAGGLE_DEV_SUBJECT=${USER:-dev}/" .env > .env.tmp
-mv .env.tmp .env
 echo "Created .env (from .env.example)"
 
 cat <<'EOF'
 
 Setup complete.
 
-  container-compose up -d -b                  # build and start the stack
+  pnpm run stack:up                           # build and start the stack
   until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
     localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
 

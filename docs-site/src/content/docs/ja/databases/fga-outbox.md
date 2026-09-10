@@ -53,7 +53,7 @@ return db.transaction().execute(async (trx) => {
 
 ## 配送
 
-`waggle-ledger drain` か、API プロセスのタイマーが掃き出します。
+`pnpm run fga:drain` か、API プロセスのタイマーが掃き出します。
 
 ```sql
 SELECT … FROM fga_outbox WHERE processed_at IS NULL
@@ -61,7 +61,7 @@ ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100
 ```
 
 **`FOR UPDATE SKIP LOCKED` のおかげで、掃き出しは同時に何本走ってもよい**です
-（タイマーで動く API と、手で叩く `waggle-ledger drain`）。同じ行を 2 度処理する
+（タイマーで動く API と、手で叩く `pnpm run fga:drain`）。同じ行を 2 度処理する
 ことも、互いを待たせることもありません。
 
 配送は **at-least-once** です。行は OpenFGA が受け入れるまで残ります。もう一方の

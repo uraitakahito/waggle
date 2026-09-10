@@ -2,13 +2,13 @@
  * `pages.jsonl` の行を、索引に載せる 1 件へ写す。**純粋な部分**。
  *
  * ここだけが「何を索引するか」を決めている。S3 も OpenSearch も知らないので、
- * どちらも立てずに確かめられる —— `archive/register.ts` の `archiveRow` を
+ * どちらも立てずに確かめられる —— `archive/admit.ts` の `archiveRow` を
  * 切り出してあるのと同じ理由。
  *
  * ## 本文は既に抽出されている
  *
  * BrowserHive が `pages/pages.jsonl` に `title` と `text` を書いている
- * (`storage/wacz/pages.ts`)。`text` の出どころは `document.body.innerText` ——
+ * (browserhive の storage/wacz/pages.ts)。`text` の出どころは `document.body.innerText` ——
  * **描画後の本文**であって HTML ではない。だからここで解析する必要が無いし、
  * すべきでもない: HTML から起こし直すと、アーカイブが署名して主張している内容と
  * 索引が食い違いうる。

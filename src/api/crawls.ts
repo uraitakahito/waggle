@@ -28,16 +28,18 @@
  */
 import type { FastifyInstance } from "fastify";
 import type { OpenFgaClient } from "@openfga/sdk";
-import type { Kysely } from "kysely";
+import type { Insertable, Kysely } from "kysely";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
-import type { Database, CrawlScope } from "../db/database.js";
+import type { CaptureSubmissionsTable, Database, CrawlScope } from "../db/database.js";
 import type { IdentityResolver } from "./identity.js";
-import { registerLevel } from "../crawl/register-level.js";
-import { acceptLinks, parseHttpUrl, type DiscoveredLink } from "../crawl/scope.js";
+import { admitLevel } from "../crawl/admit-level.js";
+import { acceptLinks, parseHttpUrl, type DiscoveredLink, type ParsedUrl } from "../crawl/scope.js";
 import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
 import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
+import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
+import { loadTargets } from "../data/url-source.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -84,9 +86,20 @@ export interface DispatchedCrawl {
   frontier: { url: string; host: string; lastFinishedAt: string | null }[];
   perHostDelayMs: number;
   hostParallelism: number;
+  /**
+   * 取り込む形式と署名。**必ず載せる。**
+   *
+   * flow の schema の既定値には頼れない —— Windmill は webhook 起動のとき
+   * 既定値を埋めないので、送らなければ `undefined` が届く (実測)。決めるのは
+   * 依然として waggle 側で、flow は言われたとおりに投げる。
+   */
+  captureFormats: CaptureFormats;
+  signing: boolean;
 }
 
 export interface CrawlRouteDeps {
+  /** 取り込む形式と署名。起動時に env から解釈したもの (`config/capture-formats.ts`)。 */
+  capture: CaptureSettings;
   db: Kysely<Database>;
   fga: OpenFgaClient;
   /**
@@ -102,7 +115,14 @@ export interface CrawlRouteDeps {
 }
 
 interface CrawlBody {
-  seed?: string;
+  seeds?: string[];
+  /**
+   * 種を明示せず、`capture_targets` の有効な行から取る。
+   *
+   * これが `runs` を畳んだ先。既定では**辿らない** (`maxDepth: 0`) ので、
+   * 「登録済みの URL 一覧を、いま全部取ってこい」がそのまま表せる。
+   */
+  fromTargets?: { limit?: number };
   scope?: CrawlScope;
   maxDepth?: number;
   maxPages?: number;
@@ -129,7 +149,7 @@ interface LevelBody {
 }
 
 export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps): void => {
-  const { db, fga, resolveIdentity, dispatch } = deps;
+  const { db, fga, resolveIdentity, dispatch, capture } = deps;
 
   /**
    * クロールを 1 本起こす。
@@ -146,9 +166,22 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           // 知らない鍵は拒む。`server.ts` の `removeAdditional: false` がこれを
           // 「黙って削る」ではなく「400 で返す」意味にしている。
           additionalProperties: false,
-          required: ["seed"],
+          // **`seeds` と `fromTargets` のどちらか一方**。schema では表さず handler で
+          // 見る —— ajv の `oneOf` は「どちらでもない」と「両方」を同じ 400 にするが、
+          // 呼ぶ側にとっては別の間違いなので、言い分を分けたい。
           properties: {
-            seed: { type: "string", minLength: 1 },
+            // **1 本以上。** 種を持たないクロールは始まりが無いので進みようがなく、
+            // 受理されたのに何も起きない、という形になる (`011` の CHECK と対)。
+            seeds: {
+              type: "array",
+              minItems: 1,
+              items: { type: "string", minLength: 1 },
+            },
+            fromTargets: {
+              type: "object",
+              additionalProperties: false,
+              properties: { limit: { type: "integer", minimum: 1 } },
+            },
             scope: { type: "string", enum: ["same-origin", "same-host"] },
             maxDepth: { type: "integer", minimum: 0, maximum: 10 },
             maxPages: { type: "integer", minimum: 1, maximum: 10000 },
@@ -169,24 +202,62 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       const body = request.body ?? {};
-      // schema が `seed` を必須にしているので、ここに来た時点で文字列である。
-      const seed = parseHttpUrl(body.seed ?? "");
-      if (seed === undefined) {
-        return reply.code(400).send({ error: "seed must be an http(s) URL" });
+
+      // **どちらか一方。** 両方渡されたら、どちらを使うかをこちらが決めることに
+      // なるので拒む。片方も無ければ始まりが無い。
+      const fromTargets = body.fromTargets;
+      if ((body.seeds === undefined) === (fromTargets === undefined)) {
+        return reply.code(400).send({ error: "provide exactly one of seeds or fromTargets" });
       }
+
+      // 組織は呼び出し元の 1 つ目。`maySubmit` はどれか 1 つで許されていれば通すので、
+      // 帰属も同じ組織に寄せる。**対象を読むときの絞り込みにも同じ値を使う。**
+      const orgId = identity.organizations[0] ?? "";
+
+      // `fromTargets` なら `capture_targets` から。以前の CLI 経路 (run.ts) が
+      // 読んでいたのと同じ表で、絞り込みだけが変わる (組織で絞る)。
+      const rawSeeds =
+        fromTargets === undefined
+          ? (body.seeds ?? [])
+          : (
+              await loadTargets(db, {
+                orgId,
+                ...(fromTargets.limit === undefined ? {} : { limit: fromTargets.limit }),
+              })
+            ).map((row) => row.url);
+
+      // **1 本も無ければ拒む。** 対象が 0 件のときにここを通すと、`011` の CHECK に
+      // 当たって 500 になる —— 呼ぶ側から見れば「壊れた」で、「対象が無い」ではない。
+      if (rawSeeds.length === 0) {
+        return reply.code(400).send({
+          error:
+            fromTargets === undefined
+              ? "seeds must not be empty"
+              : "no enabled capture targets for this organization",
+        });
+      }
+
+      // 読めない種が 1 本でもあれば拒む。**黙って落とさない** ——
+      // 落とすと、投げた側は全部辿ったつもりで結果を読むことになる。
+      const seeds = rawSeeds.map((raw) => parseHttpUrl(raw));
+      if (seeds.some((parsed) => parsed === undefined)) {
+        return reply.code(400).send({ error: "every seed must be an http(s) URL" });
+      }
+      const parsedSeeds = seeds as ParsedUrl[];
 
       const crawlId = randomUUID();
       const crawl = {
         id: crawlId,
-        seed: seed.normalized,
+        seeds: parsedSeeds.map((parsed) => parsed.normalized),
         scope: body.scope ?? DEFAULT_SCOPE,
-        maxDepth: body.maxDepth ?? DEFAULT_MAX_DEPTH,
-        maxPages: body.maxPages ?? DEFAULT_MAX_PAGES,
+        // **対象一覧から取るときは、既定で辿らない。** それが `runs` の意味だった。
+        // 明示された値は勝つので、「一覧を種にして 2 段辿る」も書ける。
+        maxDepth: body.maxDepth ?? (fromTargets === undefined ? DEFAULT_MAX_DEPTH : 0),
+        // 既定の 30 だと対象一覧が切り落とされる。**種の数は下回らせない。**
+        maxPages: body.maxPages ?? Math.max(DEFAULT_MAX_PAGES, parsedSeeds.length),
         perHostDelayMs: body.perHostDelayMs ?? DEFAULT_PER_HOST_DELAY_MS,
         hostParallelism: body.hostParallelism ?? DEFAULT_HOST_PARALLELISM,
-        // 組織は呼び出し元の 1 つ目。`maySubmit` はどれか 1 つで許されていれば通すので、
-        // 帰属も同じ組織に寄せる。
-        orgId: identity.organizations[0] ?? "",
+        orgId,
         requestedBy: identity.subject,
         state: "running" as const,
       };
@@ -202,15 +273,23 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       // 種を最初の行として置く。深さ 0。ここから flow が読む。
-      await db
+      //
+      // **深さ 1 以降と同じ形にしてある** —— 配列で入れ、`onConflict` で重複を
+      // index に落とさせ、`returning` で実際に入った行だけを次に渡す。種が複数に
+      // なると同じ URL が 2 度渡されうるので、ここも同じ守りが要る。
+      const seeded = await db
         .insertInto("crawlPages")
-        .values({
-          crawlId,
-          url: seed.normalized,
-          depth: 0,
-          host: seed.host,
-          state: "pending",
-        })
+        .values(
+          parsedSeeds.map((parsed) => ({
+            crawlId,
+            url: parsed.normalized,
+            depth: 0,
+            host: parsed.host,
+            state: "pending" as const,
+          })),
+        )
+        .onConflict((oc) => oc.columns(["crawlId", "urlHash"]).doNothing())
+        .returning(["url", "host"])
         .execute();
 
       // 待たない。この Promise の行き先は `crawls` の行であって、この応答ではない。
@@ -218,9 +297,12 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         crawlId,
         depth: 0,
         // 最初の段には「前」が無い。
-        frontier: [{ url: seed.normalized, host: seed.host, lastFinishedAt: null }],
+        frontier: seeded.map((row) => ({ url: row.url, host: row.host, lastFinishedAt: null })),
         perHostDelayMs: crawl.perHostDelayMs,
         hostParallelism: crawl.hostParallelism,
+        // 辿るつもりが無いなら `links` は要らない。取り出させても相手と S3 に無駄が出る。
+        captureFormats: withLinks(capture.formats, crawl.maxDepth > 0),
+        signing: capture.signing,
       }).catch(async (err: unknown) => {
         log.error({ err, crawlId }, "Could not dispatch the crawl");
         await db
@@ -271,7 +353,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
 
       return reply.code(200).send({
         crawlId: crawl.id,
-        seed: crawl.seed,
+        seeds: crawl.seeds,
         scope: crawl.scope,
         state: crawl.state,
         stopReason: crawl.stopReason,
@@ -350,10 +432,16 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       if (!crawl) return reply.code(404).send({ error: "not found" });
 
       const { depth, results } = request.body;
-      const seed = parseHttpUrl(crawl.seed);
-      if (seed === undefined) {
-        // 種は投入時に検査しているので、ここに来るのは行が壊れているとき。
-        return reply.code(500).send({ error: "the crawl seed is not a usable url" });
+      // 種は投入時に検査しているので、読めない行はここに来ない。**それでも
+      // 全部を読み直す** —— 範囲の判定に要るのは正規化した形で、行に入っているのは
+      // 文字列だから。1 本でも読めなければ行が壊れている。
+      const parsedSeeds: ParsedUrl[] = [];
+      for (const raw of crawl.seeds) {
+        const parsed = parseHttpUrl(raw);
+        if (parsed === undefined) {
+          return reply.code(500).send({ error: "a crawl seed is not a usable url" });
+        }
+        parsedSeeds.push(parsed);
       }
 
       // ── 1. 報告された行を閉じる ────────────────────────────────────────
@@ -376,20 +464,29 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       // ── 2. 帰属を書く ────────────────────────────────────────────────
       // 投げたのが waggle でなくても、記録はここに残す。reconciler が
       // `unattributed` を数える経路を壊さないため。
-      const captured = results.filter(
+      //
+      // **状態は問わない。`taskId` を持つ全件に書く。** 以前は `captured` だけに
+      // 書いていたが、それだと失敗と報告された取り込みの帰属が残らない ——
+      // 実体が S3 に在っても組織が言えず、reconciler からは `unattributed` に見える。
+      // 投入が通っている限り id は在るので、書かない理由が無い。
+      const submitted = results.filter(
         (r): r is PageReport & { taskId: string } =>
-          r.status === "captured" && typeof r.taskId === "string" && r.taskId !== "",
+          typeof r.taskId === "string" && r.taskId !== "",
       );
-      if (captured.length > 0) {
+      let recovered: string[] = [];
+      if (submitted.length > 0) {
         await db
           .insertInto("captureSubmissions")
           .values(
-            captured.map((r) => ({
+            // **戻り値の型を書く。** 無いと excess property 検査が効かず、`.map()` を
+            // 通った object literal は**存在しない列を書いても typecheck が緑になる**
+            // (`source_url` を落としたときに実測)。waggle に DB を使う試験は 1 本も
+            // 無いので、schema とのずれを静的に捕まえるのはここだけ。
+            submitted.map((r): Insertable<CaptureSubmissionsTable> => ({
               taskId: r.taskId,
               correlationId: r.correlationId ?? crawlId,
               orgId: crawl.orgId,
               submittedBy: crawl.requestedBy,
-              sourceUrl: r.url,
             })),
           )
           .onConflict((oc) => oc.column("taskId").doNothing())
@@ -397,8 +494,12 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
 
         // ── 2b. 台帳に載せる ──────────────────────────────────────────
         // ここが無いと、クロールしたページは `reconcile` を走らせるまで存在しない。
-        // 詳しくは `crawl/register-level.ts`。
-        await registerLevel(captured, {
+        // 詳しくは `crawl/admit-level.ts`。
+        //
+        // **失敗の報告も渡す。** flow は 15 分待つので、BrowserHive の結果キャッシュ
+        // から押し出されて `NOT_FOUND` になることがある —— そのとき報告は `failed`
+        // だが、取り込みは成功していて manifest が S3 に在る。
+        const admitted = await admitLevel(submitted, {
           db,
           s3: deps.s3,
           bucket: deps.bucket,
@@ -406,6 +507,27 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           orgId: crawl.orgId,
           requestedBy: crawl.requestedBy,
         });
+
+        // ── 2c. 拾えたものは記録を直す ──────────────────────────────────
+        // **台帳には在るのにクロールの記録では失敗している、を残さない。**
+        // どちらが正しいかを後から言えなくなる。manifest が成功を語っているなら
+        // そちらが正 —— 報告のほうは「15 分では見えなかった」でしかない。
+        const reportedFailed = new Set(
+          results.filter((r) => r.status !== "captured").map((r) => r.url),
+        );
+        recovered = admitted.admittedUrls.filter((url) => reportedFailed.has(url));
+        if (recovered.length > 0) {
+          await db
+            .updateTable("crawlPages")
+            .set({ state: "captured", skipReason: null })
+            .where("crawlId", "=", crawlId)
+            .where("url", "in", recovered)
+            .execute();
+          log.info(
+            { crawlId, depth, recovered: recovered.length },
+            "recovered captures the flow could not see",
+          );
+        }
       }
 
       // ── 3. 見つけたリンクを読み、絞る ────────────────────────────────
@@ -430,7 +552,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         }
       }
 
-      const discovered = acceptLinks(links, seed, crawl.scope);
+      const discovered = acceptLinks(links, parsedSeeds, crawl.scope);
 
       // ── 4. 上限を当てる ──────────────────────────────────────────────
       const nextDepth = depth + 1;
@@ -467,7 +589,10 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
               .execute();
 
       // ── 6. 集計と、終わったなら締める ────────────────────────────────
-      const capturedCount = results.filter((r) => r.status === "captured").length;
+      // **拾い直したぶんも数える。** 報告だけを数えると、台帳に入った件数と
+      // `pages_captured` が食い違う。
+      const capturedCount =
+        results.filter((r) => r.status === "captured").length + recovered.length;
       const done = inserted.length === 0;
 
       // **最初に効いた理由を残す。上書きしない。**
@@ -524,6 +649,8 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           })),
           perHostDelayMs: crawl.perHostDelayMs,
           hostParallelism: crawl.hostParallelism,
+          captureFormats: withLinks(capture.formats, crawl.maxDepth > nextDepth),
+          signing: capture.signing,
         }).catch(async (err: unknown) => {
           log.error({ err, crawlId, depth: nextDepth }, "Could not dispatch the next level");
           await db
@@ -544,6 +671,79 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         next: inserted.map((row) => ({ url: row.url, host: row.host, depth: nextDepth })),
         stopReason: done ? (stopReason ?? "completed") : null,
       });
+    },
+  );
+
+  /**
+   * 段が落ちたことを受け取り、クロールを締める。
+   *
+   * ## なぜ要るのか
+   *
+   * flow が段の途中で落ちると `POST /pages` に辿り着かないので、**waggle は何も
+   * 知らされない**。行は `running` のまま残り、部分 unique index が以後のクロールを
+   * 全部塞ぐ。実測で踏んだ: BrowserHive を止めてクロールを起こすと、`crawl_host` が
+   * `UNAVAILABLE` で落ちて flow ごと失敗し、行は永久に走行中になった。
+   *
+   * 以前 (`runs`) は同じ状況で「全ページ失敗の**成功した**実行」になっていた ——
+   * 静かに間違うよりは止まるほうがよいが、止まったまま塞ぐのも同じくらい困る。
+   * flow に締めさせる。
+   *
+   * ## 走行中のものしか締めない
+   *
+   * 終わった行に後から `failed` を被せない。段の失敗が遅れて届くことはありうるし、
+   * そのとき既に別の段が締めていれば、**そちらの理由のほうが正しい**。
+   *
+   * ## 取り込めたぶんは失われない
+   *
+   * 落ちた段でも、そこまでに成功した取り込みの成果物は S3 に在る。報告が来ないので
+   * `crawl_pages` は `pending` のままだが、`reconcile` が manifest を走査して台帳には
+   * 入れる。**台帳は自己修復し、クロールの記録だけが欠ける。**
+   */
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    "/api/crawls/:id/failed",
+    {
+      schema: {
+        params: {
+          type: "object",
+          properties: { id: { type: "string", format: "uuid" } },
+          required: ["id"],
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: { reason: { type: "string", maxLength: 2000 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const identity = await resolveIdentity(request);
+      if (!identity) return unauthorized(reply);
+      if (!(await maySubmit(fga, identity))) {
+        return reply.code(404).send({ error: "not found" });
+      }
+
+      const crawlId = request.params.id;
+      const closed = await db
+        .updateTable("crawls")
+        .set({
+          state: "failed",
+          stopReason: "failed",
+          finishedAt: new Date().toISOString(),
+          error: request.body?.reason ?? "the flow failed without saying why",
+        })
+        .where("id", "=", crawlId)
+        // **走行中のものだけ。** 終わった行に後から被せない。
+        .where("state", "=", "running")
+        .returning("id")
+        .execute();
+
+      if (closed.length === 0) {
+        // 既に終わっているか、そもそも無い。どちらでも「締めるものが無い」で同じ。
+        log.info({ crawlId }, "Nothing to close");
+        return reply.code(200).send({ closed: false });
+      }
+      log.warn({ crawlId, reason: request.body?.reason }, "Crawl closed by the flow");
+      return reply.code(200).send({ closed: true });
     },
   );
 };

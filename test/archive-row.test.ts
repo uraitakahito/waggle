@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { archiveRow } from "../src/archive/register.js";
+import { archiveRow } from "../src/archive/admit.js";
 import type { CaptureResultReport } from "../src/rpc/generated/browserhive/v1/capture.js";
 import { CaptureStatus } from "../src/rpc/generated/browserhive/v1/capture.js";
 

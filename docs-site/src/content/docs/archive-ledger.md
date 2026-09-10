@@ -42,24 +42,22 @@ in that case, or the new tuples would be lost silently.
 
 ## Filling the ledger
 
-Three paths, on purpose.
+Two paths, on purpose. (There used to be a third — the CLI polled `GetCapture`
+for each capture it had submitted. Both the CLI and waggle's gRPC client are
+gone; the Windmill flow submits now.)
 
-**Polling** — `waggle` waits for each capture it submitted
-(`GetCapture`, `PENDING` / `PROCESSING` until it finishes) and registers the ones
-that produced an archive. Fast, but only works while waggle is running.
-`--no-collect` skips it.
+**Crawling** — a crawl registers what it captured as soon as the flow reports a
+level (`src/crawl/admit-level.ts`). The level report does not carry artifact
+locations, so it re-reads `.result.json` before registering. This is the fast
+path: a page is in the ledger within one round trip of being taken.
 
-**Reconciling** — `waggle-ledger reconcile` walks the `.result.json` manifests
+**Reconciling** — `pnpm run fga:reconcile` walks the `.result.json` manifests
 BrowserHive writes next to every capture's artifacts and registers anything the
 ledger is missing. This is what makes the ledger self-healing: waggle can be
-down for hours, or a result can age out of BrowserHive's cache before the
-poller sees it, and the next reconcile still picks it up.
+down for hours, or a manifest can be written after the level closed, and the
+next reconcile still picks it up.
 
-**Crawling** — a link-following crawl registers what it captured as soon as it
-reports a level (`src/crawl/register-level.ts`). The level report does not carry
-artifact locations, so it re-reads `.result.json` before registering.
-
-:::note[This path used to be missing]
+:::note[The crawl path used to be missing]
 The crawl wrote only to `crawl_pages` and `capture_submissions`; it put
 **nothing in the ledger**. Crawled pages did not exist until someone ran
 reconcile — they showed up in neither the picker nor search. The process that
@@ -67,26 +65,34 @@ captured them could have written the ledger itself, and instead waited for the
 sweeper.
 :::
 
-Polling is for latency. Reconciling is for correctness. A ledger with holes
+Crawling is for latency. Reconciling is for correctness. A ledger with holes
 nobody notices is worse than no ledger, because the holes only surface much
 later as "why can't I see this archive?".
 
 ```sh
-waggle-ledger reconcile   # fill gaps from the bucket
-waggle-ledger drain       # deliver queued tuples (the API also does this on a timer)
+pnpm run fga:reconcile   # fill gaps from the bucket
+pnpm run fga:drain       # deliver queued tuples (the API also does this on a timer)
 ```
 
 Only successful captures enter the ledger. A failed one uploaded nothing, and
 recording it would let the API hand out a URL for an object that is not there —
 authorization working perfectly on a 404.
 
+**"Failed" is the flow's word, not the bucket's.** A page can be reported
+`failed` because the result aged out of BrowserHive's result cache while the
+flow was waiting, with the artifacts sitting in the bucket all along. So the
+level handler looks the manifest up for **every** page that carried a task id,
+and corrects the `crawl_pages` row when the manifest says the capture succeeded.
+
 ### Attribution
 
 A manifest says nothing about organizations; BrowserHive has no such concept.
-So `waggle` writes a `capture_submissions` row (task id → organization) when it
-submits, and the reconciler reads it back. Encoding the organization inside
-`correlationId` instead was rejected: a convention held only by agreement is
-broken by the first caller who submits a capture by hand.
+So `waggle` writes a `capture_submissions` row (task id → organization) when the
+level is reported, and the reconciler reads it back. That row is written for
+every page carrying a task id — including the ones reported as failures, for the
+reason just above. Encoding the organization inside `correlationId` instead was
+rejected: a convention held only by agreement is broken by the first caller who
+submits a capture by hand.
 
 ## Handing out URLs
 
@@ -130,107 +136,140 @@ would hand out a URL valid for its whole lifetime. The list does not: appearing
 in a list grants nothing, since fetching any of them still has to pass the
 strongly consistent check.
 
-## Starting a run
+## Starting a crawl
 
-Deciding _when_ to crawl belongs outside waggle — a scheduler does that. Deciding
-_what_ to submit and _how_ stays here. So the boundary is one endpoint that starts
-a run, and one that reports on it.
+Deciding _when_ to capture belongs outside waggle — a scheduler does that.
+Deciding _what_ to submit and _how_ stays here. So the boundary is one endpoint
+that starts a crawl, and one that reports on it.
+
+There used to be a second pair, `POST /api/runs` and `GET /api/runs/:id`, for
+"capture every enabled row of `capture_targets` once". **That is now a crawl with
+`fromTargets` and a depth of 0.** One concept, one table, one set of guarantees.
 
 ```sh
-# Start one. Returns immediately; the run keeps going.
-curl -X POST http://localhost:7070/api/runs \
-     -H 'content-type: application/json' -d '{"limit": 5}'
-# → 202 { "runId": "e5f4c0bf-…" }
+# From an explicit list of seeds.
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' \
+     -d '{"seeds":["https://example.com/"],"maxDepth":2}'
+# → 202 { "crawlId": "9072b625-…" }
 
-curl http://localhost:7070/api/runs/e5f4c0bf-…
-# → { "state": "succeeded", "submitted": 5, "accepted": 5, "rejected": 0, … }
+# Or from the target list — this is what the old run did.
+curl -X POST http://localhost:7070/api/crawls \
+     -H 'content-type: application/json' -d '{"fromTargets":{"limit":5}}'
+
+curl http://localhost:7070/api/crawls/9072b625-…
+# → { "state": "succeeded", "stopReason": "max_depth",
+#     "seeds": ["https://…"], "pagesCaptured": 5, "pagesDiscovered": 5, … }
 ```
 
-A run can take tens of minutes — each accepted capture is waited on in turn — so
-there is no synchronous form of this call. **202 means accepted, not finished.**
-The `runs` row is where the outcome lives.
-
-`state` is about the run, not about what it captured. A run whose submissions
-were all rejected still ends `succeeded`: it ran to completion, and `accepted` /
-`rejected` say what came of it. Only a run that threw ends `failed`.
+A crawl runs level by level and can take tens of minutes, so there is no
+synchronous form of this call. **202 means accepted, not finished.** The `crawls`
+row is where the outcome lives.
 
 :::note[Why `state` and not `status`]
 Both words are used in this workspace, so the rule is worth stating: **a column
-that can hold an in-progress value is called `state`.** `runs.state`,
-`crawls.state` and `crawl_pages.state` all can (`running`, `pending`); the wire's
+that can hold an in-progress value is called `state`.** `crawls.state` and
+`crawl_pages.state` both can (`running`, `pending`); the wire's
 `PageReport.status` cannot (`captured` / `failed` / `skipped` only), which is why
 that one keeps `status` even though it is written into `crawl_pages.state`.
-
-`runs` used to be the exception — `runs.status` held `running` — and the two type
-aliases were literally identical apart from the word.
 :::
 
-### One at a time
+### From the target list
 
-A second run started while one is in flight gets **409**. This is not politeness.
-The gRPC channel is process-global: `configureClient` closes any existing channel
-and `runClient` closes it again on the way out, so two concurrent runs in one
-process tear down each other's connection.
+`fromTargets` seeds the crawl from the enabled rows of
+[`capture_targets`](/waggle/databases/capture-targets/), and `limit` takes the
+first _n_ of them. Two things differ from the rest of the endpoint:
 
-The guarantee is a partial unique index, not an application flag:
+- **`maxDepth` defaults to 0** — do not follow anything. That is what the old run
+  meant. An explicit value still wins, so "take the target list and follow two
+  levels out from each" is expressible.
+- **`maxPages` is never lower than the number of seeds.** The ordinary default of
+  30 would silently truncate a longer target list.
+
+The rows are filtered by the caller's organization. A crawl carries one `org_id`,
+so mixing another organization's targets into it would leave attribution
+unanswerable. A caller with no enabled targets gets **400**, not an empty crawl —
+`crawls.seeds` has a `CHECK (array_length(seeds, 1) >= 1)` and a seedless crawl
+could never start.
+
+:::note[`fromTargets` always ends in `max_depth`]
+Depth 0 means the first level is also the last, so `stopReason` is `max_depth`
+every time. That is not a fault — it is the shape of the request.
+:::
+
+Two consequences of folding runs into crawls, worth knowing before the first
+scheduled one:
+
+- **The daily sweep is now paced.** The old run submitted every target at once;
+  a crawl honours `perHostDelayMs` and `hostParallelism` like any other. Kinder
+  to the other end, and slower.
+- **Pages from the target list now reach full-text search**, because they are
+  `crawl_pages` rows and the search index joins through them.
+
+### One crawl at a time
+
+A second crawl started while one is running gets **409**, and the guarantee is a
+partial unique index rather than an application flag:
 
 ```sql
-CREATE UNIQUE INDEX runs_single_active_idx ON runs ((true)) WHERE state = 'running'
+CREATE UNIQUE INDEX crawls_single_active_idx ON crawls ((true)) WHERE state = 'running'
 ```
 
-A flag in the process would hold only until the day a second process appears.
-Postgres holds it regardless. The route's only job is to translate the constraint
-violation into a 409.
+The reason is politeness. Per-host spacing is enforced inside one flow run, and
+two crawls cannot see each other's timing, so the same host would quietly be hit
+at twice the rate. A flag in the process would hold only until the day a second
+process appears; Postgres holds it regardless. The route's only job is to
+translate the constraint violation into a 409.
 
-:::caution[The CLI is not covered by this]
-`pnpm run capture` runs in its own process and never inserts a `runs` row, so the
-index above does not see it. The two do not corrupt each other — the gRPC channel
-is module state, which is per-process, so each entry point has its own. What they
-do instead is **submit the same targets twice**: both read the enabled rows of
-`capture_targets`, so a URL in both selections is captured twice, billed twice,
-and stored twice. Measured: an API run of 5 and a concurrent `--limit 1` CLI run
-put two `capture_submissions` rows on the same URL 2.3 seconds apart.
+:::caution[The daily crawl and a manual one now block each other]
+There used to be two constraints — one for runs, one for crawls — and a scheduled
+run could start while someone was crawling by hand. There is one now, so it
+cannot. **This is right on the politeness argument** (both would hit the same
+hosts), but the practical cost is that a scheduled crawl is skipped more often
+than a scheduled run used to be.
 
-Making the channel request-scoped would not close this — the overlap is across
-processes, and a per-process channel is already what they have. Closing it means
-giving the CLI a `runs` row too, so the same index covers both. Until then, treat
-the two entry points as mutually exclusive by operational convention.
-
-A process that dies mid-run also leaves its row `running`, which blocks the next
+A crawl whose dispatch dies also leaves its row `running`, which blocks the next
 one. `GET` returns `startedAt` so you can judge; clearing it is a manual act.
 :::
 
 ### What a caller may send
 
-The body accepts `limit` and nothing else — an unknown key is **400**, not
-silently dropped. Capture formats are deliberately not accepted from the caller:
-they are part of what this deployment does, so they come from the environment.
+Exactly one of `seeds` (a non-empty array) or `fromTargets` — **both is 400 and
+neither is 400**, with the two reported differently, because they are different
+mistakes. Alongside them: `scope`, `maxDepth`, `maxPages`, `perHostDelayMs`,
+`hostParallelism`. An unknown key is **400**, not silently dropped.
+
+Capture formats are deliberately not accepted from the caller: they are part of
+what this deployment does, so they come from the environment.
 
 ```sh
-WAGGLE_API_RUN_FORMATS=wacz   # comma separated: png,webp,html,links,mhtml,wacz
-WAGGLE_API_RUN_SIGNING=1      # require a wacz-auth signature; needs wacz
+WAGGLE_CAPTURE_FORMATS=wacz   # comma separated: png,webp,html,links,mhtml,wacz
+WAGGLE_CAPTURE_SIGNING=1      # require a wacz-auth signature; needs wacz
 ```
 
 Both are read and checked **at startup**, so a misspelling stops the server with
-the bad value named. Read per-run instead, a typo would surface as a scheduled
-run failing at 3am with "no capture format enabled" — a message that never
-mentions the setting that caused it.
+the bad value named. Read per-crawl instead, a typo would surface as a scheduled
+crawl failing at 3am with "no capture format enabled" — a message that never
+mentions the setting that caused it. See
+[Capture options](/waggle/capture-options/).
 
 ### Who calls this
 
 Nothing in waggle does. The scheduler lives in its own repo —
 [forage](https://github.com/uraitakahito/forage) — which runs a Windmill instance
-whose only job is to call this endpoint on a cron.
+whose only job is to call this endpoint on a cron (`trigger_crawl.ts`). The same
+Windmill also runs the flow that does the capturing, which waggle reaches through
+`WAGGLE_CRAWL_WEBHOOK_URL`.
 
 The split is deliberate: **forage decides when, waggle decides what.** That is
-why the body takes no capture formats, and why a run submits whatever
+why the body takes no capture formats, and why `fromTargets` submits whatever
 `capture_targets` says rather than a list the caller supplies.
 
 Two things a caller has to get right, and forage's script exists to encode them:
 
-- **409 is not a failure.** It means a run is already going. Retrying cannot
-  help — the answer stays the same until that run ends.
-- **202 is not the end.** A run that fails still answered 202. Anything that
+- **409 is not a failure.** It means a crawl is already going. Retrying cannot
+  help — the answer stays the same until that crawl ends.
+- **202 is not the end.** A crawl that fails still answered 202. Anything that
   stops at the 202 reports success for failed captures.
 
 Running with a scheduler means running with a JWT, and that has a cost worth
@@ -264,19 +303,21 @@ never stored. **What you may do** is OpenFGA's, so it is. `grant` refuses to
 write `member` for exactly this reason: two homes for one fact means no answer
 when they disagree.
 
-Note that one grant is enough to start a run, and a run submits every enabled
-target across all organizations. Grant `submitter` only to someone you would
-trust with all of them.
+One grant is enough to start a crawl. The crawl is attributed to the **first**
+organization on the caller's identity, and `fromTargets` reads only that
+organization's rows — so a `submitter` cannot pull another tenant's targets into
+a crawl of their own.
 
 ## Following links
 
-`POST /api/crawls` takes a seed and walks the links out from it. Windmill runs the
-walking; waggle decides what is in scope, what has been seen, and when to stop.
+The same endpoint, with a depth above 0, walks the links out from its seeds.
+Windmill runs the walking; waggle decides what is in scope, what has been seen,
+and when to stop.
 
 ```sh
 curl -X POST http://localhost:7070/api/crawls \
      -H 'content-type: application/json' \
-     -d '{"seed":"https://example.com/","maxDepth":2,"perHostDelayMs":2000}'
+     -d '{"seeds":["https://example.com/"],"maxDepth":2,"perHostDelayMs":2000}'
 # → 202 { "crawlId": "9072b625-…" }
 
 curl http://localhost:7070/api/crawls/9072b625-…
@@ -323,13 +364,6 @@ Every gap must be at least `per_host_delay_ms`, and none may be negative. A nega
 gap means two captures on one host overlapped. Both failures look exactly like "it
 ran fast" without the timestamps.
 :::
-
-### One crawl at a time
-
-A second crawl started while one is running gets **409**, held by a partial unique
-index the same way runs are. The reason differs: the pacing above is enforced inside
-one flow run, and two crawls cannot see each other's timing, so the same host would
-quietly be hit at twice the rate.
 
 ### Where it stops, and why
 
@@ -475,28 +509,20 @@ curl -X POST http://localhost:7070/api/archives/<id>/url \
 Anyone who can reach the port can claim to be anyone. It refuses to run unless
 switched on explicitly, and the server warns loudly at startup.
 
-The CLI carries the same identity by a different route. There are no headers to
-read there, so it takes two environment variables, `WAGGLE_DEV_SUBJECT` and
-`WAGGLE_DEV_ORGANIZATIONS` (written into `.env` by `setup.sh`):
+**The API is now the only route in.** There used to be a second one for the CLI,
+which read `WAGGLE_DEV_SUBJECT` and `WAGGLE_DEV_ORGANIZATIONS` from `.env`
+instead of headers. Both variables went with it — they are no longer declared in
+`.env.example`, and `setup.sh` no longer writes them.
 
-```sh
-WAGGLE_DEV_SUBJECT=bob WAGGLE_DEV_ORGANIZATIONS=acme pnpm run capture --wacz
-```
+What the identity is _for_ has not changed: it becomes
+`capture_submissions.submitted_by` and the `owner` tuple on the `capture_job`,
+and while those are empty **not even the person who asked for the archive can
+delete it** (`can_delete` reads `owner from parent` and nothing else).
 
-Nothing is verified here either — editing `.env` is enough to become anyone. It
-is there because this is what becomes `capture_submissions.submitted_by` and the
-`owner` tuple on the `capture_job`, and while those are empty **not even the
-person who asked for the archive can delete it** (`can_delete` reads
-`owner from parent` and nothing else).
-
-There is no CLI equivalent of the API's `WAGGLE_DEV_IDENTITY=1` switch: the CLI
-refuses to start when the variables are unset. The API opens a port, so its
-default is to deny; the CLI is a tool you run yourself, and there the dangerous
-default is the other one — passing silently with an empty subject and writing a
-record that lies.
-
-Both routes end at one function in `src/config/identity.ts`. That is the only
-thing an identity provider replaces; callers see nothing but the `Identity` type.
+Every route ends at one place — `src/api/identity.ts` picking a resolver, and
+`src/config/identity.ts` turning verified claims into an `Identity`. That is the
+only thing an identity provider replaces; callers see nothing but the `Identity`
+type.
 
 Membership is **not** stored in OpenFGA. It is passed per request as a
 contextual tuple built from the caller's identity, so joining or leaving an
@@ -598,7 +624,7 @@ that switch deliberate.
 ## Setup
 
 ```sh
-./setup.sh                    # writes .env from .env.example (25 variables)
+./setup.sh                    # writes .env from .env.example (35 variables)
 container-compose up -d -b
 pnpm run fga:migrate          # OpenFGA's schema (see below)
 pnpm run db:migrate
