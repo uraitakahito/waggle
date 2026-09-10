@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { registerCrawlRoutes, type CrawlRouteDeps } from "../src/api/crawls.js";
+import { parseCaptureFormats } from "../src/config/capture-formats.js";
 
 /**
  * クロールを起こす口の検査。
@@ -165,6 +166,9 @@ const depsWith = (opts: {
     fga: { check: async () => Promise.resolve({ allowed: opts.allowed }) },
     resolveIdentity: () => Promise.resolve({ subject: "alice", organizations: ["acme"] }),
     dispatch: opts.dispatch ?? (() => Promise.resolve()),
+    // **本物の設定を使う。** 手書きの literal だと、`capture-formats.ts` が
+    // 6 つ全部を返す約束を破っても、この試験は気づかない。
+    capture: parseCaptureFormats("wacz", false),
   }) as unknown as CrawlRouteDeps;
 
 describe("クロール route の認可と単一実行", () => {

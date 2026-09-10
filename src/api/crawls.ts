@@ -38,6 +38,7 @@ import { acceptLinks, parseHttpUrl, type DiscoveredLink } from "../crawl/scope.j
 import { planNextLevel } from "../crawl/budget.js";
 import { getJsonObject } from "../archive/s3.js";
 import { isUniqueViolation, maySubmit, unauthorized } from "./authorization.js";
+import { withLinks, type CaptureFormats, type CaptureSettings } from "../config/capture-formats.js";
 import { createChildLogger } from "../logger.js";
 
 const log = createChildLogger({ module: "api" });
@@ -84,9 +85,20 @@ export interface DispatchedCrawl {
   frontier: { url: string; host: string; lastFinishedAt: string | null }[];
   perHostDelayMs: number;
   hostParallelism: number;
+  /**
+   * 取り込む形式と署名。**必ず載せる。**
+   *
+   * flow の schema の既定値には頼れない —— Windmill は webhook 起動のとき
+   * 既定値を埋めないので、送らなければ `undefined` が届く (実測)。決めるのは
+   * 依然として waggle 側で、flow は言われたとおりに投げる。
+   */
+  captureFormats: CaptureFormats;
+  signing: boolean;
 }
 
 export interface CrawlRouteDeps {
+  /** 取り込む形式と署名。起動時に env から解釈したもの (`config/capture-formats.ts`)。 */
+  capture: CaptureSettings;
   db: Kysely<Database>;
   fga: OpenFgaClient;
   /**
@@ -129,7 +141,7 @@ interface LevelBody {
 }
 
 export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps): void => {
-  const { db, fga, resolveIdentity, dispatch } = deps;
+  const { db, fga, resolveIdentity, dispatch, capture } = deps;
 
   /**
    * クロールを 1 本起こす。
@@ -221,6 +233,9 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         frontier: [{ url: seed.normalized, host: seed.host, lastFinishedAt: null }],
         perHostDelayMs: crawl.perHostDelayMs,
         hostParallelism: crawl.hostParallelism,
+        // 辿るつもりが無いなら `links` は要らない。取り出させても相手と S3 に無駄が出る。
+        captureFormats: withLinks(capture.formats, crawl.maxDepth > 0),
+        signing: capture.signing,
       }).catch(async (err: unknown) => {
         log.error({ err, crawlId }, "Could not dispatch the crawl");
         await db
@@ -524,6 +539,8 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           })),
           perHostDelayMs: crawl.perHostDelayMs,
           hostParallelism: crawl.hostParallelism,
+          captureFormats: withLinks(capture.formats, crawl.maxDepth > nextDepth),
+          signing: capture.signing,
         }).catch(async (err: unknown) => {
           log.error({ err, crawlId, depth: nextDepth }, "Could not dispatch the next level");
           await db

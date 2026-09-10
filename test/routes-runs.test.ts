@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
-import { parseRunFormats, registerRunRoutes, type RunRouteDeps } from "../src/api/runs.js";
+import { registerRunRoutes, type RunRouteDeps } from "../src/api/runs.js";
 import type { SubmitResult } from "../src/client/submit.js";
 
 /**
@@ -328,34 +328,5 @@ describe("実行 route の認可と単一実行", () => {
 
     expect(res.statusCode).toBe(404);
     await app.close();
-  });
-});
-
-describe("実行の形式設定", () => {
-  it("turns a comma separated list into capture flags", () => {
-    expect(parseRunFormats("wacz,png", false)).toEqual({ wacz: true, png: true });
-  });
-
-  it("tolerates spacing and case", () => {
-    expect(parseRunFormats(" WACZ , Html ", false)).toEqual({ wacz: true, html: true });
-  });
-
-  it("names the misspelling instead of silently dropping it", () => {
-    // 黙って落とすと、綴りを間違えた形式は「取れていない」としてしか現れない ——
-    // しかも server が返すのは「形式が 1 つも無い」で、env の値には触れない。
-    expect(() => parseRunFormats("waxz", false)).toThrow(/waxz/);
-  });
-
-  it("refuses an empty setting", () => {
-    expect(() => parseRunFormats("", false)).toThrow(/empty/);
-  });
-
-  it("refuses signing without wacz", () => {
-    // CLI では parseClientOptions が同じことを言う。HTTP 経路はそこを通らない。
-    expect(() => parseRunFormats("png", true)).toThrow(/wacz/);
-  });
-
-  it("adds signing when wacz is present", () => {
-    expect(parseRunFormats("wacz", true)).toEqual({ wacz: true, signing: true });
   });
 });

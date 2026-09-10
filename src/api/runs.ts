@@ -41,57 +41,6 @@ import { createChildLogger } from "../logger.js";
 const log = createChildLogger({ module: "api" });
 
 /**
- * この配備が取り込む形式。**env から決める。**
- *
- * 呼び出し元 (body) からは受けない。境界の取り決めが「外は *いつ* を決め、waggle が
- * *何を どう* 投げるかを決める」であり、形式は後者だから。加えて CLI 側の検査
- * (`--signing` は `--wacz` を要る) は `parseClientOptions` の中に住んでいて HTTP
- * 経路では走らないので、body から受けるならその検査を切り出す必要がある。
- *
- * 既定は `wacz` —— このパイプラインが作るのは再生できるアーカイブで、他の形式は
- * その付随物。1 つも選ばれていない設定は server が `INVALID_ARGUMENT` で弾くので、
- * 「形式なし」は既定になり得ない。
- */
-const KNOWN_FORMATS = ["png", "webp", "html", "links", "mhtml", "wacz"] as const;
-type RunFormat = (typeof KNOWN_FORMATS)[number];
-
-const isKnownFormat = (value: string): value is RunFormat =>
-  (KNOWN_FORMATS as readonly string[]).includes(value);
-
-/**
- * `WAGGLE_API_RUN_FORMATS` を読む。**起動時に呼ぶこと。**
- *
- * 綴りの誤りをここで落とすためにある。実行のたびに解釈すると、`waxz` のような
- * 打ち間違いは夜中の定期実行が失敗して初めて見つかる —— しかも server が返すのは
- * 「形式が 1 つも無い」で、env の値には一言も触れない。
- */
-export const parseRunFormats = (raw: string, signing: boolean): Partial<ClientOptions> => {
-  const names = raw
-    .split(",")
-    .map((name) => name.trim().toLowerCase())
-    .filter((name) => name !== "");
-
-  const unknown = names.filter((name) => !isKnownFormat(name));
-  if (unknown.length > 0) {
-    throw new Error(
-      `WAGGLE_API_RUN_FORMATS has unknown formats: ${unknown.join(", ")} ` +
-        `(known: ${KNOWN_FORMATS.join(", ")})`,
-    );
-  }
-  if (names.length === 0) {
-    throw new Error("WAGGLE_API_RUN_FORMATS is empty: at least one capture format is required");
-  }
-  // CLI では `parseClientOptions` が同じことを言う。HTTP 経路はそこを通らないので、
-  // ここが唯一この検査の在る場所。
-  if (signing && !names.includes("wacz")) {
-    throw new Error("WAGGLE_API_RUN_SIGNING requires wacz in WAGGLE_API_RUN_FORMATS");
-  }
-
-  const formats = Object.fromEntries(names.map((name) => [name, true]));
-  return { ...formats, ...(signing ? { signing: true } : {}) };
-};
-
-/**
  * 実行を起こす関数。既定は `runClient` で、試験だけが差し替える。
  *
  * 注入できるのは、この route の試験が「走行中に 2 本目を投げると 409」を見るため ——

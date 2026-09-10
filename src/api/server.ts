@@ -17,7 +17,8 @@ import { createS3Client } from "../archive/s3.js";
 import { resolveIdentityResolver } from "./identity.js";
 import { registerRoutes } from "./routes.js";
 import { registerPicker, replayOriginFromEnv } from "./picker.js";
-import { parseRunFormats, registerRunRoutes } from "./runs.js";
+import { registerRunRoutes } from "./runs.js";
+import { parseCaptureFormats } from "../config/capture-formats.js";
 import { registerCrawlRoutes } from "./crawls.js";
 import { registerSearchRoutes } from "./search.js";
 import { createSearchClient } from "../search/client.js";
@@ -39,7 +40,7 @@ const DEFAULT_HOST = "127.0.0.1";
  * 取らない) ので、ここが唯一の既定。`wacz` なのは、このパイプラインが作るのが
  * 再生できるアーカイブだから。
  */
-const DEFAULT_RUN_FORMATS = "wacz";
+const DEFAULT_CAPTURE_FORMATS = "wacz";
 
 interface ServerOptions {
   databaseUrl: string;
@@ -105,18 +106,23 @@ const start = async (options: ServerOptions): Promise<void> => {
   registerPicker(app, replayOriginFromEnv());
   // 実行を起こす口。取り込みの身元は今までどおり環境から来るので、ここでは渡さない
   // (`api/runs.ts` の冒頭を見ること)。渡すのは「どこの DB を読むか」だけ。
+  // **形式は起動時に 1 回だけ解釈する。** run の口とクロールの口で同じ設定を使うので、
+  // 2 度読むと片方だけ古い env を掴む余地ができる。
+  const capture = parseCaptureFormats(
+    optional("WAGGLE_CAPTURE_FORMATS", DEFAULT_CAPTURE_FORMATS),
+    optional("WAGGLE_CAPTURE_SIGNING", "") === "1",
+  );
+
   registerRunRoutes(app, {
     db,
     fga,
     resolveIdentity,
     launch: runClient,
-    // **起動時に解釈する。** 綴りの誤りをここで落とすため (`parseRunFormats` を見ること)。
+    // **起動時に解釈する。** 綴りの誤りをここで落とすため (`parseCaptureFormats` を見ること)。
     baseOptions: {
       databaseUrl: options.databaseUrl,
-      ...parseRunFormats(
-        optional("WAGGLE_API_RUN_FORMATS", DEFAULT_RUN_FORMATS),
-        optional("WAGGLE_API_RUN_SIGNING", "") === "1",
-      ),
+      ...capture.formats,
+      ...(capture.signing ? { signing: true } : {}),
     },
   });
 
@@ -130,7 +136,15 @@ const start = async (options: ServerOptions): Promise<void> => {
   if (dispatch === undefined) {
     logger.info("WAGGLE_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
   } else {
-    registerCrawlRoutes(app, { db, fga, s3, bucket: storage.bucket, resolveIdentity, dispatch });
+    registerCrawlRoutes(app, {
+      db,
+      fga,
+      s3,
+      bucket: storage.bucket,
+      resolveIdentity,
+      dispatch,
+      capture,
+    });
   }
 
   // 全文検索の口。クロールと同じ形 —— 設定が無ければ出さない。索引を持たない配備が
