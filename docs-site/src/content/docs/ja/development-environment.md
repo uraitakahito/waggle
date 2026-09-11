@@ -254,29 +254,29 @@ API は `identityFromClaims` を通してそこを読みます。
 
 ### 自分の持ち物をクロールする
 
-スタックには取り込み対象のフィクスチャ [meadow](https://github.com/uraitakahito/meadow) が
+スタックには取り込み対象のフィクスチャ [fixtures](https://github.com/uraitakahito/fixtures) が
 profile 付きで入っている。見知らぬサイトに向けずにクロールを試せる:
 
 ```sh
-pnpm run stack:up --profile meadow
+pnpm run stack:up --profile capture-fixtures
 ```
 
-port は publish していない。`meadow.waggle:8080` はコンテナからも host からも引ける。
+port は publish していない。`capture-fixtures.waggle:8080` はコンテナからも host からも引ける。
 種にするのは `/links/hub` —— `/links/*` はどれもそのページを 1 か所だけ変えたもので、
 それが「誤った規則を適用しているクローラ」と「単に壊れているクローラ」を分ける。
 
-meadow はリクエストログも持っていて、**それを使うことがこのフィクスチャの要点**:
+fixtures はリクエストログも持っていて、**それを使うことがこのフィクスチャの要点**:
 
 ```sh
-curl -s http://meadow.waggle:8080/__request-counts
+curl -s http://capture-fixtures.waggle:8080/__request-counts
 ```
 
 `crawl_pages` が言うのは waggle が**記録した**こと、ログが言うのはフィクスチャが
 **実際に要求された**こと。「robots を尊重した」は後者でしか決着しない —— 台帳に無い
 ページは、取りに行かなかったのか、取りに行って捨てたのか、台帳からは区別できない。
 
-meadow は `.upstream/browserhive` 経由ではなく `.upstream/meadow` に**直接** vendor して
-いる。あちらが抱える meadow はずっと古く、2 つの pin は別々の都合で動くので、
+fixtures は `.upstream/browserhive` 経由ではなく `.upstream/fixtures` に**直接** vendor して
+いる。あちらが抱える fixtures はずっと古く、2 つの pin は別々の都合で動くので、
 どちらももう一方を待つ理由が無い。
 
 ### 署名を試す

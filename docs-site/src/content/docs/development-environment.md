@@ -262,23 +262,23 @@ which the API reads through `identityFromClaims`.
 
 ### Crawling something you control
 
-The stack ships a fixture origin — [meadow](https://github.com/uraitakahito/meadow) —
+The stack ships a fixture origin — [fixtures](https://github.com/uraitakahito/fixtures) —
 behind a profile, so a crawl can be exercised without pointing it at a stranger's
 site:
 
 ```sh
-pnpm run stack:up --profile meadow
+pnpm run stack:up --profile capture-fixtures
 ```
 
-It publishes no port; `meadow.waggle:8080` resolves from containers and from the
+It publishes no port; `capture-fixtures.waggle:8080` resolves from containers and from the
 host alike. `/links/hub` is the seed to use — every `/links/*` page is that page
 with exactly one thing changed, which is what lets a crawler applying the wrong
 rule be told apart from one that is simply broken.
 
-meadow also keeps a request log, and that is the point of using it:
+fixtures also keeps a request log, and that is the point of using it:
 
 ```sh
-curl -s http://meadow.waggle:8080/__request-counts
+curl -s http://capture-fixtures.waggle:8080/__request-counts
 ```
 
 `crawl_pages` says what waggle _recorded_; the log says what the fixture was
@@ -286,7 +286,7 @@ _actually asked for_. "The crawler honoured robots" is a claim only the second o
 can settle — a page missing from the ledger might never have been fetched, or might
 have been fetched and dropped.
 
-meadow is vendored directly at `.upstream/meadow` rather than through
+fixtures is vendored directly at `.upstream/fixtures` rather than through
 `.upstream/browserhive`, which carries its own much older copy. The two pins move
 for different reasons and neither should wait on the other.
 
