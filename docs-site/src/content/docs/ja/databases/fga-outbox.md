@@ -4,7 +4,7 @@ description: OpenFGA へ送る予定のタプルを溜める箱。2 つのスト
 ---
 
 **OpenFGA へ「送る予定」の tuple を溜める箱**です。名前に `fga` と付きますが
-**waggle 側のテーブル**で、OpenFGA のものではありません。
+**capture-ledger 側のテーブル**で、OpenFGA のものではありません。
 
 ```ts file="src/db/migrations/003-create-fga-outbox.ts#fga-outbox-columns"
 

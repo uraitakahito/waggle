@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How waggle, Postgres, BrowserHive and the artifact store fit together.
+description: How capture-ledger, Postgres, BrowserHive and the artifact store fit together.
 ---
 
 ## Stage 0 — where the project is today
@@ -9,13 +9,13 @@ description: How waggle, Postgres, BrowserHive and the artifact store fit togeth
 flowchart LR
   U((caller)) -->|"POST /api/crawls"| W
   PG[("Postgres<br/>capture_targets / crawls / crawl_pages")] <--> W
-  subgraph W["waggle (Node 24 / TypeScript)"]
+  subgraph W["capture-ledger (Node 24 / TypeScript)"]
     direction TB
     API["api/crawls.ts<br/>scope, dedup, budget"]
     DIS["crawl/dispatch.ts<br/>one webhook POST"]
     API --> DIS
   end
-  DIS -->|"webhook + token"| WM["Windmill flow<br/>(forage)"]
+  DIS -->|"webhook + token"| WM["Windmill flow<br/>(capture-scheduler)"]
   WM -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]
@@ -29,16 +29,16 @@ flowchart LR
 
 ## From submission to outcome
 
-**waggle does not speak gRPC to BrowserHive any more.** The Windmill flow
-submits, waits, and reports; waggle plans the next level and records what
-happened. There is no BrowserHive address in waggle's configuration at all.
+**capture-ledger does not speak gRPC to BrowserHive any more.** The Windmill flow
+submits, waits, and reports; capture-ledger plans the next level and records what
+happened. There is no BrowserHive address in capture-ledger's configuration at all.
 
 One level is one round trip. The flow captures the URLs it was handed and posts
-`POST /api/crawls/:id/pages` with a `taskId` and a status per page. waggle writes
+`POST /api/crawls/:id/pages` with a `taskId` and a status per page. capture-ledger writes
 `crawl_pages`, attributes the submissions, filters the discovered links, applies
 the budget, and answers with the next level — or with a `stopReason`.
 
-The level report does **not** carry artifact locations, so waggle re-reads the
+The level report does **not** carry artifact locations, so capture-ledger re-reads the
 `{taskId}_{correlationId}[_{labels}].result.json` manifest BrowserHive writes
 next to the artifacts. That file survives a BrowserHive restart and outlives the
 server's bounded result cache, which is what makes it usable here.
@@ -48,7 +48,7 @@ Consequences worth knowing:
 - **A page reported `failed` may still have produced an archive.** If the result
   aged out of BrowserHive's cache while the flow was waiting, the flow sees
   `NOT_FOUND` and reports a failure — but the manifest is in the bucket, so
-  waggle admits it anyway and corrects the `crawl_pages` row.
+  capture-ledger admits it anyway and corrects the `crawl_pages` row.
 - A manifest that is not there yet is skipped rather than raised. Throwing would
   turn a late write into a 500 on the level report, stopping the crawl; the
   reconciler picks it up instead.
@@ -57,14 +57,14 @@ Consequences worth knowing:
 
 ## The ledger and authorization
 
-The diagram above stops at **submitting**. Once a capture finishes, waggle puts
+The diagram above stops at **submitting**. Once a capture finishes, capture-ledger puts
 the result in the ledger and hands out signed URLs only to those allowed to read
 it. That is where OpenFGA comes in.
 
 ```mermaid
 flowchart LR
   S3[(SeaweedFS<br/>bucket: browserhive)]
-  subgraph W["waggle"]
+  subgraph W["capture-ledger"]
     direction TB
     REG["crawl/admit-level.ts<br/>admit what a level captured"]
     RC["reconcile.ts<br/>sweep the bucket, fill the gaps"]
@@ -90,17 +90,17 @@ How to read it:
 - **`archives` and `fga_outbox` are written in one transaction.** No transaction
   spans Postgres and OpenFGA, so the tuple goes into the same box as an intent to
   send, and `outbox-worker` retries until OpenFGA accepts it.
-- **OpenFGA has a Postgres of its own.** Not sharing waggle's makes the boundary
+- **OpenFGA has a Postgres of its own.** Not sharing capture-ledger's makes the boundary
   visible: a tuple write cannot join the application transaction — which is
   exactly why the outbox exists.
 - **Membership is not stored.** Which organizations a caller belongs to arrives
   from their token and is passed as a contextual tuple on every Check.
 - Two paths lead into the ledger: a **crawl** admitting what a level captured
   (fast, `src/crawl/admit-level.ts`), and `reconcile` sweeping the bucket (picks
-  up whatever landed while waggle was down). Both go through `admitArchive`, and
+  up whatever landed while capture-ledger was down). Both go through `admitArchive`, and
   `(bucket, object_key)` is unique, so reaching the same capture twice is a no-op.
 
-See [Archive ledger](/waggle/archive-ledger/) for the details.
+See [Archive ledger](/capture-ledger/archive-ledger/) for the details.
 
 ## Module layout
 
@@ -109,7 +109,7 @@ See [Archive ledger](/waggle/archive-ledger/) for the details.
 | `src/api/server.ts`             | The only entry point. Reads the capture settings once, registers the routes, drains the outbox on a timer. |
 | `src/api/crawls.ts`             | Start a crawl, report a level, hand back the next one. Authorization, policy, and record-keeping.          |
 | `src/crawl/`                    | Scope, budget, level admission, and the Windmill dispatch.                                                 |
-| `src/config/capture-formats.ts` | `WAGGLE_CAPTURE_FORMATS` / `_SIGNING` → the `captureFormats` every dispatch carries.                       |
+| `src/config/capture-formats.ts` | `CAPTURE_LEDGER_CAPTURE_FORMATS` / `_SIGNING` → the `captureFormats` every dispatch carries.               |
 | `src/data/url-source.ts`        | The one SQL query over `capture_targets`. Returns `{ url }[]` for the organization asking.                 |
 | `src/archive/`                  | Manifests, admission into the ledger, and the reconciler.                                                  |
 | `src/rpc/generated/`            | Types only, from the vendored `.proto` — the manifest is a `CaptureResultReport`. Never edited by hand.    |
@@ -118,7 +118,7 @@ See [Archive ledger](/waggle/archive-ledger/) for the details.
 ## Error handling
 
 Telling a rejection apart from an outage is the flow's job now — it is the side
-holding the gRPC channel. waggle's half is what happens to the `crawls` row.
+holding the gRPC channel. capture-ledger's half is what happens to the `crawls` row.
 
 A dispatch that cannot be delivered closes the row as `failed` with the message
 on it. **It is never left `running`**: the partial unique index means an unclosed
@@ -134,17 +134,17 @@ unchanged: those are written for the caller.
 ## Network layout
 
 The stack runs on Apple Container. The project name is the DNS domain, so every
-service is `<service>.waggle` — resolvable between containers **and from the
-host**, which is why waggle itself needs no container.
+service is `<service>.capture-ledger` — resolvable between containers **and from the
+host**, which is why capture-ledger itself needs no container.
 
-| Service     | DNS name             | Container port     | Host port         |
-| ----------- | -------------------- | ------------------ | ----------------- |
-| postgres    | `postgres.waggle`    | 5432               | 5432              |
-| seaweedfs   | `seaweedfs.waggle`   | 8333 / 8888 / 9333 | — (internal only) |
-| chromium-1  | `chromium-1.waggle`  | 9222 (CDP)         | 9222              |
-| chromium-2  | `chromium-2.waggle`  | 9222 (CDP)         | 9223              |
-| browserhive | `browserhive.waggle` | 50051 (gRPC)       | 50051             |
-| waggle      | — (runs on the host) | —                  | —                 |
+| Service        | DNS name                     | Container port     | Host port         |
+| -------------- | ---------------------------- | ------------------ | ----------------- |
+| postgres       | `postgres.capture-ledger`    | 5432               | 5432              |
+| seaweedfs      | `seaweedfs.capture-ledger`   | 8333 / 8888 / 9333 | — (internal only) |
+| chromium-1     | `chromium-1.capture-ledger`  | 9222 (CDP)         | 9222              |
+| chromium-2     | `chromium-2.capture-ledger`  | 9222 (CDP)         | 9223              |
+| browserhive    | `browserhive.capture-ledger` | 50051 (gRPC)       | 50051             |
+| capture-ledger | — (runs on the host)         | —                  | —                 |
 
 There is one compose file. The one-shot migrate/seed jobs are not services:
 `scripts/prod-smoke.sh` invokes them with `container run --rm`, because
@@ -159,6 +159,6 @@ until the S3 listener answers before starting the server, because the boot
 
 ## Upstream pinning
 
-waggle tracks a fixed BrowserHive version through one submodule pointer — see
-[Upgrading BrowserHive](/waggle/upgrading-browserhive/), which reads the current
+capture-ledger tracks a fixed BrowserHive version through one submodule pointer — see
+[Upgrading BrowserHive](/capture-ledger/upgrading-browserhive/), which reads the current
 value out of the repository rather than restating it.

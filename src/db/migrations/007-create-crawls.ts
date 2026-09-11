@@ -44,7 +44,7 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn("max_pages", "integer", (col) => col.notNull())
     // 同じホストへ、完了から次の投入まで空ける時間。**投入間隔ではない** ——
     // browserhive のキューに上限が無いので、投入を間引いても意味がない
-    // (`008` と forage の crawl_host.ts に詳しい)。
+    // (`008` と capture-scheduler の crawl_host.ts に詳しい)。
     .addColumn("per_host_delay_ms", "integer", (col) => col.notNull())
     // 同時に触ってよいホストの数。flow の for-loop の parallelism になる。
     .addColumn("host_parallelism", "integer", (col) => col.notNull())

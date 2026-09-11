@@ -6,7 +6,7 @@
  * (up / down / build / version) —— サービスとして表現する方法が無い。`openfga` の
  * イメージは distroless なので、seaweedfs のように entrypoint で shell の再試行
  * ループを回すこともできない。だから `container run` で呼ぶ形でここに置いている。
- * waxlens が 1 回きりのイメージを動かしているのと同じやり方。
+ * wacz-validator が 1 回きりのイメージを動かしているのと同じやり方。
  *
  * これが成功するまで、`openfga` サービスはすべてのリクエストに 500 を返す
  * (/healthz も含む) —— migration していないデータベースに対しても起動自体は
@@ -20,10 +20,10 @@ import { guardEnv, optional } from "./env.mjs";
 
 guardEnv();
 
-const IMAGE = optional("WAGGLE_FGA_IMAGE", "docker.io/openfga/openfga:v1.10.2");
+const IMAGE = optional("CAPTURE_LEDGER_FGA_IMAGE", "docker.io/openfga/openfga:v1.10.2");
 const URI = optional(
-  "WAGGLE_FGA_DATASTORE_URI",
-  "postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable",
+  "CAPTURE_LEDGER_FGA_DATASTORE_URI",
+  "postgres://openfga:openfga@openfga-db.capture-ledger:5432/openfga?sslmode=disable",
 );
 
 /** 試行回数 × 間隔で、まだ initdb 中の冷えた `openfga-db` を待ち切れるようにする。 */

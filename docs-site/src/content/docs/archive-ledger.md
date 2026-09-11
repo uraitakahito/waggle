@@ -1,18 +1,18 @@
 ---
 title: Archive ledger
-description: How waggle records which WACZ exists, who may read it, and how it hands out signed URLs without ever giving away a bucket credential
+description: How capture-ledger records which WACZ exists, who may read it, and how it hands out signed URLs without ever giving away a bucket credential
 ---
 
-waggle keeps a **ledger** of the archives BrowserHive produced, and issues
+capture-ledger keeps a **ledger** of the archives BrowserHive produced, and issues
 short-lived signed URLs for them to callers who are allowed to read them.
 
 The parts:
 
-|              | Holds                                        | Where             |
-| ------------ | -------------------------------------------- | ----------------- |
-| `archives`   | Where each WACZ is — bucket, key, provenance | waggle's Postgres |
-| OpenFGA      | Who may read what, as relationships          | its own Postgres  |
-| `fga_outbox` | Tuples waiting to be delivered to OpenFGA    | waggle's Postgres |
+|              | Holds                                        | Where                     |
+| ------------ | -------------------------------------------- | ------------------------- |
+| `archives`   | Where each WACZ is — bucket, key, provenance | capture-ledger's Postgres |
+| OpenFGA      | Who may read what, as relationships          | its own Postgres          |
+| `fga_outbox` | Tuples waiting to be delivered to OpenFGA    | capture-ledger's Postgres |
 
 There is deliberately no owner column on `archives`. Who may read an archive is
 a relationship, and keeping a second copy of that answer next to the first is
@@ -43,7 +43,7 @@ in that case, or the new tuples would be lost silently.
 ## Filling the ledger
 
 Two paths, on purpose. (There used to be a third — the CLI polled `GetCapture`
-for each capture it had submitted. Both the CLI and waggle's gRPC client are
+for each capture it had submitted. Both the CLI and capture-ledger's gRPC client are
 gone; the Windmill flow submits now.)
 
 **Crawling** — a crawl registers what it captured as soon as the flow reports a
@@ -53,7 +53,7 @@ path: a page is in the ledger within one round trip of being taken.
 
 **Reconciling** — `pnpm run fga:reconcile` walks the `.result.json` manifests
 BrowserHive writes next to every capture's artifacts and registers anything the
-ledger is missing. This is what makes the ledger self-healing: waggle can be
+ledger is missing. This is what makes the ledger self-healing: capture-ledger can be
 down for hours, or a manifest can be written after the level closed, and the
 next reconcile still picks it up.
 
@@ -107,7 +107,7 @@ and corrects the `crawl_pages` row when the manifest says the capture succeeded.
 ### Attribution
 
 A manifest says nothing about organizations; BrowserHive has no such concept.
-So `waggle` writes a `capture_submissions` row (task id → organization) when the
+So `capture-ledger` writes a `capture_submissions` row (task id → organization) when the
 level is reported, and the reconciler reads it back. That row is written for
 every page carrying a task id — including the ones reported as failures, for the
 reason just above. Encoding the organization inside `correlationId` instead was
@@ -116,7 +116,7 @@ submits a capture by hand.
 
 ## Handing out URLs
 
-`waggle-api` serves two endpoints for archives. Both require an identity; see below.
+`capture-api` serves two endpoints for archives. Both require an identity; see below.
 
 ```sh
 # One archive
@@ -158,7 +158,7 @@ strongly consistent check.
 
 ## Starting a crawl
 
-Deciding _when_ to capture belongs outside waggle — a scheduler does that.
+Deciding _when_ to capture belongs outside capture-ledger — a scheduler does that.
 Deciding _what_ to submit and _how_ stays here. So the boundary is one endpoint
 that starts a crawl, and one that reports on it.
 
@@ -197,7 +197,7 @@ that one keeps `status` even though it is written into `crawl_pages.state`.
 ### From the target list
 
 `fromTargets` seeds the crawl from the enabled rows of
-[`capture_targets`](/waggle/databases/capture-targets/), and `limit` takes the
+[`capture_targets`](/capture-ledger/databases/capture-targets/), and `limit` takes the
 first _n_ of them. Two things differ from the rest of the endpoint:
 
 - **`maxDepth` defaults to 0** — do not follow anything. That is what the old run
@@ -263,29 +263,29 @@ Capture formats are deliberately not accepted from the caller: they are part of
 what this deployment does, so they come from the environment.
 
 ```sh
-WAGGLE_CAPTURE_FORMATS=wacz   # comma separated: png,webp,html,links,mhtml,wacz
-WAGGLE_CAPTURE_SIGNING=1      # require a wacz-auth signature; needs wacz
+CAPTURE_LEDGER_CAPTURE_FORMATS=wacz   # comma separated: png,webp,html,links,mhtml,wacz
+CAPTURE_LEDGER_CAPTURE_SIGNING=1      # require a wacz-auth signature; needs wacz
 ```
 
 Both are read and checked **at startup**, so a misspelling stops the server with
 the bad value named. Read per-crawl instead, a typo would surface as a scheduled
 crawl failing at 3am with "no capture format enabled" — a message that never
 mentions the setting that caused it. See
-[Capture options](/waggle/capture-options/).
+[Capture options](/capture-ledger/capture-options/).
 
 ### Who calls this
 
-Nothing in waggle does. The scheduler lives in its own repo —
-[forage](https://github.com/uraitakahito/forage) — which runs a Windmill instance
+Nothing in capture-ledger does. The scheduler lives in its own repo —
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler) — which runs a Windmill instance
 whose only job is to call this endpoint on a cron (`trigger_crawl.ts`). The same
-Windmill also runs the flow that does the capturing, which waggle reaches through
-`WAGGLE_CRAWL_WEBHOOK_URL`.
+Windmill also runs the flow that does the capturing, which capture-ledger reaches through
+`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL`.
 
-The split is deliberate: **forage decides when, waggle decides what.** That is
+The split is deliberate: **capture-scheduler decides when, capture-ledger decides what.** That is
 why the body takes no capture formats, and why `fromTargets` submits whatever
 `capture_targets` says rather than a list the caller supplies.
 
-Two things a caller has to get right, and forage's script exists to encode them:
+Two things a caller has to get right, and capture-scheduler's script exists to encode them:
 
 - **409 is not a failure.** It means a crawl is already going. Retrying cannot
   help — the answer stays the same until that crawl ends.
@@ -293,7 +293,7 @@ Two things a caller has to get right, and forage's script exists to encode them:
   stops at the 202 reports success for failed captures.
 
 Running with a scheduler means running with a JWT, and that has a cost worth
-knowing: setting `WAGGLE_OIDC_ISSUER` makes the JWT resolver take over, so the
+knowing: setting `CAPTURE_LEDGER_OIDC_ISSUER` makes the JWT resolver take over, so the
 **browser picker starts returning 401**. JWT beating the dev header is the point
 (a deployment with both configured must not fall to the weaker one), so the two
 are used in turn, not together.
@@ -331,7 +331,7 @@ a crawl of their own.
 ## Following links
 
 The same endpoint, with a depth above 0, walks the links out from its seeds.
-Windmill runs the walking; waggle decides what is in scope, what has been seen,
+Windmill runs the walking; capture-ledger decides what is in scope, what has been seen,
 and when to stop.
 
 ```sh
@@ -345,7 +345,7 @@ curl http://localhost:7070/api/crawls/9072b625-…
 #     "pagesCaptured": 6, "pagesDiscovered": 76, … }
 ```
 
-Nothing here is served unless `WAGGLE_CRAWL_WEBHOOK_URL` and `_TOKEN` are both set.
+Nothing here is served unless `CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` and `_TOKEN` are both set.
 One without the other stops the server at startup — a half-configured webhook fails
 only after someone asks for a crawl, by which time a row is already open.
 
@@ -413,13 +413,13 @@ tasks and forgets completed URLs.
 
 ## Full-text search
 
-Off by default. A deployment may have no index, so unless `WAGGLE_OPENSEARCH_URL`
+Off by default. A deployment may have no index, so unless `CAPTURE_LEDGER_OPENSEARCH_URL`
 is set the endpoints are **not served at all** (you get a 404 — the capability
 genuinely is not there, so that is the right answer).
 
 ```sh
 pnpm run stack:up --profile search
-# and WAGGLE_OPENSEARCH_URL=http://127.0.0.1:9200 in .env
+# and CAPTURE_LEDGER_OPENSEARCH_URL=http://127.0.0.1:9200 in .env
 ```
 
 ```sh
@@ -435,7 +435,7 @@ curl ".../api/search?q=responsive"
 ### The text comes out of the archive
 
 BrowserHive writes `title` and `text` into the WACZ's `pages/pages.jsonl`. The
-`text` is `document.body.innerText` — **the rendered body**, not the HTML. waggle
+`text` is `document.body.innerText` — **the rendered body**, not the HTML. capture-ledger
 indexes that as-is. Re-deriving it from HTML would let the index disagree with
 what the archive signed for.
 
@@ -476,16 +476,16 @@ need it, then rebuild with the statement above.
 
 ## Picking an archive in a browser
 
-`waggle-api` also serves a picker at `/` — the list above, rendered, with each
+`capture-api` also serves a picker at `/` — the list above, rendered, with each
 row opening the archive in [replay](https://github.com/uraitakahito/replay).
 
 ```sh
-pnpm run api                  # host-side; the stack has no waggle-api service
+pnpm run api                  # host-side; the stack has no capture-api service
 open http://127.0.0.1:7070/
 ```
 
 This needs a filled-in `.env` — see [Setup](#setup). Without
-`WAGGLE_DEV_IDENTITY=1` the API still starts, but the resolver denies everyone
+`CAPTURE_LEDGER_DEV_IDENTITY=1` the API still starts, but the resolver denies everyone
 and the picker stays empty on a `401`.
 
 The picker hands replay the `objectKey` and nothing else:
@@ -517,20 +517,20 @@ small — a subject and the organizations they belong to — so that shape is fi
 and the verification behind it is swappable.
 
 **By default nobody is authenticated and every request is 401.** For local
-development, `WAGGLE_DEV_IDENTITY=1` enables a resolver that trusts two
+development, `CAPTURE_LEDGER_DEV_IDENTITY=1` enables a resolver that trusts two
 headers:
 
 ```sh
 curl -X POST http://localhost:7070/api/archives/<id>/url \
-  -H 'X-Waggle-Subject: bob' \
-  -H 'X-Waggle-Organizations: acme'
+  -H 'X-Capture-ledger-Subject: bob' \
+  -H 'X-Capture-ledger-Organizations: acme'
 ```
 
 Anyone who can reach the port can claim to be anyone. It refuses to run unless
 switched on explicitly, and the server warns loudly at startup.
 
 **The API is now the only route in.** There used to be a second one for the CLI,
-which read `WAGGLE_DEV_SUBJECT` and `WAGGLE_DEV_ORGANIZATIONS` from `.env`
+which read `CAPTURE_LEDGER_DEV_SUBJECT` and `CAPTURE_LEDGER_DEV_ORGANIZATIONS` from `.env`
 instead of headers. Both variables went with it — they are no longer declared in
 `.env.example`, and `setup.sh` no longer writes them.
 
@@ -635,7 +635,7 @@ pnpm run fga:test    # assertions, no server needed
 pnpm run fga:deploy  # push the model, print the ids to pin
 ```
 
-`fga:deploy` prints `WAGGLE_FGA_STORE_ID` and `WAGGLE_FGA_MODEL_ID`. **Pin the
+`fga:deploy` prints `CAPTURE_LEDGER_FGA_STORE_ID` and `CAPTURE_LEDGER_FGA_MODEL_ID`. **Pin the
 model id.** Models are immutable and every write mints a new one; a client that
 omits the id evaluates against whatever is newest, so editing the model would
 change every decision the moment it lands. Bumping the variable is what makes
@@ -654,7 +654,7 @@ pnpm run api
 
 Everything reads `.env` — the `pnpm run` scripts pass
 `--env-file-if-exists=.env`. Seven variables are mandatory and two of them
-(`WAGGLE_FGA_STORE_ID`, `WAGGLE_FGA_MODEL_ID`) do not exist until `fga:deploy`
+(`CAPTURE_LEDGER_FGA_STORE_ID`, `CAPTURE_LEDGER_FGA_MODEL_ID`) do not exist until `fga:deploy`
 has run, which is why that step comes before `api`. `scripts/check-env.mjs`
 keeps `.env.example` in step with what the code actually reads.
 

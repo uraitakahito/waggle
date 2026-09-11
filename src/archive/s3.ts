@@ -58,7 +58,7 @@ export const getJsonObject = async (
  * **丸ごと読む。** WACZ の大半は WARC なので、`pages.jsonl` 1 本のために全部を
  * 落とすことになる。それを承知でこうしている: 現物は数十 KB〜数 MB で、範囲読みの
  * 複雑さに見合わない。規模が変わったときの直し方は既に書かれていて、
- * waxlens の packages/core/src/wacz/s3-range-reader.ts が `HeadObject` で大きさを
+ * wacz-validator の packages/core/src/wacz/s3-range-reader.ts が `HeadObject` で大きさを
  * 訊いてから yauzl に Range で食わせる形を持っている。
  */
 export const getObjectBytes = async (
@@ -89,7 +89,7 @@ const isNotFound = (cause: unknown): boolean => {
  * だから reconciler は listing を引いてから `.result.json` を自分で選ぶ。ここは
  * 変わっていない。
  *
- * 変わったのは絞る手がかりのほう。受け口が受けた成果物の鍵は waggle が決めるので、
+ * 変わったのは絞る手がかりのほう。受け口が受けた成果物の鍵は ledger が決めるので、
  * `org/<orgId>/<YYYY-MM>/` という接頭辞を持つ (`api/sink.ts` の `crawlKeyPrefix`)。
  * 月ごとに分かれているので、reconciler は直近の数か月だけを歩ける。
  * **BrowserHive が自前の保管庫へ書く経路は平らなまま**で、そちらは絞れない。
@@ -134,7 +134,7 @@ export const listAllKeys = async (
  * **冪等であること。** 同じ鍵に 2 度書けば上書きされる —— BrowserHive が再送しうるので、
  * 連番を振ると再送のたびに object が増える。鍵は呼ぶ側が決める。
  *
- * waggle が S3 に**書く**のはここだけ。他はすべて読み取りで、書くのは BrowserHive の
+ * ledger が S3 に**書く**のはここだけ。他はすべて読み取りで、書くのは BrowserHive の
  * 仕事だった —— 成果物を受け口で受け取る構成にしたときに、この 1 か所が要る。
  */
 export const putObject = async (

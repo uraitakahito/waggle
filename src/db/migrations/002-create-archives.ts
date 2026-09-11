@@ -32,10 +32,10 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     // 本文が 1 つ以上欠けているという意味 —— 304 としてしか見なかった URL か、
     // 容量の上限を超えて BrowserHive が落としたもの (後者は v1.11.0 で加わった。
     // それ以前、上限に当たった取り込みは `true` と報告していた)。アーカイブを
-    // waxlens に渡す前に知っておく価値がある。この field より前の取り込みや、
+    // wacz-validator に渡す前に知っておく価値がある。この field より前の取り込みや、
     // 記録しなかった取り込みでは NULL。
     .addColumn("wacz_complete", "boolean")
-    // waggle が受け取った時刻ではなく、BrowserHive 自身が付けた取り込みの時刻。
+    // ledger が受け取った時刻ではなく、BrowserHive 自身が付けた取り込みの時刻。
     // reconciler は何時間も後に行を登録しうるので、履歴を並べ替えてはならない。
     .addColumn("captured_at", "timestamptz", (col) => col.notNull())
     .addColumn("created_at", "timestamptz", (col) => col.notNull().defaultTo(sql`now()`))

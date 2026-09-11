@@ -54,7 +54,7 @@ const membershipTuples = (identity: Identity) =>
  * 有効な URL を配ってしまうので、1 秒前に入った取り消しが既に見えていなければ
  * ならない。だから `HigherConsistency`。
  *
- * 拒否をどう返すかは呼ぶ側が決める (waggle は 403 ではなく 404 を返す ——
+ * 拒否をどう返すかは呼ぶ側が決める (ledger は 403 ではなく 404 を返す ——
  * `routes.ts` にその理由がある)。
  */
 export const mayViewArchive = async (

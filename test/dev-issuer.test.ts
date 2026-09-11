@@ -13,7 +13,7 @@ import { jwtIdentityResolver } from "../src/api/identity.js";
  * ここは `createRemoteJWKSet` を通し、issuer を実際に立てて確かめる。
  */
 describe("開発用の issuer", () => {
-  const AUDIENCE = "waggle";
+  const AUDIENCE = "capture-ledger";
 
   /**
    * issuer を立てて URL を渡す。片付けまで面倒を見る。

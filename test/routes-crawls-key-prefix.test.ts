@@ -21,8 +21,8 @@ const { parseCaptureFormats } = await import("../src/config/capture-formats.js")
 
 const CRAWL = "d272d256-e528-4581-bb4e-8d9477d78196";
 const TASK = "550e8400-e29b-41d4-a716-446655440000";
-const SUBJECT = { "x-waggle-subject": "alice", "x-waggle-organizations": "acme" };
-const SINK = { origin: "https://waggle.example", secret: "s" };
+const SUBJECT = { "x-capture-ledger-subject": "alice", "x-capture-ledger-organizations": "acme" };
+const SINK = { origin: "https://capture-ledger.example", secret: "s" };
 
 /** 偽の `crawls` 行。試験ごとに `artifactKeyPrefix` を差し替える。 */
 let crawlRow: Record<string, unknown>;

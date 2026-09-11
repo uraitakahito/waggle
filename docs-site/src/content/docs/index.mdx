@@ -1,48 +1,45 @@
 ---
-title: waggle
+title: capture-ledger
 description: A capture orchestrator that decides which URLs get captured, and keeps the ledger of what came back.
 template: splash
 hero:
   tagline: Decides what the hive captures, and keeps the record of what came back.
   actions:
     - text: Quickstart
-      link: /waggle/quickstart/
+      link: /capture-ledger/quickstart/
       icon: right-arrow
       variant: primary
 ---
 
-## What waggle is
+## What capture-ledger is
 
-waggle answers one question: **which URLs get captured**. A caller asks for a
-crawl; waggle works out the seeds — an explicit list, or the enabled rows of a
+capture-ledger answers one question: **which URLs get captured**. A caller asks for a
+crawl; capture-ledger works out the seeds — an explicit list, or the enabled rows of a
 Postgres `capture_targets` table — decides what is in scope, and hands one level
 at a time to a Windmill flow that does the submitting.
 
-The name comes from the [waggle dance](https://en.wikipedia.org/wiki/Waggle_dance)
-bees use to point hive-mates at nectar.
-
-## What is not waggle's responsibility
+## What is not capture-ledger's responsibility
 
 Driving a browser, taking screenshots, building a WACZ, writing to S3 — every
 one of those is **BrowserHive's responsibility**. BrowserHive's docs are not
 published on the web — build them from the BrowserHive checkout with
 `pnpm run docs:local`.
 
-**Submitting is not waggle's either, any more.** The Windmill flow in
-[forage](https://github.com/uraitakahito/forage) holds the gRPC channel, and
-waggle has no BrowserHive address in its configuration at all. Each level the
-flow reports comes back with a `taskId` per page, and waggle registers what
-produced an archive in the [archive ledger](/waggle/archive-ledger/). Anything
+**Submitting is not capture-ledger's either, any more.** The Windmill flow in
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler) holds the gRPC channel, and
+capture-ledger has no BrowserHive address in its configuration at all. Each level the
+flow reports comes back with a `taskId` per page, and capture-ledger registers what
+produced an archive in the [archive ledger](/capture-ledger/archive-ledger/). Anything
 missed is picked up later by `pnpm run fga:reconcile`, which sweeps the bucket's
 result manifests.
 
 ## Where things are
 
-| I want to…                            | Page                                                        |
-| ------------------------------------- | ----------------------------------------------------------- |
-| bring the stack up for the first time | [Quickstart](/waggle/quickstart/)                           |
-| set up the dev environment            | [Development environment](/waggle/development-environment/) |
-| manage the URL list                   | [URL source](/waggle/url-source/)                           |
-| shape how a crawl captures            | [Capture options](/waggle/capture-options/)                 |
-| move to a newer BrowserHive           | [Upgrading BrowserHive](/waggle/upgrading-browserhive/)     |
-| understand the moving parts           | [Architecture](/waggle/architecture/)                       |
+| I want to…                            | Page                                                                |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| bring the stack up for the first time | [Quickstart](/capture-ledger/quickstart/)                           |
+| set up the dev environment            | [Development environment](/capture-ledger/development-environment/) |
+| manage the URL list                   | [URL source](/capture-ledger/url-source/)                           |
+| shape how a crawl captures            | [Capture options](/capture-ledger/capture-options/)                 |
+| move to a newer BrowserHive           | [Upgrading BrowserHive](/capture-ledger/upgrading-browserhive/)     |
+| understand the moving parts           | [Architecture](/capture-ledger/architecture/)                       |

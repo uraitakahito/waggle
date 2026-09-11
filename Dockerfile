@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile:1.7
 #
-# Production image for the waggle API.
+# Production image for the capture-ledger API.
 #
 # Build:
-#   container build -t waggle:latest .
+#   container build -t capture-ledger:latest .
 #
 # Run (the API; it does not capture anything itself — Windmill's flow does):
 #   container run --rm -p 7070:7070 \
-#     -e DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle \
-#     waggle:latest
+#     -e DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger \
+#     capture-ledger:latest
 #
-# waggle no longer speaks gRPC to BrowserHive. Captures are submitted by the
-# Windmill flow (forage), which reaches BrowserHive on its own; waggle plans the
+# capture-ledger no longer speaks gRPC to BrowserHive. Captures are submitted by the
+# Windmill flow (capture-scheduler), which reaches BrowserHive on its own; capture-ledger plans the
 # crawl, records it and admits the archives.
 #
 # The migration and seed jobs share this image but not its ENTRYPOINT — see

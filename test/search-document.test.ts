@@ -5,7 +5,7 @@ import { parsePagesJsonl, searchDocument, type ArchiveRow } from "../src/search/
  * 索引に載せる 1 件を組む部分。**ここだけが「何を索引するか」を決めている**ので、
  * OpenSearch も S3 も立てずにここで押さえる。
  *
- * 本物の `pages.jsonl` から採った行を使う (meadow の `/responsive-images` を
+ * 本物の `pages.jsonl` から採った行を使う (fixtures の `/responsive-images` を
  * 取り込んだ WACZ)。作り物だと、ヘッダ行の存在そのものを忘れて書ける。
  */
 
@@ -13,12 +13,12 @@ import { parsePagesJsonl, searchDocument, type ArchiveRow } from "../src/search/
 const HEADER = '{"format": "json-pages-1.0", "id": "pages", "title": "All Pages"}';
 
 const PAGE =
-  '{"id": "09791c9f-264b-40ee-8a40-40dc0362f6e6", "url": "http://meadow.browserhive:8080/responsive-images", "ts": "2026-09-07T22:06:40.697Z", "title": "responsive", "text": "responsive\\n  image"}';
+  '{"id": "09791c9f-264b-40ee-8a40-40dc0362f6e6", "url": "http://capture-fixtures.browserhive:8080/responsive-images", "ts": "2026-09-07T22:06:40.697Z", "title": "responsive", "text": "responsive\\n  image"}';
 
 const ARCHIVE: ArchiveRow = {
   id: "11111111-1111-1111-1111-111111111111",
   objectKey: "09791c9f__e2e.wacz",
-  sourceUrl: "http://meadow.browserhive:8080/responsive-images",
+  sourceUrl: "http://capture-fixtures.browserhive:8080/responsive-images",
   labels: [],
   capturedAt: new Date("2026-09-07T22:06:40.697Z"),
 };
@@ -29,7 +29,7 @@ describe("pages.jsonl の解析", () => {
     // ドキュメントが検索に出る —— しかも URL を持たないので、開くこともできない。
     const pages = parsePagesJsonl(`${HEADER}\n${PAGE}\n`);
     expect(pages).toHaveLength(1);
-    expect(pages[0]!.url).toBe("http://meadow.browserhive:8080/responsive-images");
+    expect(pages[0]!.url).toBe("http://capture-fixtures.browserhive:8080/responsive-images");
   });
 
   it("url を持たない行はページとして扱わない", () => {

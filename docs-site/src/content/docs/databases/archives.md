@@ -20,7 +20,7 @@ here would make it possible to be in a state where the table says one
 organization and OpenFGA says another.
 
 Instead, registration queues tuples into
-[`fga_outbox`](/waggle/databases/fga-outbox/) and the relationship lives in
+[`fga_outbox`](/capture-ledger/databases/fga-outbox/) and the relationship lives in
 OpenFGA.
 
 ## Failed captures do not enter
@@ -38,7 +38,7 @@ endpoint hand out URLs for objects that do not exist — authorization working
 perfectly against a 404, which is the hardest kind of breakage to notice.
 
 So the row count here will not match
-[`capture_submissions`](/waggle/databases/capture-submissions/). **The gap is
+[`capture_submissions`](/capture-ledger/databases/capture-submissions/). **The gap is
 correct.**
 
 ## Why double registration cannot happen
@@ -60,14 +60,14 @@ already in the ledger, its tuples went out the first time.
 
 ## Column notes
 
-| Column                  | Note                                                                                    |
-| ----------------------- | --------------------------------------------------------------------------------------- |
-| `id`                    | `gen_random_uuid()`. Becomes `archive:<id>` in OpenFGA                                  |
-| `task_id`               | BrowserHive's task id                                                                   |
-| `correlation_id`        | The thread tying waggle's log lines to artifact filenames (8 hex digits per submission) |
-| `bucket` / `object_key` | **Taken from the server's own report**, not reassembled from a filename                 |
-| `wacz_complete`         | `false` means at least one body is missing — see below                                  |
-| `captured_at`           | Capture time; listings are ordered by this, descending                                  |
+| Column                  | Note                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `id`                    | `gen_random_uuid()`. Becomes `archive:<id>` in OpenFGA                                          |
+| `task_id`               | BrowserHive's task id                                                                           |
+| `correlation_id`        | The thread tying capture-ledger's log lines to artifact filenames (8 hex digits per submission) |
+| `bucket` / `object_key` | **Taken from the server's own report**, not reassembled from a filename                         |
+| `wacz_complete`         | `false` means at least one body is missing — see below                                          |
+| `captured_at`           | Capture time; listings are ordered by this, descending                                          |
 
 ### When `wacz_complete` is `false`
 
@@ -81,7 +81,7 @@ The latter arrived in BrowserHive v1.11.0. **Before that, a capture that hit the
 cap reported `true`.** It is `NULL` for captures from before the field existed,
 or ones that were not recorded.
 
-Worth knowing before handing an archive to waxlens.
+Worth knowing before handing an archive to wacz-validator.
 
 ## Indexes
 

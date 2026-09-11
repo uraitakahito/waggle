@@ -28,7 +28,7 @@ description: OpenFGA が保存する実体。索引が 2 方向あることに�
 
 ## 「誰が」は人とは限らない
 
-waggle の実データを見ると分かります。
+capture-ledger の実データを見ると分かります。
 
 ```
  object                    | relation | _user
@@ -67,7 +67,7 @@ ReBAC の実装コストの一端です。
 条件は別テーブルではなく tuple そのものに貼り付く**と分かります。条件つきの線と
 そうでない線が、同じ表に同居します。
 
-waggle のモデルでは、組織の外への直接共有だけが条件つきです。
+capture-ledger のモデルでは、組織の外への直接共有だけが条件つきです。
 
 ```
 define viewer: [user with non_expired_grant, organization#member]
@@ -91,8 +91,8 @@ OpenFGA は**「誰が何を見られるか」の表を事前に作りません*
 ## 覗き方
 
 ```sh
-container exec openfga-db.waggle psql -U openfga -d openfga -c "\d tuple"
+container exec openfga-db.capture-ledger psql -U openfga -d openfga -c "\d tuple"
 
-container exec openfga-db.waggle psql -U openfga -d openfga \
+container exec openfga-db.capture-ledger psql -U openfga -d openfga \
   -c "SELECT object_type||':'||object_id AS object, relation, _user FROM tuple"
 ```

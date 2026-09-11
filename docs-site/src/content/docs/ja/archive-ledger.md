@@ -1,18 +1,18 @@
 ---
 title: アーカイブ台帳
-description: どの WACZ が存在し誰が読んでよいかを waggle がどう記録し、バケットの資格情報を渡さずに署名付き URL を発行するか
+description: どの WACZ が存在し誰が読んでよいかを capture-ledger がどう記録し、バケットの資格情報を渡さずに署名付き URL を発行するか
 ---
 
-waggle は BrowserHive が作った WACZ の**台帳**を持ち、読んでよい相手にだけ
+capture-ledger は BrowserHive が作った WACZ の**台帳**を持ち、読んでよい相手にだけ
 短命な署名付き URL を発行します。
 
 構成要素:
 
-|              | 持つもの                             | 場所               |
-| ------------ | ------------------------------------ | ------------------ |
-| `archives`   | どこに何があるか — bucket・key・由来 | waggle の Postgres |
-| OpenFGA      | 誰が何を読んでよいか（関係として）   | 専用の Postgres    |
-| `fga_outbox` | OpenFGA へ届ける前のタプル           | waggle の Postgres |
+|              | 持つもの                             | 場所                       |
+| ------------ | ------------------------------------ | -------------------------- |
+| `archives`   | どこに何があるか — bucket・key・由来 | capture-ledger の Postgres |
+| OpenFGA      | 誰が何を読んでよいか（関係として）   | 専用の Postgres            |
+| `fga_outbox` | OpenFGA へ届ける前のタプル           | capture-ledger の Postgres |
 
 `archives` に所有者の列は意図的にありません。誰が読んでよいかは関係であり、
 同じ問いへの答えを 2 か所に持てば、いずれ食い違います。
@@ -40,7 +40,7 @@ Outbox 行として記録します。両方入るか、どちらも入らない�
 ## 台帳を埋める 2 つの経路
 
 かつては 3 つでした。CLI が自分の投げた capture を `GetCapture` でポーリングする
-経路がありましたが、**CLI も waggle の gRPC クライアントも消えました**。いま投げるのは
+経路がありましたが、**CLI も capture-ledger の gRPC クライアントも消えました**。いま投げるのは
 Windmill の flow です。
 
 **クロール** ― クロールは、flow が段を報告した時点で自分が取り込んだぶんを
@@ -50,7 +50,7 @@ Windmill の flow です。
 
 **Reconcile** ― `pnpm run fga:reconcile` は BrowserHive が各 capture の
 成果物の隣に書く `.result.json` マニフェストを走査し、台帳に無いものを
-登録します。**これが台帳を自己修復させます**: waggle が何時間止まっていても、
+登録します。**これが台帳を自己修復させます**: capture-ledger が何時間止まっていても、
 manifest が段の閉じた後に書かれても、次の reconcile で拾えます。
 
 既定では bucket 全体を歩きます。`--since-days <n>` を渡すと、直近 `n` 日に始まった
@@ -101,7 +101,7 @@ bucket に在るのにページは `failed` と報告されます。そこで段
 ### 帰属
 
 マニフェストに組織の情報はありません。BrowserHive にその概念が無いからです。
-そこで `waggle` は段が報告された時点で `capture_submissions` 行（task id → 組織）を
+そこで `capture-ledger` は段が報告された時点で `capture_submissions` 行（task id → 組織）を
 書き、reconciler がそれを読み戻します。この行は `taskId` を持つ全件に書きます ―
 すぐ上の理由で、失敗と報告されたページも含めてです。`correlationId` に組織 ID を
 埋め込む案は採りませんでした ― **約束だけで保たれる規約は、最初に手で
@@ -109,7 +109,7 @@ capture を投げた人が破ります**。
 
 ## URL を発行する
 
-`waggle-api` は 2 つのエンドポイントを提供します。どちらも身元が必要です。
+`capture-api` は 2 つのエンドポイントを提供します。どちらも身元が必要です。
 
 ```sh
 # 1 本のアーカイブ
@@ -151,7 +151,7 @@ S3 は署名しか見ないので、URL を署名した瞬間に判断は確定�
 
 ## クロールを起こす
 
-**いつ**取り込むかを決める仕事は waggle の外 —— スケジューラのもの。**何を**
+**いつ**取り込むかを決める仕事は capture-ledger の外 —— スケジューラのもの。**何を**
 **どう**投げるかはここに残る。だから境界は、クロールを起こす口と、その様子を返す口の 2 つ。
 
 以前はもう 1 組ありました。`POST /api/runs` と `GET /api/runs/:id` —— 「`capture_targets`
@@ -187,7 +187,7 @@ curl http://localhost:7070/api/crawls/9072b625-…
 
 ### 対象一覧から起こす
 
-`fromTargets` は[`capture_targets`](/waggle/ja/databases/capture-targets/)の有効な行を
+`fromTargets` は[`capture_targets`](/capture-ledger/ja/databases/capture-targets/)の有効な行を
 種にする。`limit` を渡せば先頭 n 件。他とは 2 点だけ違う:
 
 - **`maxDepth` の既定は 0** —— 辿らない。以前の run が意味していたのはこれ。明示した
@@ -246,27 +246,27 @@ dispatch が途中で死んだクロールの行も `running` のまま残り、
 環境から来る。
 
 ```sh
-WAGGLE_CAPTURE_FORMATS=wacz   # カンマ区切り: png,webp,html,links,mhtml,wacz
-WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
+CAPTURE_LEDGER_CAPTURE_FORMATS=wacz   # カンマ区切り: png,webp,html,links,mhtml,wacz
+CAPTURE_LEDGER_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 ```
 
 どちらも**起動時に**読んで検査するので、綴りを間違えるとその値を名指しして起動が止まる。
 クロールのたびに解釈すると、打ち間違いは夜中の定期クロールが「形式が 1 つも無い」で
 落ちて初めて見つかる —— しかもその文言は、原因になった設定に一言も触れない。
-詳しくは[キャプチャオプション](/waggle/ja/capture-options/)。
+詳しくは[キャプチャオプション](/capture-ledger/ja/capture-options/)。
 
 ### 誰がこの口を叩くか
 
-waggle の中には誰も居ない。スケジューラは別の repo —— [forage](https://github.com/uraitakahito/forage)
+capture-ledger の中には誰も居ない。スケジューラは別の repo —— [capture-scheduler](https://github.com/uraitakahito/capture-scheduler)
 —— に住んでいて、そこで動く Windmill が cron でこの endpoint を叩くことだけをしている
-（`trigger_crawl.ts`）。取り込みを回す flow も同じ Windmill に居て、waggle は
-`WAGGLE_CRAWL_WEBHOOK_URL` でそこへ届く。
+（`trigger_crawl.ts`）。取り込みを回す flow も同じ Windmill に居て、capture-ledger は
+`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` でそこへ届く。
 
-分けてあるのは意図的で、**forage が「いつ」を決め、waggle が「何を」決める**。
+分けてあるのは意図的で、**capture-scheduler が「いつ」を決め、capture-ledger が「何を」決める**。
 body が取り込む形式を受けないのも、`fromTargets` の対象が呼び出し元の渡す一覧ではなく
 `capture_targets` なのも、同じ線の上にある。
 
-呼ぶ側が外してはならないことが 2 つあり、forage のスクリプトはそれを形にしたもの:
+呼ぶ側が外してはならないことが 2 つあり、capture-scheduler のスクリプトはそれを形にしたもの:
 
 - **409 は失敗ではない。** 既に走っているという意味で、再試行しても答えは変わらない
   —— その 1 本が終わるまで同じ 409 が返る。
@@ -274,7 +274,7 @@ body が取り込む形式を受けないのも、`fromTargets` の対象が呼�
   失敗した取り込みを成功として報告する。
 
 スケジューラで動かすということは JWT で動かすということで、代償がひとつある。
-`WAGGLE_OIDC_ISSUER` を立てると JWT の resolver が優先されるので、
+`CAPTURE_LEDGER_OIDC_ISSUER` を立てると JWT の resolver が優先されるので、
 **ブラウザの picker が 401 になる**。JWT が dev ヘッダより強いのは狙いどおり
 （両方設定された配備で弱いほうへ落ちないため）なので、2 つは同時にではなく
 使い分ける。
@@ -307,7 +307,7 @@ subject に 202 が出た。
 ## リンクを辿る
 
 同じ口に深さを 1 以上で渡すと、種からリンクを辿る。辿る作業は Windmill が回し、
-**範囲・既読・打ち切り**を決めるのは waggle。
+**範囲・既読・打ち切り**を決めるのは capture-ledger。
 
 ```sh
 curl -X POST http://localhost:7070/api/crawls \
@@ -320,7 +320,7 @@ curl http://localhost:7070/api/crawls/9072b625-…
 #     "pagesCaptured": 6, "pagesDiscovered": 76, … }
 ```
 
-`WAGGLE_CRAWL_WEBHOOK_URL` と `_TOKEN` の両方が無ければ、この口は出さない。片方だけだと
+`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` と `_TOKEN` の両方が無ければ、この口は出さない。片方だけだと
 **起動時に落とす** —— 半端な設定は、頼まれた後にしか気づけない失敗になり、そのときには
 行が既に立っている。
 
@@ -381,13 +381,13 @@ URL を忘れる。
 
 ## 全文検索
 
-既定では立ちません。索引を持たない配備がありうるので、`WAGGLE_OPENSEARCH_URL` を
+既定では立ちません。索引を持たない配備がありうるので、`CAPTURE_LEDGER_OPENSEARCH_URL` を
 設定しない限り **口ごと出しません**（404 が返ります ― その配備にこの能力は本当に
 無いので、正しい答えです）。
 
 ```sh
 pnpm run stack:up --profile search
-# .env に WAGGLE_OPENSEARCH_URL=http://127.0.0.1:9200
+# .env に CAPTURE_LEDGER_OPENSEARCH_URL=http://127.0.0.1:9200
 ```
 
 ```sh
@@ -404,7 +404,7 @@ curl ".../api/search?q=responsive"
 
 BrowserHive が WACZ の `pages/pages.jsonl` に `title` と `text` を書いています。
 `text` の出どころは `document.body.innerText` ― **描画後の本文**であって HTML では
-ありません。waggle はそれをそのまま索引に載せます。HTML から起こし直すと、
+ありません。capture-ledger はそれをそのまま索引に載せます。HTML から起こし直すと、
 アーカイブが署名して主張している内容と索引が食い違いえます。
 
 `textWithheld`（`url-policy` / `content-type`）も一緒に運びます。捨てると
@@ -443,16 +443,16 @@ UPDATE archives SET indexed_at = NULL;
 
 ## ブラウザからアーカイブを選ぶ
 
-`waggle-api` は `/` に picker も出す —— 上の一覧を画面にしたもので、行をクリックすると
+`capture-api` は `/` に picker も出す —— 上の一覧を画面にしたもので、行をクリックすると
 [replay](https://github.com/uraitakahito/replay) で開く。
 
 ```sh
-pnpm run api                  # host 側。スタックに waggle-api のサービスは無い
+pnpm run api                  # host 側。スタックに capture-api のサービスは無い
 open http://127.0.0.1:7070/
 ```
 
 これには中身の入った `.env` が要ります（[セットアップ](#セットアップ)を参照）。
-`WAGGLE_DEV_IDENTITY=1` が無くても API は起動しますが、resolver が誰も通さないので
+`CAPTURE_LEDGER_DEV_IDENTITY=1` が無くても API は起動しますが、resolver が誰も通さないので
 picker は `401` で空のままになります。
 
 picker が replay に渡すのは `objectKey` だけ:
@@ -481,20 +481,20 @@ bucket に CORS が要る。object key なら読みは replay 自身の上流を
 その形だけ固定し、裏の検証は差し替え可能にしてあります。
 
 **既定では誰も認証されず、すべて 401 です。**
-ローカル開発では `WAGGLE_DEV_IDENTITY=1` で、2 つのヘッダを信用する
+ローカル開発では `CAPTURE_LEDGER_DEV_IDENTITY=1` で、2 つのヘッダを信用する
 リゾルバが有効になります:
 
 ```sh
 curl -X POST http://localhost:7070/api/archives/<id>/url \
-  -H 'X-Waggle-Subject: bob' \
-  -H 'X-Waggle-Organizations: acme'
+  -H 'X-Capture-ledger-Subject: bob' \
+  -H 'X-Capture-ledger-Organizations: acme'
 ```
 
 ポートに到達できる人は誰にでもなりすませます。明示的に有効化しない限り
 動かず、起動時に警告を出します。
 
 **入口はいま API だけです。** 以前は CLI 用の経路がもう 1 本あり、ヘッダの代わりに
-`.env` の `WAGGLE_DEV_SUBJECT` と `WAGGLE_DEV_ORGANIZATIONS` を読んでいました。
+`.env` の `CAPTURE_LEDGER_DEV_SUBJECT` と `CAPTURE_LEDGER_DEV_ORGANIZATIONS` を読んでいました。
 その 2 つは、読む側の CLI ごと畳んだときに `.env.example` と `setup.sh` からも
 消えています。
 
@@ -593,7 +593,7 @@ pnpm run fga:test    # サーバ不要でモデルを検証
 pnpm run fga:deploy  # モデルを投入し、固定すべき ID を出力
 ```
 
-`fga:deploy` は `WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID` を出力します。
+`fga:deploy` は `CAPTURE_LEDGER_FGA_STORE_ID` と `CAPTURE_LEDGER_FGA_MODEL_ID` を出力します。
 **モデル ID は固定してください。** モデルはイミュータブルで書き込むたびに
 新しい ID が発行されるため、ID を省略すると常に最新で評価され、
 **モデルを書き換えた瞬間にすべての判断が一斉に変わります**。
@@ -612,7 +612,7 @@ pnpm run api
 
 どれも `.env` を読みます（`pnpm run` の各スクリプトが
 `--env-file-if-exists=.env` を渡しています）。必須は 7 個で、うち 2 個
-（`WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID`）は `fga:deploy` を走らせるまで
+（`CAPTURE_LEDGER_FGA_STORE_ID` と `CAPTURE_LEDGER_FGA_MODEL_ID`）は `fga:deploy` を走らせるまで
 存在しません。この手順が `api` より前にあるのはそのためです。`.env.example` が
 実際の読み取りとずれていないかは `scripts/check-env.mjs` が見ています。
 

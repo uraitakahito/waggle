@@ -54,7 +54,7 @@ jobs:
           private-key: ${{ secrets.SUBMODULE_APP_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: |
-            waggle
+            capture-ledger
             browserhive
           permission-contents: read
       - uses: actions/checkout@v7
@@ -78,19 +78,19 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: waggle
-          POSTGRES_PASSWORD: waggle
-          POSTGRES_DB: waggle
+          POSTGRES_USER: capture_ledger
+          POSTGRES_PASSWORD: capture_ledger
+          POSTGRES_DB: capture_ledger
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U waggle -d waggle"
+          --health-cmd "pg_isready -U capture-ledger -d capture-ledger"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://waggle:waggle@localhost:5432/waggle
+      DATABASE_URL: postgres://capture_ledger:capture_ledger@localhost:5432/capture_ledger
 
     steps:
       - uses: actions/checkout@v7
@@ -170,7 +170,7 @@ jobs:
             | tar -xz -C /usr/local/bin fga
 
       # `pnpm run <script> -- --flag` は npm と違って `--` をそのまま引数として
-      # 渡す。waggle の CLI は allowExcessArguments(false) なので、それは
+      # 渡す。capture-ledger の CLI は allowExcessArguments(false) なので、それは
       # "too many arguments" で即死する。npm から移したときの書き換え漏れは
       # ドキュメントの中でしか起きず、テストも lint も届かないので、ここで見る。
       # 中身は scripts/check-flag-style.mjs。**inline の shell に置かない** ——

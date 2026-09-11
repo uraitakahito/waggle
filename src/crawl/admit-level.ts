@@ -94,7 +94,7 @@ export const admitLevel = async (
   const admittedUrls: string[] = [];
   for (const page of pages) {
     // クロールは `labels: []` / `correlationId: <crawlId>` で投げている
-    // (forage の crawl_host.ts)。鍵はその 3 つから決まる。
+    // (capture-scheduler の crawl_host.ts)。鍵はその 3 つから決まる。
     const key = manifestKey(
       page.taskId,
       page.correlationId ?? options.crawlId,

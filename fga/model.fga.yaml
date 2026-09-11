@@ -3,7 +3,7 @@
 # ここに並ぶのは、署名の endpoint が実際に投げている問いそのもの。どれか 1 つでも
 # 裏返れば、見えてはいけない相手に WACZ が見える。つまりこのファイルは形式ではなく、
 # 認可の設計全体に対する回帰の網。
-name: waggle authorization model
+name: capture-ledger authorization model
 model_file: ./model.fga
 
 # 保存される状態。**ここに無いもの**に注意 —— user → organization の所属が無い。

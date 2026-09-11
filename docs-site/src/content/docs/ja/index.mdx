@@ -1,47 +1,44 @@
 ---
-title: waggle
+title: capture-ledger
 description: どの URL を撮るかを決め、撮れたものの台帳を保つキャプチャオーケストレータ。
 template: splash
 hero:
   tagline: 群れに「どこを撮るか」を決めて渡し、撮れたものの記録を保ちます。
   actions:
     - text: クイックスタート
-      link: /waggle/ja/quickstart/
+      link: /capture-ledger/ja/quickstart/
       icon: right-arrow
       variant: primary
 ---
 
-## waggle とは
+## capture-ledger とは
 
-waggle が答えるのは **「どの URL を撮るか」** の一点だけです。呼び出し元が
-クロールを頼むと、waggle は種を決め（明示された一覧か、Postgres の
+capture-ledger が答えるのは **「どの URL を撮るか」** の一点だけです。呼び出し元が
+クロールを頼むと、capture-ledger は種を決め（明示された一覧か、Postgres の
 `capture_targets` テーブルの `enabled` な行）、辿る範囲を判断し、1 段ずつ
 Windmill の flow に渡します。実際に投げるのはその flow です。
 
-名前はミツバチの[尻振りダンス](https://en.wikipedia.org/wiki/Waggle_dance)から。
-仲間に蜜のありかを伝える踊りです。
-
-## waggle の責務ではないこと
+## capture-ledger の責務ではないこと
 
 ブラウザの操作、スクリーンショットの撮影、WACZ の生成、S3 への保存 — これらは
 **すべて BrowserHive の責務**です。BrowserHive の docs は web に公開されていないので、
 BrowserHive のチェックアウトで `pnpm run docs:local` を実行して読んでください。
 
-**投げることも、もう waggle の仕事ではありません。**
-[forage](https://github.com/uraitakahito/forage) の Windmill flow が gRPC の
-チャンネルを持っていて、waggle の設定に BrowserHive の在り処は 1 つも入って
-いません。flow が報告する 1 段には、ページごとの `taskId` が載っています。waggle は
-そこからアーカイブを生んだものを[アーカイブ台帳](/waggle/ja/archive-ledger/)に
+**投げることも、もう capture-ledger の仕事ではありません。**
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler) の Windmill flow が gRPC の
+チャンネルを持っていて、capture-ledger の設定に BrowserHive の在り処は 1 つも入って
+いません。flow が報告する 1 段には、ページごとの `taskId` が載っています。capture-ledger は
+そこからアーカイブを生んだものを[アーカイブ台帳](/capture-ledger/ja/archive-ledger/)に
 記録します。取りこぼしは後から `pnpm run fga:reconcile` が bucket の結果 manifest を
 走査して拾います。
 
 ## 目的別の入口
 
-| やりたいこと                | ページ                                                  |
-| --------------------------- | ------------------------------------------------------- |
-| はじめてスタックを立てる    | [クイックスタート](/waggle/ja/quickstart/)              |
-| 開発環境を用意する          | [開発環境](/waggle/ja/development-environment/)         |
-| URL のリストを管理する      | [URL ソース](/waggle/ja/url-source/)                    |
-| クロールの撮り方を変える    | [キャプチャオプション](/waggle/ja/capture-options/)     |
-| 新しい BrowserHive に上げる | [BrowserHive の更新](/waggle/ja/upgrading-browserhive/) |
-| 構成を理解する              | [アーキテクチャ](/waggle/ja/architecture/)              |
+| やりたいこと                | ページ                                                          |
+| --------------------------- | --------------------------------------------------------------- |
+| はじめてスタックを立てる    | [クイックスタート](/capture-ledger/ja/quickstart/)              |
+| 開発環境を用意する          | [開発環境](/capture-ledger/ja/development-environment/)         |
+| URL のリストを管理する      | [URL ソース](/capture-ledger/ja/url-source/)                    |
+| クロールの撮り方を変える    | [キャプチャオプション](/capture-ledger/ja/capture-options/)     |
+| 新しい BrowserHive に上げる | [BrowserHive の更新](/capture-ledger/ja/upgrading-browserhive/) |
+| 構成を理解する              | [アーキテクチャ](/capture-ledger/ja/architecture/)              |

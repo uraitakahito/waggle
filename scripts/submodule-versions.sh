@@ -28,14 +28,14 @@
 # develop の commit を指した submodule に `describe` を当てると何メジャーも古い値が
 # 返る (上流でそれを踏み、`generate-version.mjs` を書き直した)。
 #
-# waggle は「submodule はタグに固定する」を既に規約にしている —— CI の site job が
+# capture-ledger は「submodule はタグに固定する」を既に規約にしている —— CI の site job が
 # `browserhivePin()` 経由でそれに依存している。ここで守らせるのはその規約の延長。
 #
 # 一時的に外したいときは、変数を明示すれば計算ごと飛ぶ:
 #
 #   BROWSERHIVE_TAG=v8.12.0-wip pnpm run stack:up
 
-# 版を渡せるのはこの 3 つだけ。capping / tsa / chromium-server-docker の Dockerfile は
+# 版を渡せるのはこの 3 つだけ。wacz-signer / tsa / chromium-server-docker の Dockerfile は
 # 版の ARG を持たない (上流の compose も渡していない)。
 _versions_for() {
   local prefix="$1" path="$2"
@@ -75,7 +75,7 @@ _versions_for() {
 export_submodule_versions() {
   echo "submodule の版:"
   _versions_for BROWSERHIVE .upstream/browserhive || return 1
-  _versions_for MEADOW .upstream/meadow || return 1
+  _versions_for CAPTURE_FIXTURES .upstream/capture-fixtures || return 1
   _versions_for REPLAY .upstream/replay || return 1
   echo
 }

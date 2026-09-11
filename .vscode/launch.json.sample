@@ -9,7 +9,7 @@
       // Compiles TypeScript via the `npm: build` preLaunchTask, then runs
       // the generated JS under dist/. Step debugging in TS source is enabled
       // via source maps.
-      "name": "Debug waggle CLI",
+      "name": "Debug capture-ledger CLI",
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/dist/submit-captures.js",

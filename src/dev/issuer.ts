@@ -8,7 +8,7 @@
  * 取得と鍵の更新が、**その日まで一度も走らない**。ここが在れば毎日走る。
  *
  * だから狙いは「本物の IdP に似せること」ではなく、**検証する側のコードが本番と
- * 同じであること**。本物へ移るときに変わるのは `WAGGLE_OIDC_ISSUER` の値だけで、
+ * 同じであること**。本物へ移るときに変わるのは `CAPTURE_LEDGER_OIDC_ISSUER` の値だけで、
  * `jwtIdentityResolver` は 1 行も変わらない。
  *
  * ## 鍵はここから出ない
@@ -21,7 +21,7 @@
  *
  * script の接頭辞は **どの領域か** を言う (`db:` `fga:` `site:` `proto:`)。
  * だから `oidc:issuer`。一方この `src/dev/` は **本物が来たら丸ごと消えるもの** という
- * 印で、`WAGGLE_DEV_*` という環境変数の接頭辞と同じ役目 —— grep 一発で残骸を
+ * 印で、`CAPTURE_LEDGER_DEV_*` という環境変数の接頭辞と同じ役目 —— grep 一発で残骸を
  * 全部見つけられるようにしてある。役目が違うので揃えない。
  *
  * ## `POST /token` は本物と違う形
@@ -38,11 +38,11 @@ import { logger } from "../logger.js";
 
 const ALG = "RS256";
 
-/** 既定の待受。`WAGGLE_DEV_ISSUER_PORT` で変えられる。 */
+/** 既定の待受。`CAPTURE_LEDGER_DEV_ISSUER_PORT` で変えられる。 */
 export const DEFAULT_ISSUER_PORT = 9099;
 
 /** 既定の `aud`。検証する側 (`resolveIdentityResolver`) と同じ値でなければならない。 */
-export const DEFAULT_AUDIENCE = "waggle";
+export const DEFAULT_AUDIENCE = "capture-ledger";
 
 interface TokenRequest {
   /** JWT の `sub`。これが `submitted_by` と OpenFGA の owner tuple になる。 */
@@ -117,14 +117,14 @@ export const buildDevIssuer = async (audience: string, issuer?: string) => {
 };
 
 /**
- * 起動する。**大声で警告する** —— `WAGGLE_DEV_IDENTITY` と同じ扱いで、
+ * 起動する。**大声で警告する** —— `CAPTURE_LEDGER_DEV_IDENTITY` と同じ扱いで、
  * 本番の配備でこれが動いていることに気づけない状態を作らない。
  */
 export const startDevIssuer = async (): Promise<void> => {
   // `??` は未設定のときしか既定値にしないので、空文字が素通りする。`optional` を使う。
-  const port = Number(optional("WAGGLE_DEV_ISSUER_PORT", String(DEFAULT_ISSUER_PORT)));
-  const issuer = optional("WAGGLE_OIDC_ISSUER", `http://127.0.0.1:${String(port)}`);
-  const audience = optional("WAGGLE_OIDC_AUDIENCE", DEFAULT_AUDIENCE);
+  const port = Number(optional("CAPTURE_LEDGER_DEV_ISSUER_PORT", String(DEFAULT_ISSUER_PORT)));
+  const issuer = optional("CAPTURE_LEDGER_OIDC_ISSUER", `http://127.0.0.1:${String(port)}`);
+  const audience = optional("CAPTURE_LEDGER_OIDC_AUDIENCE", DEFAULT_AUDIENCE);
 
   const app = await buildDevIssuer(audience, issuer);
   await app.listen({ port, host: "127.0.0.1" });

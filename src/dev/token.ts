@@ -22,7 +22,7 @@ interface TokenOptions {
 }
 
 const program = new Command()
-  .name("waggle oidc:token")
+  .name("capture-ledger oidc:token")
   .description("開発用の issuer からアクセストークンを 1 つ取る")
   .requiredOption("--subject <subject>", "JWT の sub。submitted_by と owner tuple になる")
   .addOption(
@@ -32,7 +32,7 @@ const program = new Command()
   .option(
     "--issuer <url>",
     "開発用 issuer の URL",
-    optional("WAGGLE_OIDC_ISSUER", `http://127.0.0.1:${String(DEFAULT_ISSUER_PORT)}`),
+    optional("CAPTURE_LEDGER_OIDC_ISSUER", `http://127.0.0.1:${String(DEFAULT_ISSUER_PORT)}`),
   );
 
 export const main = async (argv: string[]): Promise<void> => {

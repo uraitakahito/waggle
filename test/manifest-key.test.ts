@@ -7,7 +7,7 @@ import { sinkObjectKey } from "../src/api/sink.js";
  * `{taskId}_{correlationId}[_{labels}].result.json`。**correlationId の枠は空でも出る**。
  * 値の中の `_` `.` `/` 空白などは `%XX` へ逃がす。
  *
- * waggle が server の応答から読むのではなく自分で組み立てる唯一の鍵なので、
+ * ledger が server の応答から読むのではなく自分で組み立てる唯一の鍵なので、
  * 固定しておく価値がある。**間違えても静かに壊れる** —— 失うのは押し出された
  * ときの代替経路だけで、reconciler のほうは listing で manifest を見つけるため、
  * ログにも結果にも異常が出ない。
@@ -80,7 +80,7 @@ describe("manifestKey", () => {
    * 持っていれば緑のままになる。実際そうだった —— どちらの `ESCAPED` にも
    * 制御文字が入っておらず、11 本すべてが緑のまま素通ししていた。
    *
-   * だからこれは waggle 側で **独立に成り立つべき性質** として置く。鍵は
+   * だからこれは ledger 側で **独立に成り立つべき性質** として置く。鍵は
    * ListObjectsV2 の XML で返り、XML 1.0 は ASCII 0-8 などを表せないので、
    * 制御文字が残ると reconciler が成果物を見つけられなくなる。
    */

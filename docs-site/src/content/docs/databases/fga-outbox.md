@@ -4,7 +4,7 @@ description: A box for tuples waiting to be sent to OpenFGA — the answer to ha
 ---
 
 **A box for tuples waiting to be sent to OpenFGA.** Despite the name it is
-**waggle's table**, not one of OpenFGA's.
+**capture-ledger's table**, not one of OpenFGA's.
 
 ```ts file="src/db/migrations/003-create-fga-outbox.ts#fga-outbox-columns"
 

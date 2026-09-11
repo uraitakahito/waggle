@@ -1,7 +1,7 @@
 /**
  * 成果物の受け口。**BrowserHive が保管庫を持たずに済むための口。**
  *
- * ## なぜ waggle が受けるのか
+ * ## なぜ ledger が受けるのか
  *
  * BrowserHive が自前の保管庫へ書く構成では、あちらが**全テナントに書ける鍵**を持ち、
  * どの成果物が誰のものかを知らないので置き場所も分けられない。他人のために動く権限を
@@ -27,7 +27,7 @@
  *
  * ## 寿命は取り込みの上限より長く
  *
- * 取り込みは数十分に達しうる (forage の既定は 2 時間)。短すぎると
+ * 取り込みは数十分に達しうる (capture-scheduler の既定は 2 時間)。短すぎると
  * **「撮れたのに置けない」**という、この系でいちばん高くつく失敗になる。
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -128,12 +128,12 @@ export const keyPrefixFor = (
  * という最悪の中間状態が作れてしまう —— 署名の設定で同じ形を一度踏んでいる。
  */
 export interface SinkConfig {
-  /** BrowserHive から届く waggle の起点。例: `http://waggle.waggle:7070`。 */
+  /** BrowserHive から届く ledger の起点。例: `http://capture-ledger.capture-ledger:7070`。 */
   origin: string;
   secret: string;
 }
 
-/** 取り込みの上限より長く。forage の既定が 2 時間なので、その外側に置く。 */
+/** 取り込みの上限より長く。capture-scheduler の既定が 2 時間なので、その外側に置く。 */
 const SINK_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 
 /**
