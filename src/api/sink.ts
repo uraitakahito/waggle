@@ -27,7 +27,7 @@
  *
  * ## 寿命は取り込みの上限より長く
  *
- * 取り込みは数十分に達しうる (forage の既定は 2 時間)。短すぎると
+ * 取り込みは数十分に達しうる (capture-scheduler の既定は 2 時間)。短すぎると
  * **「撮れたのに置けない」**という、この系でいちばん高くつく失敗になる。
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -133,7 +133,7 @@ export interface SinkConfig {
   secret: string;
 }
 
-/** 取り込みの上限より長く。forage の既定が 2 時間なので、その外側に置く。 */
+/** 取り込みの上限より長く。capture-scheduler の既定が 2 時間なので、その外側に置く。 */
 const SINK_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 
 /**

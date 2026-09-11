@@ -11,7 +11,7 @@
 #     waggle:latest
 #
 # waggle no longer speaks gRPC to BrowserHive. Captures are submitted by the
-# Windmill flow (forage), which reaches BrowserHive on its own; waggle plans the
+# Windmill flow (capture-scheduler), which reaches BrowserHive on its own; waggle plans the
 # crawl, records it and admits the archives.
 #
 # The migration and seed jobs share this image but not its ENTRYPOINT — see

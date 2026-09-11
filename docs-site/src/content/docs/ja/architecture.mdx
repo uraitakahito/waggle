@@ -15,7 +15,7 @@ flowchart LR
     DIS["crawl/dispatch.ts<br/>webhook を 1 回 POST"]
     API --> DIS
   end
-  DIS -->|"webhook + token"| WM["Windmill の flow<br/>(forage)"]
+  DIS -->|"webhook + token"| WM["Windmill の flow<br/>(capture-scheduler)"]
   WM -->|SubmitCapture| BH
   subgraph BH["BrowserHive"]
     COORD[coordinator + worker pool]

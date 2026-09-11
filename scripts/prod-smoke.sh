@@ -9,7 +9,7 @@
 # **It no longer captures anything.** waggle does not speak gRPC to BrowserHive
 # any more — the Windmill flow submits, and waggle plans and records. What this
 # script proves is that the image boots: migrations apply, the seed lands, and
-# the API answers. The capture path is covered end to end by forage's
+# the API answers. The capture path is covered end to end by capture-scheduler's
 # `pnpm run test:e2e`, which needs Windmill as well.
 #
 # The one-shot jobs are `container run` rather than compose services:
