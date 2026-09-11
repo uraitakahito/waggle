@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# setup.sh —— waggle のローカル開発環境を用意する。
+# setup.sh —— capture-ledger のローカル開発環境を用意する。
 #
 # ここでやること:
 #   1. Apple Container の道具が入っているかを見る。
-#   2. `waggle` の DNS ドメインが登録されていなければ、続けずに止まる。
+#   2. `capture-ledger` の DNS ドメインが登録されていなければ、続けずに止まる。
 #   3. submodule を初期化する。
 #   4. .env.example を写して .env を作る (subject は実行者の名前にする)。
 #
@@ -52,10 +52,10 @@ done
 # 捨てるので **何も言わない**。しかも root のコンテナ (postgres、seaweedfs、
 # replay) では成功するため、「一部のサービスだけ名前が引けない」という追いにくい
 # 症状になる。だからここで大きな音を立てて止める。
-if ! container system dns ls 2>/dev/null | grep -qx "waggle"; then
-  echo "ERROR: the 'waggle' DNS domain is not registered." >&2
+if ! container system dns ls 2>/dev/null | grep -qx "capture-ledger"; then
+  echo "ERROR: the 'capture-ledger' DNS domain is not registered." >&2
   echo "" >&2
-  echo "    sudo container system dns create waggle" >&2
+  echo "    sudo container system dns create capture-ledger" >&2
   echo "" >&2
   echo "Run that once (it needs sudo), then re-run this script." >&2
   exit 1
@@ -74,7 +74,7 @@ git submodule status --recursive | sed 's/^/  /'
 # 雛形の側は scripts/check-env.mjs が src/ と scripts/ の実際の読み取りと
 # 突き合わせているので、変数が増えればここも自動的に追随する。
 #
-# WAGGLE_DEV_* は認証ではない。誰が投げたかを記録に残すための足場で、
+# CAPTURE_LEDGER_DEV_* は認証ではない。誰が投げたかを記録に残すための足場で、
 # 検証は一切されない —— .env を書き換えれば誰にでも成りすませる。本物の
 # identity provider が決まるまでの繋ぎなので、そのつもりで扱うこと。
 cp .env.example .env

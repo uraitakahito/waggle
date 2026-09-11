@@ -5,7 +5,7 @@
  *
  * `runs` は「`capture_targets` の有効な行を全部投げる」1 回で、深さも範囲も
  * 持たなかった。それは `max_depth = 0` のクロールと同じものなので、`crawls` と
- * `crawl_pages` に寄せた (`011`)。投げるのも waggle のプロセスではなく Windmill の
+ * `crawl_pages` に寄せた (`011`)。投げるのも ledger のプロセスではなく Windmill の
  * flow になったので、`runs_single_active_idx` が守っていた前提 —— gRPC の channel が
  * プロセスに 1 つしかない —— そのものが消えている。
  *

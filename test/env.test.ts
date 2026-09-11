@@ -16,23 +16,23 @@ import {
  * 忘れると別のテストに漏れる。
  */
 const TOUCHED = [
-  "WAGGLE_S3_ENDPOINT",
-  "WAGGLE_S3_BUCKET",
-  "WAGGLE_S3_ACCESS_KEY_ID",
-  "WAGGLE_S3_SECRET_ACCESS_KEY",
-  "WAGGLE_S3_REGION",
-  "WAGGLE_S3_FORCE_PATH_STYLE",
-  "WAGGLE_FGA_STORE_ID",
-  "WAGGLE_FGA_MODEL_ID",
-  "WAGGLE_DEV_SUBJECT",
-  "WAGGLE_DEV_ORGANIZATIONS",
+  "CAPTURE_LEDGER_S3_ENDPOINT",
+  "CAPTURE_LEDGER_S3_BUCKET",
+  "CAPTURE_LEDGER_S3_ACCESS_KEY_ID",
+  "CAPTURE_LEDGER_S3_SECRET_ACCESS_KEY",
+  "CAPTURE_LEDGER_S3_REGION",
+  "CAPTURE_LEDGER_S3_FORCE_PATH_STYLE",
+  "CAPTURE_LEDGER_FGA_STORE_ID",
+  "CAPTURE_LEDGER_FGA_MODEL_ID",
+  "CAPTURE_LEDGER_DEV_SUBJECT",
+  "CAPTURE_LEDGER_DEV_ORGANIZATIONS",
 ];
 
 const S3_REQUIRED = [
-  "WAGGLE_S3_ENDPOINT",
-  "WAGGLE_S3_BUCKET",
-  "WAGGLE_S3_ACCESS_KEY_ID",
-  "WAGGLE_S3_SECRET_ACCESS_KEY",
+  "CAPTURE_LEDGER_S3_ENDPOINT",
+  "CAPTURE_LEDGER_S3_BUCKET",
+  "CAPTURE_LEDGER_S3_ACCESS_KEY_ID",
+  "CAPTURE_LEDGER_S3_SECRET_ACCESS_KEY",
 ];
 
 describe("collectEnv", () => {
@@ -54,15 +54,15 @@ describe("collectEnv", () => {
   });
 
   const setS3 = (): void => {
-    process.env["WAGGLE_S3_ENDPOINT"] = "http://127.0.0.1:8333";
-    process.env["WAGGLE_S3_BUCKET"] = "browserhive";
-    process.env["WAGGLE_S3_ACCESS_KEY_ID"] = "key";
-    process.env["WAGGLE_S3_SECRET_ACCESS_KEY"] = "secret";
+    process.env["CAPTURE_LEDGER_S3_ENDPOINT"] = "http://127.0.0.1:8333";
+    process.env["CAPTURE_LEDGER_S3_BUCKET"] = "browserhive";
+    process.env["CAPTURE_LEDGER_S3_ACCESS_KEY_ID"] = "key";
+    process.env["CAPTURE_LEDGER_S3_SECRET_ACCESS_KEY"] = "secret";
   };
 
   const setFga = (): void => {
-    process.env["WAGGLE_FGA_STORE_ID"] = "store";
-    process.env["WAGGLE_FGA_MODEL_ID"] = "model";
+    process.env["CAPTURE_LEDGER_FGA_STORE_ID"] = "store";
+    process.env["CAPTURE_LEDGER_FGA_MODEL_ID"] = "model";
   };
 
   // これが要点。1 個ずつ throw していた頃は、4 つ欠けていれば 4 回起動し直す
@@ -86,8 +86,8 @@ describe("collectEnv", () => {
     } catch (caught) {
       expect((caught as MissingEnvError).names).toEqual([
         ...S3_REQUIRED,
-        "WAGGLE_FGA_STORE_ID",
-        "WAGGLE_FGA_MODEL_ID",
+        "CAPTURE_LEDGER_FGA_STORE_ID",
+        "CAPTURE_LEDGER_FGA_MODEL_ID",
       ]);
     }
   });
@@ -96,12 +96,12 @@ describe("collectEnv", () => {
   // ので、無いのと同じに扱う (required と同じ判定)。
   it("treats an empty value as missing", () => {
     setS3();
-    process.env["WAGGLE_S3_BUCKET"] = "";
+    process.env["CAPTURE_LEDGER_S3_BUCKET"] = "";
     try {
       collectEnv(storageFrom);
       expect.unreachable("should have thrown");
     } catch (caught) {
-      expect((caught as MissingEnvError).names).toEqual(["WAGGLE_S3_BUCKET"]);
+      expect((caught as MissingEnvError).names).toEqual(["CAPTURE_LEDGER_S3_BUCKET"]);
     }
   });
 
@@ -110,7 +110,7 @@ describe("collectEnv", () => {
       collectEnv(storageFrom);
       expect.unreachable("should have thrown");
     } catch (caught) {
-      expect((caught as Error).message).toContain("WAGGLE_S3_ENDPOINT");
+      expect((caught as Error).message).toContain("CAPTURE_LEDGER_S3_ENDPOINT");
       expect((caught as Error).message).toContain(".env.example");
     }
   });
@@ -175,13 +175,13 @@ describe("blankOptionalEnv", () => {
   // **二重報告をしないこと。** required が空なのは collectEnv の担当で、
   // ここが同じ誤りをもう一度言うと、どちらを直せばよいのか分からなくなる。
   it("leaves an empty required variable to collectEnv", () => {
-    touch("WAGGLE_S3_BUCKET", "");
-    expect(blankOptionalEnv()).not.toContain("WAGGLE_S3_BUCKET");
+    touch("CAPTURE_LEDGER_S3_BUCKET", "");
+    expect(blankOptionalEnv()).not.toContain("CAPTURE_LEDGER_S3_BUCKET");
     expect(() => collectEnv(storageFrom)).toThrow(MissingEnvError);
   });
 
   it("reports only the optional half when both are empty", () => {
-    touch("WAGGLE_S3_BUCKET", "");
+    touch("CAPTURE_LEDGER_S3_BUCKET", "");
     touch("LOG_LEVEL", "");
     expect(blankOptionalEnv()).toEqual(["LOG_LEVEL"]);
   });

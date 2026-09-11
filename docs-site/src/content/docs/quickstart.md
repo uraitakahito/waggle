@@ -3,20 +3,20 @@ title: Quickstart
 description: Bring the Compose stack up, seed the capture_targets table, and start your first crawl.
 ---
 
-The stack brings up everything waggle needs — Postgres, SeaweedFS, two headless
+The stack brings up everything capture-ledger needs — Postgres, SeaweedFS, two headless
 Chromium workers, and a BrowserHive built from the
-[pinned submodule](/waggle/upgrading-browserhive/). It runs on
+[pinned submodule](/capture-ledger/upgrading-browserhive/). It runs on
 [Apple Container](https://github.com/apple/container), driven by
 `container-compose`.
 
 ## 1. Register the DNS domain (once per machine)
 
 ```sh
-sudo container system dns create waggle
+sudo container system dns create capture-ledger
 ```
 
-The project name is the DNS domain: containers become `<service>.waggle`,
-resolvable from each other **and from the host** — which is what lets waggle
+The project name is the DNS domain: containers become `<service>.capture-ledger`,
+resolvable from each other **and from the host** — which is what lets capture-ledger
 itself run on the host against this stack. Without it, container-compose falls
 back to appending to the `/etc/hosts` **inside each container** via
 `container exec` (your Mac's own `/etc/hosts` is never touched). That write
@@ -62,7 +62,7 @@ local Chrome and add `localhost:9222` and `localhost:9223` under _Configure…_.
 
 ## 4. Prepare the database
 
-**There is no dev container.** waggle runs on the host and reaches the stack by
+**There is no dev container.** capture-ledger runs on the host and reaches the stack by
 name — `.env` already holds the connection strings:
 
 ```sh
@@ -82,11 +82,11 @@ pnpm run fga:migrate  # create the OpenFGA datastore
 pnpm run fga:deploy   # push the model; prints the store id and model id
 ```
 
-Copy the two printed lines into `WAGGLE_FGA_STORE_ID` and `WAGGLE_FGA_MODEL_ID`
+Copy the two printed lines into `CAPTURE_LEDGER_FGA_STORE_ID` and `CAPTURE_LEDGER_FGA_MODEL_ID`
 in `.env`.
 
 :::note[This step is not optional any more]
-There is no longer a CLI that bypasses OpenFGA. Every way into waggle is the
+There is no longer a CLI that bypasses OpenFGA. Every way into capture-ledger is the
 API, and the API needs these two ids.
 :::
 
@@ -101,7 +101,7 @@ pnpm run api
 open http://127.0.0.1:7070/
 ```
 
-An empty listing usually means `WAGGLE_DEV_IDENTITY=1` is missing from `.env` —
+An empty listing usually means `CAPTURE_LEDGER_DEV_IDENTITY=1` is missing from `.env` —
 without it the resolver admits nobody and the picker stays empty with `401`.
 
 :::caution[A scheduler cannot reach a loopback bind]
@@ -109,25 +109,25 @@ The default bind is `127.0.0.1`, and **a container cannot reach it**. To let
 capture-scheduler's Windmill run the daily crawl, start the API on all interfaces:
 
 ```sh
-WAGGLE_API_HOST=0.0.0.0 pnpm run api
+CAPTURE_LEDGER_API_HOST=0.0.0.0 pnpm run api
 ```
 
 The container then points at bridge100 — `http://192.168.64.1:7070`. **A host
 name will not resolve there.** That address is already capture-scheduler's default for
-`WAGGLE_API_URL`, so `pnpm run windmill:waggle-token` wires it up with nothing
+`CAPTURE_LEDGER_API_URL`, so `pnpm run windmill:capture-ledger-token` wires it up with nothing
 to configure. Opening the API beyond loopback puts it in front of whatever
 authentication you have configured — check that first.
 :::
 
 ## 7. Start a crawl
 
-Capturing is a crawl now: waggle plans it, and a Windmill flow does the
+Capturing is a crawl now: capture-ledger plans it, and a Windmill flow does the
 submitting.
 
 ```sh
 curl -X POST http://127.0.0.1:7070/api/crawls \
   -H 'content-type: application/json' \
-  -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  -H "X-Capture-ledger-Subject: $(whoami)" -H "X-Capture-ledger-Organizations: acme" \
   -d '{"fromTargets":{"limit":1}}'
 # → 202 { "crawlId": "9072b625-…" }
 ```
@@ -136,15 +136,15 @@ curl -X POST http://127.0.0.1:7070/api/crawls \
 take them, follow nothing. That is what the old `POST /api/runs` did.
 
 :::caution[This needs the scheduler stack]
-`/api/crawls` is **only served when `WAGGLE_CRAWL_WEBHOOK_URL` and
-`WAGGLE_CRAWL_WEBHOOK_TOKEN` are both set** — waggle no longer talks to
+`/api/crawls` is **only served when `CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` and
+`CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN` are both set** — capture-ledger no longer talks to
 BrowserHive itself, so without somewhere to dispatch to there is nothing to
 serve, and the route answers `404`. The flow lives in
 [capture-scheduler](https://github.com/uraitakahito/capture-scheduler). Everything above this step
 works without it; capturing does not.
 
 Also note `can_submit`: a caller without the grant gets `404` too. See
-[Archive ledger](/waggle/archive-ledger/#who-may-start-one).
+[Archive ledger](/capture-ledger/archive-ledger/#who-may-start-one).
 :::
 
 ## 8. See what came out
@@ -155,11 +155,11 @@ ledger (the `archives` table) and is **filtered by OpenFGA's `can_view`**. You
 can also call the API directly:
 
 ```sh
-curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+curl -s -H "X-Capture-ledger-Subject: $(whoami)" -H "X-Capture-ledger-Organizations: acme" \
   http://127.0.0.1:7070/api/archives | jq '.archives[0]'
 ```
 
-See [Archive ledger](/waggle/archive-ledger/) for the whole surface, and
+See [Archive ledger](/capture-ledger/archive-ledger/) for the whole surface, and
 `GET /api/crawls/<crawlId>` for how the crawl itself ended.
 
 ### While it is still running
@@ -167,7 +167,7 @@ See [Archive ledger](/waggle/archive-ledger/) for the whole surface, and
 **A page reaches the ledger only after the flow reports the level it was in.**
 If it is not in the picker, the level is either still open or the page failed.
 **Progress lives only in BrowserHive** — that is the system of record; what
-waggle holds is a copy of finished facts. waggle does not poll it, but you
+capture-ledger holds is a copy of finished facts. capture-ledger does not poll it, but you
 still can:
 
 ```sh
@@ -184,7 +184,7 @@ contents are on BrowserHive's storage page.
 
 ## Next
 
-- Serve and share archives, and the whole crawl API → [Archive ledger](/waggle/archive-ledger/)
-- Add your own URLs → [URL source](/waggle/url-source/)
-- Change what gets captured → [Capture options](/waggle/capture-options/)
-- Work without Compose → [Development environment](/waggle/development-environment/)
+- Serve and share archives, and the whole crawl API → [Archive ledger](/capture-ledger/archive-ledger/)
+- Add your own URLs → [URL source](/capture-ledger/url-source/)
+- Change what gets captured → [Capture options](/capture-ledger/capture-options/)
+- Work without Compose → [Development environment](/capture-ledger/development-environment/)

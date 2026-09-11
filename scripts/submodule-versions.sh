@@ -28,7 +28,7 @@
 # develop の commit を指した submodule に `describe` を当てると何メジャーも古い値が
 # 返る (上流でそれを踏み、`generate-version.mjs` を書き直した)。
 #
-# waggle は「submodule はタグに固定する」を既に規約にしている —— CI の site job が
+# capture-ledger は「submodule はタグに固定する」を既に規約にしている —— CI の site job が
 # `browserhivePin()` 経由でそれに依存している。ここで守らせるのはその規約の延長。
 #
 # 一時的に外したいときは、変数を明示すれば計算ごと飛ぶ:

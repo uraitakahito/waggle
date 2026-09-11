@@ -29,7 +29,7 @@ The underscore in `_user` is because **`user` is reserved in SQL**.
 
 ## "Who" is not necessarily a person
 
-waggle's real rows show it:
+capture-ledger's real rows show it:
 
 ```
  object                    | relation | _user
@@ -68,7 +68,7 @@ That is part of the cost of implementing ReBAC.
 attaches to the tuple itself**, not to a separate table. Conditioned and plain
 relationships live side by side.
 
-In waggle's model only the direct share outside an organization is conditioned:
+In capture-ledger's model only the direct share outside an organization is conditioned:
 
 ```
 define viewer: [user with non_expired_grant, organization#member]
@@ -92,8 +92,8 @@ answers and 26 returns `authorization_model_resolution_too_complex`.
 ## Looking inside
 
 ```sh
-container exec openfga-db.waggle psql -U openfga -d openfga -c "\d tuple"
+container exec openfga-db.capture-ledger psql -U openfga -d openfga -c "\d tuple"
 
-container exec openfga-db.waggle psql -U openfga -d openfga \
+container exec openfga-db.capture-ledger psql -U openfga -d openfga \
   -c "SELECT object_type||':'||object_id AS object, relation, _user FROM tuple"
 ```

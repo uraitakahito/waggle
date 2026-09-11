@@ -5,9 +5,9 @@ import { satteri } from "@astrojs/markdown-satteri";
 import mdastCodeRegion from "./src/plugins/mdast-code-region";
 import hastRebaseLinks from "./src/plugins/hast-rebase-links";
 
-const BASE = "/waggle";
+const BASE = "/capture-ledger";
 
-// BrowserHive の公開ドキュメント。waggle は BrowserHive の挙動を一切書かず、
+// BrowserHive の公開ドキュメント。ledger は BrowserHive の挙動を一切書かず、
 // ここへリンクする(DRY: 一次情報は向こうにしかない)。絶対 URL なのは意図的で、
 // root-relative にすると Starlight が日本語ページ上で /ja/ を注入し 404 になる。
 
@@ -20,7 +20,7 @@ export default defineConfig({
   // 転送を残す。
   //
   // **鍵と値で base の扱いが違う。** 鍵は base 抜き (astro が出力先を
-  // `dist/databases/urls/` に置き、それが `/waggle/databases/urls/` になる)。
+  // `dist/databases/urls/` に置き、それが `/capture-ledger/databases/urls/` になる)。
   // 値は **base を自分で付ける** —— astro は転送先を書き換えないので、
   // `/databases/...` と書くとドメイン直下を指して 404 になる。
   redirects: {
@@ -31,7 +31,7 @@ export default defineConfig({
     // ```mermaid をクライアントサイドで描画。starlight より前に置く。
     mermaid({ theme: "neutral" }),
     starlight({
-      title: "waggle Docs",
+      title: "capture-ledger Docs",
       customCss: ["./src/styles/tables.css"],
       defaultLocale: "root",
       locales: {

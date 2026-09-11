@@ -1,9 +1,9 @@
 ---
 title: capture_targets
-description: The list of what to capture — the answer to the one question waggle asks.
+description: The list of what to capture — the answer to the one question capture-ledger asks.
 ---
 
-**The list of what to capture.** The answer to the one question waggle asks —
+**The list of what to capture.** The answer to the one question capture-ledger asks —
 which URLs get captured — lives here. `POST /api/crawls` with `fromTargets`
 seeds a crawl from the enabled rows of this table, filtered to the caller's
 organization.
@@ -44,9 +44,9 @@ Indexing disabled rows would only waste space.
 ## Adding rows
 
 ```sh
-container exec postgres.waggle psql -U waggle -d waggle -c \
+container exec postgres.capture-ledger psql -U capture-ledger -d capture-ledger -c \
   "INSERT INTO capture_targets (url, labels) VALUES ('https://example.com/', ARRAY['example'])"
 ```
 
 Inserting the same URL twice is rejected by `capture_targets_url_hash_key`. See
-[URL source](/waggle/url-source/) for more.
+[URL source](/capture-ledger/url-source/) for more.

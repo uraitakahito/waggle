@@ -7,7 +7,7 @@
  * 拒まれるまで目に見えない。
  *
  * `FOR UPDATE SKIP LOCKED` のおかげで、掃き出しは同時に何本走ってもよい (タイマーで
- * 動く API プロセスと、手で叩く `waggle fga:drain`)。同じ行を 2 度処理することも、
+ * 動く API プロセスと、手で叩く `capture-ledger fga:drain`)。同じ行を 2 度処理することも、
  * 互いを待たせることもない。
  */
 import { sql, type Kysely } from "kysely";

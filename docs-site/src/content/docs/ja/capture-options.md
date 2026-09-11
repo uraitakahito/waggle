@@ -3,23 +3,23 @@ title: キャプチャオプション
 description: この配備が「何を撮るか」をどう決めるか。形式と署名は環境変数から決まる。
 ---
 
-waggle 自身は何も撮りませんし、CLI が消えた今は BrowserHive とも話しません
+capture-ledger 自身は何も撮りませんし、CLI が消えた今は BrowserHive とも話しません
 （投げるのは Windmill の flow です）。ここに残っているのは **1 つの判断** ——
-どの形式を要求するか、署名を必須にするか —— だけで、waggle はそれを環境変数から
+どの形式を要求するか、署名を必須にするか —— だけで、capture-ledger はそれを環境変数から
 決め、投げるたびに載せます。
 
-線の引き方はクロールの API と同じです。**呼ぶ側が「いつ」を決め、waggle が
+線の引き方はクロールの API と同じです。**呼ぶ側が「いつ」を決め、capture-ledger が
 「何を」決める。** 形式はリクエストの性質ではなく配備の性質なので、呼び出し元から
 受け取らないようにしてあります。
 
 ## フォーマット
 
-`WAGGLE_CAPTURE_FORMATS` にカンマ区切りで書きます。既定は `wacz` ——
+`CAPTURE_LEDGER_CAPTURE_FORMATS` にカンマ区切りで書きます。既定は `wacz` ——
 このパイプラインが作るのは再生できるアーカイブで、他の形式はその付随物だからです。
 
 ```sh
-WAGGLE_CAPTURE_FORMATS=wacz   # png, webp, html, links, mhtml, wacz
-WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
+CAPTURE_LEDGER_CAPTURE_FORMATS=wacz   # png, webp, html, links, mhtml, wacz
+CAPTURE_LEDGER_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 ```
 
 | 値      | `captureFormats` のキー |
@@ -36,7 +36,7 @@ WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 
 ## 読むのは起動時の 1 回だけ
 
-`WAGGLE_CAPTURE_FORMATS` はクロールのたびではなく、API の起動時に解釈します。
+`CAPTURE_LEDGER_CAPTURE_FORMATS` はクロールのたびではなく、API の起動時に解釈します。
 綴りを間違えていれば、その値を名指しでサーバが落ちます。毎回解釈する形にすると、
 `waxz` のような打ち間違いは夜中の定期クロールが「形式が 1 つも有効でない」で
 失敗して初めて表に出ます —— 原因の設定名を一言も含まないメッセージで。
@@ -52,8 +52,8 @@ WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 
 ## 署名は落ちず、取り込みが落ちる
 
-`WAGGLE_CAPTURE_SIGNING=1` は形式に `wacz` があることを要求します。サーバに後から
-`INVALID_ARGUMENT` を言わせるのではなく、waggle が起動時に拒みます。
+`CAPTURE_LEDGER_CAPTURE_SIGNING=1` は形式に `wacz` があることを要求します。サーバに後から
+`INVALID_ARGUMENT` を言わせるのではなく、capture-ledger が起動時に拒みます。
 
 **署名が得られなければ、その取り込みは失敗します。** BrowserHive は zip を書く前に
 落とすので、署名済みのはずのものが未署名で出ることはありません。これは意図した
@@ -61,28 +61,28 @@ WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 署名を有効にすると、**全件**が失敗します。
 
 無効のままにすれば、判断はサーバの `--signing-policy` に委ねられます。`required` で
-動いている配備なら、waggle が何も言わなくても署名されます。
+動いている配備なら、capture-ledger が何も言わなくても署名されます。
 
 結果は台帳に残ります。`archives.signed` は署名が付けば `true`、そもそも求めて
 いなければ `null` —— 「このクロールは証拠として使える形のアーカイブを作ったか」に、
 zip を 1 つも開かずに答えられます。
 
-## waggle が決めなくなったもの
+## capture-ledger が決めなくなったもの
 
 以前の CLI は `SubmitCapture` のフィールドそれぞれに旗を対応させていました
 （`--device-pixel-ratios` / `--operation-delay-ms` / `--behaviors` /
 `--no-site-behaviors` / `--dismiss-banners` / `--accept-language` / `--session`）。
-**これらはもう存在しません。** waggle が送るのは `captureFormats` と `signing` だけで、
+**これらはもう存在しません。** capture-ledger が送るのは `captureFormats` と `signing` だけで、
 ページの描き方については何も送りません —— 送らないものはすべて、その BrowserHive
 サーバの設定どおりになります（意味は BrowserHive 自身のドキュメントが定義します）。
 
-描き方を変えるのは、いまや BrowserHive 側か flow 側の変更であって、waggle の変更では
+描き方を変えるのは、いまや BrowserHive 側か flow 側の変更であって、capture-ledger の変更では
 ありません。
 
 ## 呼び出し元がクロールごとに渡せるもの
 
 相手への当たり方と範囲を、`POST /api/crawls` のボディで渡せます
-（[アーカイブ台帳](/waggle/ja/archive-ledger/#リンクを辿る)を参照）。
+（[アーカイブ台帳](/capture-ledger/ja/archive-ledger/#リンクを辿る)を参照）。
 
 | フィールド        | 既定                         | 意味                                 |
 | ----------------- | ---------------------------- | ------------------------------------ |

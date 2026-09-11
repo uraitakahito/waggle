@@ -1,9 +1,9 @@
 ---
 title: capture_targets
-description: 撮る対象の一覧。waggle が答える唯一の問いの答えが入るテーブル。
+description: 撮る対象の一覧。capture-ledger が答える唯一の問いの答えが入るテーブル。
 ---
 
-**撮る対象の一覧。** waggle が答える唯一の問い「どの URL を撮るか」の答えがここに
+**撮る対象の一覧。** capture-ledger が答える唯一の問い「どの URL を撮るか」の答えがここに
 あります。`POST /api/crawls` に `fromTargets` を渡すと、この表の有効な行
 （呼び出し元の組織のぶんだけ）がクロールの種になります。
 
@@ -42,9 +42,9 @@ capture_targets_enabled_id_idx  (id) WHERE enabled         -- 部分索引
 ## 行を足す
 
 ```sh
-container exec postgres.waggle psql -U waggle -d waggle -c \
+container exec postgres.capture-ledger psql -U capture-ledger -d capture-ledger -c \
   "INSERT INTO capture_targets (url, labels) VALUES ('https://example.com/', ARRAY['example'])"
 ```
 
 同じ URL を 2 度入れようとすると `capture_targets_url_hash_key` で弾かれます。詳しくは
-[URL ソース](/waggle/ja/url-source/)を参照してください。
+[URL ソース](/capture-ledger/ja/url-source/)を参照してください。

@@ -1,20 +1,20 @@
 /**
  * コードから「事実」を取り出す唯一の入口。
  *
- * ドキュメントに書かれた事実のうち、waggle のソースやピン留め設定を写しただけの
+ * ドキュメントに書かれた事実のうち、ledger のソースやピン留め設定を写しただけの
  * ものは、ここを経由して実物から読む。手書きでコピーするとコード側の変更に
  * 追随せず、しかも間違いに誰も気付かない。
  *
  * BrowserHive 側の事実は対象外。あちらの docs へリンクする（DRY）。
  *
- * browserhive の同名ファイルは ts-morph で `@glossary` も抽出するが、waggle には
+ * browserhive の同名ファイルは ts-morph で `@glossary` も抽出するが、ledger には
  * 用語集にすべき語彙がないので `#region` とピン検査だけを持つ。依存はゼロ。
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// waggle ルート。docs-site は waggle 直下にあり、astro dev/build は docs-site を
+// ledger ルート。docs-site は ledger 直下にあり、astro dev/build は docs-site を
 // cwd に実行されるので、その親がリポジトリルート。
 // ※ import.meta.url は astro ビルド後の dist パスになるため使えない。
 const ROOT = resolve(process.cwd(), "..");

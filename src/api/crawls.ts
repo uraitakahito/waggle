@@ -22,7 +22,7 @@
  *
  * ## 帰属
  *
- * 投げるのが waggle でなくなっても、`capture_submissions` はここで書く。段ごとの
+ * 投げるのが ledger でなくなっても、`capture_submissions` はここで書く。段ごとの
  * 報告に taskId が載っているので、そのときに書けばよい。reconciler が
  * `unattributed` を数えている理由 (`archive/reconcile.ts`) はそのまま残る。
  */
@@ -67,7 +67,7 @@ export type CrawlDispatcher = (crawl: DispatchedCrawl) => Promise<void>;
 /**
  * Windmill の flow に渡す 1 段ぶんの仕事。
  *
- * **段の繰り返しは waggle が回す。** flow は 1 段を処理して報告するだけで、次があるかを
+ * **段の繰り返しは ledger が回す。** flow は 1 段を処理して報告するだけで、次があるかを
  * 判断しない。そうしたのは、Windmill の while ループが止まらなかったから ——
  * `stop_after_if` を付けた最小の flow が 643 回まで回り続けた (実測)。相手のサーバに
  * 負荷をかけない仕組みを、暴走しうるループの上には載せられない。
@@ -92,7 +92,7 @@ export interface DispatchedCrawl {
    *
    * flow の schema の既定値には頼れない —— Windmill は webhook 起動のとき
    * 既定値を埋めないので、送らなければ `undefined` が届く (実測)。決めるのは
-   * 依然として waggle 側で、flow は言われたとおりに投げる。
+   * 依然として ledger 側で、flow は言われたとおりに投げる。
    */
   captureFormats: CaptureFormats;
   /**
@@ -111,7 +111,7 @@ export interface CrawlRouteDeps {
   db: Kysely<Database>;
   fga: OpenFgaClient;
   /**
-   * `.links.json` を読むため。**リンクを読むのは waggle の仕事にしてある** ——
+   * `.links.json` を読むため。**リンクを読むのは ledger の仕事にしてある** ——
    * Windmill に読ませると S3 の資格情報と到達性をあちらにも用意することになり、
    * (別ドメインのコンテナからは seaweedfs に届かないという実務上の壁もある)
    * 「見つけた URL は何か」の判断材料が 2 か所に散る。
@@ -480,7 +480,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
       }
 
       // ── 2. 帰属を書く ────────────────────────────────────────────────
-      // 投げたのが waggle でなくても、記録はここに残す。reconciler が
+      // 投げたのが ledger でなくても、記録はここに残す。reconciler が
       // `unattributed` を数える経路を壊さないため。
       //
       // **状態は問わない。`taskId` を持つ全件に書く。** 以前は `captured` だけに
@@ -498,7 +498,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
           .values(
             // **戻り値の型を書く。** 無いと excess property 検査が効かず、`.map()` を
             // 通った object literal は**存在しない列を書いても typecheck が緑になる**
-            // (`source_url` を落としたときに実測)。waggle に DB を使う試験は 1 本も
+            // (`source_url` を落としたときに実測)。ledger に DB を使う試験は 1 本も
             // 無いので、schema とのずれを静的に捕まえるのはここだけ。
             submitted.map((r): Insertable<CaptureSubmissionsTable> => ({
               taskId: r.taskId,
@@ -704,7 +704,7 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
    *
    * ## なぜ要るのか
    *
-   * flow が段の途中で落ちると `POST /pages` に辿り着かないので、**waggle は何も
+   * flow が段の途中で落ちると `POST /pages` に辿り着かないので、**ledger は何も
    * 知らされない**。行は `running` のまま残り、部分 unique index が以後のクロールを
    * 全部塞ぐ。実測で踏んだ: BrowserHive を止めてクロールを起こすと、`crawl_host` が
    * `UNAVAILABLE` で落ちて flow ごと失敗し、行は永久に走行中になった。

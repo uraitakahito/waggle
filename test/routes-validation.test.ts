@@ -30,17 +30,17 @@ const unreachableDeps = {
   resolveIdentity: explode,
 } as unknown as RouteDeps;
 
-const SUBJECT = { "x-waggle-subject": "alice" };
+const SUBJECT = { "x-capture-ledger-subject": "alice" };
 const UUID = "d272d256-e528-4581-bb4e-8d9477d78196";
 
 describe("route の入力検証", () => {
   let app: FastifyInstance;
-  const original = process.env["WAGGLE_DEV_IDENTITY"];
+  const original = process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
 
   beforeEach(async () => {
     // resolveIdentity は deps から来るので Proxy が投げる。identity より前に
     // 弾かれることを見たいので、それで構わない。
-    process.env["WAGGLE_DEV_IDENTITY"] = "1";
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "1";
     app = Fastify({ logger: false });
     // 500 の中身を出さない handler も一緒に確かめる (server.ts と同じ形)。
     app.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -53,8 +53,8 @@ describe("route の入力検証", () => {
 
   afterEach(async () => {
     await app.close();
-    if (original === undefined) delete process.env["WAGGLE_DEV_IDENTITY"];
-    else process.env["WAGGLE_DEV_IDENTITY"] = original;
+    if (original === undefined) delete process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
+    else process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = original;
   });
 
   // これが要点。以前は new Date("not-a-date") が Invalid Date のまま SQL の

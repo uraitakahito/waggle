@@ -3,19 +3,19 @@ title: クイックスタート
 description: Compose スタックを立ち上げ、capture_targets を seed し、最初のクロールを起こすまで。
 ---
 
-スタックは waggle に必要なものを一式立ち上げます — Postgres、SeaweedFS、
-headless の Chromium ワーカー 2 台、そして[固定した submodule](/waggle/ja/upgrading-browserhive/)から
+スタックは capture-ledger に必要なものを一式立ち上げます — Postgres、SeaweedFS、
+headless の Chromium ワーカー 2 台、そして[固定した submodule](/capture-ledger/ja/upgrading-browserhive/)から
 ビルドされる BrowserHive です。実行基盤は
 [Apple Container](https://github.com/apple/container)で、`container-compose` が駆動します。
 
 ## 1. DNS ドメインを登録する（マシンごとに 1 回）
 
 ```sh
-sudo container system dns create waggle
+sudo container system dns create capture-ledger
 ```
 
-プロジェクト名がそのまま DNS ドメインになります。コンテナは `<service>.waggle`
-という名前になり、**コンテナ間からもホストからも**解決できます — waggle 自身を
+プロジェクト名がそのまま DNS ドメインになります。コンテナは `<service>.capture-ledger`
+という名前になり、**コンテナ間からもホストからも**解決できます — capture-ledger 自身を
 ホストで動かしてこのスタックに繋げられるのはこのためです。登録が無いと
 container-compose は `container exec` で **各コンテナの中の** `/etc/hosts` に
 追記する方式に退行します（お使いの Mac の `/etc/hosts` は触りません）。その
@@ -61,7 +61,7 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 
 ## 4. データベースを準備する
 
-**dev コンテナはありません。** waggle はホストで動き、名前でスタックに届きます
+**dev コンテナはありません。** capture-ledger はホストで動き、名前でスタックに届きます
 （接続文字列は `.env` に入っています）。
 
 ```sh
@@ -81,11 +81,11 @@ pnpm run fga:migrate  # OpenFGA の datastore を作る
 pnpm run fga:deploy   # model を送り、store id と model id を印字する
 ```
 
-印字された 2 行を `.env` の `WAGGLE_FGA_STORE_ID` と `WAGGLE_FGA_MODEL_ID` に
+印字された 2 行を `.env` の `CAPTURE_LEDGER_FGA_STORE_ID` と `CAPTURE_LEDGER_FGA_MODEL_ID` に
 書き写してください。
 
 :::note[この段はもう飛ばせません]
-OpenFGA を通らない CLI は無くなりました。waggle への入口はすべて API で、
+OpenFGA を通らない CLI は無くなりました。capture-ledger への入口はすべて API で、
 API はこの 2 つの ID を要ります。
 :::
 
@@ -100,7 +100,7 @@ pnpm run api
 open http://127.0.0.1:7070/
 ```
 
-一覧が空なら `.env` の `WAGGLE_DEV_IDENTITY=1` を確かめてください。無いと
+一覧が空なら `.env` の `CAPTURE_LEDGER_DEV_IDENTITY=1` を確かめてください。無いと
 resolver が誰も通さず、picker は `401` で空のままになります。
 
 :::caution[スケジューラから叩くなら loopback では届きません]
@@ -108,24 +108,24 @@ resolver が誰も通さず、picker は `401` で空のままになります。
 日次を任せるなら 0.0.0.0 で起こしてください:
 
 ```sh
-WAGGLE_API_HOST=0.0.0.0 pnpm run api
+CAPTURE_LEDGER_API_HOST=0.0.0.0 pnpm run api
 ```
 
 コンテナ側が指す先は bridge100 の `http://192.168.64.1:7070` です ―― **ホスト名では
-引けません**。capture-scheduler の `WAGGLE_API_URL` の既定がその値なので、通常は何も設定せずに
-`pnpm run windmill:waggle-token` を走らせるだけで揃います。外に出す以上、
+引けません**。capture-scheduler の `CAPTURE_LEDGER_API_URL` の既定がその値なので、通常は何も設定せずに
+`pnpm run windmill:capture-ledger-token` を走らせるだけで揃います。外に出す以上、
 前段の認証を確かめてから開けてください。
 :::
 
 ## 7. クロールを起こす
 
-取り込みはクロールとして起こします。段取りを決めるのは waggle で、実際に投げるのは
+取り込みはクロールとして起こします。段取りを決めるのは capture-ledger で、実際に投げるのは
 Windmill の flow です。
 
 ```sh
 curl -X POST http://127.0.0.1:7070/api/crawls \
   -H 'content-type: application/json' \
-  -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+  -H "X-Capture-ledger-Subject: $(whoami)" -H "X-Capture-ledger-Organizations: acme" \
   -d '{"fromTargets":{"limit":1}}'
 # → 202 { "crawlId": "9072b625-…" }
 ```
@@ -134,14 +134,14 @@ curl -X POST http://127.0.0.1:7070/api/crawls \
 以前の `POST /api/runs` がしていたのはこれです。
 
 :::caution[この段にはスケジューラ側のスタックが要ります]
-`/api/crawls` は **`WAGGLE_CRAWL_WEBHOOK_URL` と `WAGGLE_CRAWL_WEBHOOK_TOKEN` の
-両方が設定されているときにしか出ません**。waggle はもう BrowserHive と直接
+`/api/crawls` は **`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` と `CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN` の
+両方が設定されているときにしか出ません**。capture-ledger はもう BrowserHive と直接
 話さないので、投げる先が無ければ出す口も無く、route は `404` を返します。flow は
 [capture-scheduler](https://github.com/uraitakahito/capture-scheduler) に居ます。ここより前の段は
 それ無しで動きますが、取り込みだけは動きません。
 
 `can_submit` にも注意してください。許可の無い呼び出し元にも `404` が返ります。
-[アーカイブ台帳](/waggle/ja/archive-ledger/#誰が起こしてよいか)を参照。
+[アーカイブ台帳](/capture-ledger/ja/archive-ledger/#誰が起こしてよいか)を参照。
 :::
 
 ## 8. 結果を見る
@@ -152,19 +152,19 @@ curl -X POST http://127.0.0.1:7070/api/crawls \
 絞ってあります**。API を直に叩くこともできます。
 
 ```sh
-curl -s -H "X-Waggle-Subject: $(whoami)" -H "X-Waggle-Organizations: acme" \
+curl -s -H "X-Capture-ledger-Subject: $(whoami)" -H "X-Capture-ledger-Organizations: acme" \
   http://127.0.0.1:7070/api/archives | jq '.archives[0]'
 ```
 
-API の全体は[アーカイブ台帳](/waggle/ja/archive-ledger/)に、クロール自体の
+API の全体は[アーカイブ台帳](/capture-ledger/ja/archive-ledger/)に、クロール自体の
 終わり方は `GET /api/crawls/<crawlId>` にあります。
 
 ### まだ終わっていないとき
 
 **ページが台帳に載るのは、そのページの居た段を flow が報告した後**です。picker に
 出てこないなら、段がまだ開いているか、そのページが失敗しています。**進行中の状態は
-BrowserHive にしかありません** —— そちらが正本で、waggle が持っているのは終わった
-事実の写しです。waggle はもう問い合わせませんが、手で訊くことはできます。
+BrowserHive にしかありません** —— そちらが正本で、capture-ledger が持っているのは終わった
+事実の写しです。capture-ledger はもう問い合わせませんが、手で訊くことはできます。
 
 ```sh
 grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
@@ -180,7 +180,7 @@ WACZ の中身は BrowserHive のストレージのページにあります。
 
 ## 次に読むもの
 
-- アーカイブを配る・共有する、クロール API の全体 → [アーカイブ台帳](/waggle/ja/archive-ledger/)
-- 自分の URL を追加する → [URL ソース](/waggle/ja/url-source/)
-- 何を撮るかを変える → [キャプチャオプション](/waggle/ja/capture-options/)
-- Compose を使わずに動かす → [開発環境](/waggle/ja/development-environment/)
+- アーカイブを配る・共有する、クロール API の全体 → [アーカイブ台帳](/capture-ledger/ja/archive-ledger/)
+- 自分の URL を追加する → [URL ソース](/capture-ledger/ja/url-source/)
+- 何を撮るかを変える → [キャプチャオプション](/capture-ledger/ja/capture-options/)
+- Compose を使わずに動かす → [開発環境](/capture-ledger/ja/development-environment/)

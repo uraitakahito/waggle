@@ -4,8 +4,8 @@
  *
  * shell にそのまま貼れる代入を 2 行出す:
  *
- *   WAGGLE_FGA_STORE_ID=01K...
- *   WAGGLE_FGA_MODEL_ID=01K...
+ *   CAPTURE_LEDGER_FGA_STORE_ID=01K...
+ *   CAPTURE_LEDGER_FGA_MODEL_ID=01K...
  *
  * モデルの id を固定することには意味がある。認可モデルは不変で、書き込むたびに
  * 新しい id が生まれる。id を省いた client は **そのとき最も新しいもの** に対して
@@ -20,9 +20,9 @@ import { guardEnv, optional } from "./env.mjs";
 
 guardEnv();
 
-const API_URL = optional("WAGGLE_FGA_API_URL", "http://localhost:8090");
-const API_TOKEN = optional("WAGGLE_FGA_API_TOKEN", "dev-key");
-const STORE_NAME = optional("WAGGLE_FGA_STORE_NAME", "wacz-validator");
+const API_URL = optional("CAPTURE_LEDGER_FGA_API_URL", "http://localhost:8090");
+const API_TOKEN = optional("CAPTURE_LEDGER_FGA_API_TOKEN", "dev-key");
+const STORE_NAME = optional("CAPTURE_LEDGER_FGA_STORE_NAME", "wacz-validator");
 
 const fga = (args) => {
   const result = spawnSync("fga", args, {
@@ -52,5 +52,5 @@ const written = JSON.parse(
 const modelId = written.authorization_model_id;
 if (!modelId) throw new Error(`could not determine model id from: ${JSON.stringify(written)}`);
 
-process.stdout.write(`WAGGLE_FGA_STORE_ID=${storeId}\n`);
-process.stdout.write(`WAGGLE_FGA_MODEL_ID=${modelId}\n`);
+process.stdout.write(`CAPTURE_LEDGER_FGA_STORE_ID=${storeId}\n`);
+process.stdout.write(`CAPTURE_LEDGER_FGA_MODEL_ID=${modelId}\n`);

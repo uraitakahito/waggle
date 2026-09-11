@@ -29,7 +29,7 @@ stub に差し替えていたので、赤を作っていたのは stub であっ
 試験した。**index を消しても、この試験は緑のまま通る** —— 制約を持っているのが
 偽物のほうだから (falsification-needs-a-distinguishing-case の④)。
 
-waggle に DB 試験の土台は無い。なので本物の Postgres に対して直接確かめ、
+capture-ledger に DB 試験の土台は無い。なので本物の Postgres に対して直接確かめ、
 index を落として 2 本目が通ってしまうことまで見た。PR の本文にその出力を貼った。
 
 **規則**: 「DB が守る」と書いた不変条件は、DB に対して確かめる。偽物で書いた

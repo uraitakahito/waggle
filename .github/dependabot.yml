@@ -50,7 +50,7 @@ updates:
     groups:
       # dependency-type のグループより **先** に置くこと。dependabot は最初に
       # 一致したグループへ入れるので、後ろに置くと docs-site の依存が
-      # production-dependencies に紛れる (astro は waggle の production ではない)。
+      # production-dependencies に紛れる (astro は capture-ledger の production ではない)。
       docs-site:
         patterns:
           - "astro"

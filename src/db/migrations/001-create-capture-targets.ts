@@ -1,7 +1,7 @@
 /**
  * 001-create-capture-targets
  *
- * waggle が撮る対象の一覧、`capture_targets` テーブルを作る。1 行が「有効な
+ * ledger が撮る対象の一覧、`capture_targets` テーブルを作る。1 行が「有効な
  * あいだ、周回のたびに 1 件ずつ取り込みを投げる対象」で、`capture_submissions`
  * が投げた 1 回、`archives` が返ってきた結果を持つ。
  *

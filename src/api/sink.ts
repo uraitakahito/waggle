@@ -1,7 +1,7 @@
 /**
  * 成果物の受け口。**BrowserHive が保管庫を持たずに済むための口。**
  *
- * ## なぜ waggle が受けるのか
+ * ## なぜ ledger が受けるのか
  *
  * BrowserHive が自前の保管庫へ書く構成では、あちらが**全テナントに書ける鍵**を持ち、
  * どの成果物が誰のものかを知らないので置き場所も分けられない。他人のために動く権限を
@@ -128,7 +128,7 @@ export const keyPrefixFor = (
  * という最悪の中間状態が作れてしまう —— 署名の設定で同じ形を一度踏んでいる。
  */
 export interface SinkConfig {
-  /** BrowserHive から届く waggle の起点。例: `http://waggle.waggle:7070`。 */
+  /** BrowserHive から届く ledger の起点。例: `http://capture-ledger.capture-ledger:7070`。 */
   origin: string;
   secret: string;
 }

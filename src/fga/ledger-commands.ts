@@ -2,14 +2,14 @@
 /**
  * 台帳の保守コマンド。
  *
- * `waggle` (取り込みの client) と分けているのは、これらが仕事を投げるのではなく
+ * `capture-ledger` (取り込みの client) と分けているのは、これらが仕事を投げるのではなく
  * 台帳を操作するものだから。そして両方とも、別のどこかからタイマーで走らせると
- * 役に立つから。`waggle` は目的が 1 つのコマンドのままにしておく。
+ * 役に立つから。`capture-ledger` は目的が 1 つのコマンドのままにしておく。
  *
- *   waggle-ledger drain      積まれた tuple を OpenFGA へ配送する
- *   waggle-ledger reconcile  bucket の manifest から台帳の穴を埋める
- *   waggle-ledger grant      組織に対する権限を与える
- *   waggle-ledger revoke     それを取り消す
+ *   capture-ledger drain      積まれた tuple を OpenFGA へ配送する
+ *   capture-ledger reconcile  bucket の manifest から台帳の穴を埋める
+ *   capture-ledger grant      組織に対する権限を与える
+ *   capture-ledger revoke     それを取り消す
  */
 import { Command, InvalidArgumentError, Option } from "commander";
 import { sql } from "kysely";
@@ -124,8 +124,8 @@ const runGrant = async (
 };
 
 const program = new Command()
-  .name("waggle-ledger")
-  .description("Maintain waggle's archive ledger and its OpenFGA tuples")
+  .name("capture-ledger")
+  .description("Maintain capture-ledger's archive ledger and its OpenFGA tuples")
   .showHelpAfterError(true);
 
 program

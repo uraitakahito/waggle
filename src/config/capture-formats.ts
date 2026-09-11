@@ -1,7 +1,7 @@
 /**
  * この配備が取り込む形式。**env から決める。**
  *
- * 呼び出し元 (body) からは受けない。境界の取り決めが「外は *いつ* を決め、waggle が
+ * 呼び出し元 (body) からは受けない。境界の取り決めが「外は *いつ* を決め、ledger が
  * *何を どう* 投げるかを決める」であり、形式は後者だから。
  *
  * 既定は `wacz` —— このパイプラインが作るのは再生できるアーカイブで、他の形式は
@@ -11,7 +11,7 @@
  * ## なぜ api/runs.ts から出したのか
  *
  * クロールの経路も同じ設定を要るようになったため。**投げるのは Windmill の flow だが、
- * 何をどう投げるかを決めるのは依然として waggle** で、flow へは dispatch の payload で
+ * 何をどう投げるかを決めるのは依然として ledger** で、flow へは dispatch の payload で
  * 渡す。ここに置いておけば、綴りの検査が経路によらず 1 か所で済む。
  */
 
@@ -30,7 +30,7 @@ const isKnownFormat = (value: string): value is CaptureFormat =>
   (KNOWN_FORMATS as readonly string[]).includes(value);
 
 /**
- * `WAGGLE_CAPTURE_FORMATS` を読む。**起動時に呼ぶこと。**
+ * `CAPTURE_LEDGER_CAPTURE_FORMATS` を読む。**起動時に呼ぶこと。**
  *
  * 綴りの誤りをここで落とすためにある。実行のたびに解釈すると、`waxz` のような
  * 打ち間違いは夜中の定期実行が失敗して初めて見つかる —— しかも server が返すのは
@@ -45,17 +45,21 @@ export const parseCaptureFormats = (raw: string, signing: boolean): CaptureSetti
   const unknown = names.filter((name) => !isKnownFormat(name));
   if (unknown.length > 0) {
     throw new Error(
-      `WAGGLE_CAPTURE_FORMATS has unknown formats: ${unknown.join(", ")} ` +
+      `CAPTURE_LEDGER_CAPTURE_FORMATS has unknown formats: ${unknown.join(", ")} ` +
         `(known: ${KNOWN_FORMATS.join(", ")})`,
     );
   }
   if (names.length === 0) {
-    throw new Error("WAGGLE_CAPTURE_FORMATS is empty: at least one capture format is required");
+    throw new Error(
+      "CAPTURE_LEDGER_CAPTURE_FORMATS is empty: at least one capture format is required",
+    );
   }
   // CLI では `parseClientOptions` が同じことを言う。HTTP 経路はそこを通らないので、
   // ここが唯一この検査の在る場所。
   if (signing && !names.includes("wacz")) {
-    throw new Error("WAGGLE_CAPTURE_SIGNING requires wacz in WAGGLE_CAPTURE_FORMATS");
+    throw new Error(
+      "CAPTURE_LEDGER_CAPTURE_SIGNING requires wacz in CAPTURE_LEDGER_CAPTURE_FORMATS",
+    );
   }
 
   const chosen = new Set(names);

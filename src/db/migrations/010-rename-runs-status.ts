@@ -20,7 +20,7 @@
  * ## 規則: 進行中の値を持つなら `state`
  *
  * BrowserHive は `CaptureState` (進行) と `CaptureStatus` (結末) を意図して分けて
- * いる。waggle は**両方の語を借りたが、区別は借りていない** —— どの列も進行と結末を
+ * いる。ledger は**両方の語を借りたが、区別は借りていない** —— どの列も進行と結末を
  * 1 つに畳んでいる。だから区別を輸入するのではなく、1 語に決める。
  *
  *   crawls.state        running / succeeded / failed          進行中あり → state ✓

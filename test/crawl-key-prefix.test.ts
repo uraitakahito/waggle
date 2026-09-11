@@ -11,7 +11,7 @@ import { manifestKey } from "../src/archive/manifest.js";
  * 台帳に 1 行も入らないまま静かに終わる**。だから両側が `crawls.artifact_key_prefix`
  * という 1 か所を読む形にしてあり、その綴りを決めるのがこの 2 つ。
  */
-const SINK = { origin: "https://waggle.example", secret: "s" };
+const SINK = { origin: "https://capture-ledger.example", secret: "s" };
 
 describe("crawlKeyPrefix", () => {
   it("組織と月で分け、末尾に / を付ける", () => {

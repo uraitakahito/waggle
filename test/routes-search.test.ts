@@ -13,7 +13,7 @@ import { registerSearchRoutes, type SearchRouteDeps } from "../src/api/search.js
  * assertion の仕事。ここで見るのは、**拒まれたものが結果から消えること**。
  */
 
-const SUBJECT = { "x-waggle-subject": "alice", "x-waggle-organizations": "acme" };
+const SUBJECT = { "x-capture-ledger-subject": "alice", "x-capture-ledger-organizations": "acme" };
 
 /** 索引が返す 2 件。片方だけ見てよい、という状況を作る。 */
 const MINE = "11111111-1111-1111-1111-111111111111";
@@ -22,7 +22,7 @@ const NOT_MINE = "22222222-2222-2222-2222-222222222222";
 const hit = (archiveId: string, title: string) => ({
   _source: {
     archiveId,
-    url: `http://capture-fixtures.waggle:8080/${title}`,
+    url: `http://capture-fixtures.capture-ledger:8080/${title}`,
     title,
     objectKey: `${archiveId}.wacz`,
     capturedAt: "2026-09-07T22:06:40.697Z",
@@ -56,7 +56,7 @@ const build = async (deps: Partial<SearchRouteDeps>) => {
   });
   registerSearchRoutes(app, {
     resolveIdentity: () => Promise.resolve({ subject: "alice", organizations: ["acme"] }),
-    index: "waggle-pages",
+    index: "capture-pages",
     ...deps,
   } as unknown as SearchRouteDeps);
   await app.ready();
@@ -65,10 +65,10 @@ const build = async (deps: Partial<SearchRouteDeps>) => {
 
 describe("検索の認可", () => {
   beforeEach(() => {
-    process.env["WAGGLE_DEV_IDENTITY"] = "1";
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "1";
   });
   afterEach(() => {
-    delete process.env["WAGGLE_DEV_IDENTITY"];
+    delete process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
   });
 
   it("見てよいものだけを返す", async () => {
