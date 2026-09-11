@@ -178,5 +178,14 @@ jobs:
       - name: No npm-style `--` before flags
         run: pnpm run check:flag-style
 
+      # CI が並べるこの一覧と、package.json の `check` がずれていないか。
+      #
+      # **一覧は 2 か所に書かれている。** 片方だけ直すと、片側でしか走らない検査が
+      # できる —— 直前の `--` の検査は、元は workflow の inline shell にしか無く、
+      # 手元では走らせようが無かった。個別に並べる形は残す (どれが落ちたかが UI で
+      # 分かる) 一方で、ずれは機械に禁じさせる。
+      - name: CI と check の一覧が一致しているか
+        run: pnpm run check:ci-parity
+
       - name: Authorization model tests
         run: pnpm run fga:test
