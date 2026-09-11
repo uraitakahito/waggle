@@ -6,7 +6,7 @@
  * (up / down / build / version) —— サービスとして表現する方法が無い。`openfga` の
  * イメージは distroless なので、seaweedfs のように entrypoint で shell の再試行
  * ループを回すこともできない。だから `container run` で呼ぶ形でここに置いている。
- * waxlens が 1 回きりのイメージを動かしているのと同じやり方。
+ * wacz-validator が 1 回きりのイメージを動かしているのと同じやり方。
  *
  * これが成功するまで、`openfga` サービスはすべてのリクエストに 500 を返す
  * (/healthz も含む) —— migration していないデータベースに対しても起動自体は
