@@ -13,7 +13,7 @@ description: 前提・日々のコマンド・Compose を使わない実行・�
 - `DATABASE_URL` で届く **Postgres**。Compose スタックが立ち上げます。
 - 実際に取り込むには **BrowserHive** と、それを回す Windmill の flow。waggle は
   もう BrowserHive の在り処を持たず、`WAGGLE_CRAWL_WEBHOOK_URL` へ投げるだけです。
-  flow は [forage](https://github.com/uraitakahito/forage) に居ます。スタックが今も
+  flow は [capture-scheduler](https://github.com/uraitakahito/capture-scheduler) に居ます。スタックが今も
   BrowserHive を build するのは flow が要るからで、固定バージョンは
   [BrowserHive の更新](/waggle/ja/upgrading-browserhive/)を参照。
 
@@ -153,7 +153,7 @@ Chromium ワーカーは **headless** です。描画を見たいときは、ロ
 
 **もう取り込みはしません。** waggle は BrowserHive と gRPC で話さないので、
 このスクリプトが示すのは「イメージが起動すること」—— migration が当たり、seed が
-入り、API が答えること —— です。取り込みの経路は forage の `pnpm run test:e2e` が
+入り、API が答えること —— です。取り込みの経路は capture-scheduler の `pnpm run test:e2e` が
 端から端まで見ます（あちらは Windmill も要ります）。
 
 一発ジョブが素の `container run` なのは、container-compose に `run` が無いから

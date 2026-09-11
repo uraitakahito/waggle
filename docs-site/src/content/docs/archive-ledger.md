@@ -276,16 +276,16 @@ mentions the setting that caused it. See
 ### Who calls this
 
 Nothing in waggle does. The scheduler lives in its own repo —
-[forage](https://github.com/uraitakahito/forage) — which runs a Windmill instance
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler) — which runs a Windmill instance
 whose only job is to call this endpoint on a cron (`trigger_crawl.ts`). The same
 Windmill also runs the flow that does the capturing, which waggle reaches through
 `WAGGLE_CRAWL_WEBHOOK_URL`.
 
-The split is deliberate: **forage decides when, waggle decides what.** That is
+The split is deliberate: **capture-scheduler decides when, waggle decides what.** That is
 why the body takes no capture formats, and why `fromTargets` submits whatever
 `capture_targets` says rather than a list the caller supplies.
 
-Two things a caller has to get right, and forage's script exists to encode them:
+Two things a caller has to get right, and capture-scheduler's script exists to encode them:
 
 - **409 is not a failure.** It means a crawl is already going. Retrying cannot
   help — the answer stays the same until that crawl ends.

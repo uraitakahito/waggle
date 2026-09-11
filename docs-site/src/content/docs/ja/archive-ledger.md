@@ -257,16 +257,16 @@ WAGGLE_CAPTURE_SIGNING=1      # wacz-auth 署名を要求する。wacz が要る
 
 ### 誰がこの口を叩くか
 
-waggle の中には誰も居ない。スケジューラは別の repo —— [forage](https://github.com/uraitakahito/forage)
+waggle の中には誰も居ない。スケジューラは別の repo —— [capture-scheduler](https://github.com/uraitakahito/capture-scheduler)
 —— に住んでいて、そこで動く Windmill が cron でこの endpoint を叩くことだけをしている
 （`trigger_crawl.ts`）。取り込みを回す flow も同じ Windmill に居て、waggle は
 `WAGGLE_CRAWL_WEBHOOK_URL` でそこへ届く。
 
-分けてあるのは意図的で、**forage が「いつ」を決め、waggle が「何を」決める**。
+分けてあるのは意図的で、**capture-scheduler が「いつ」を決め、waggle が「何を」決める**。
 body が取り込む形式を受けないのも、`fromTargets` の対象が呼び出し元の渡す一覧ではなく
 `capture_targets` なのも、同じ線の上にある。
 
-呼ぶ側が外してはならないことが 2 つあり、forage のスクリプトはそれを形にしたもの:
+呼ぶ側が外してはならないことが 2 つあり、capture-scheduler のスクリプトはそれを形にしたもの:
 
 - **409 は失敗ではない。** 既に走っているという意味で、再試行しても答えは変わらない
   —— その 1 本が終わるまで同じ 409 が返る。

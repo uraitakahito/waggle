@@ -106,14 +106,14 @@ without it the resolver admits nobody and the picker stays empty with `401`.
 
 :::caution[A scheduler cannot reach a loopback bind]
 The default bind is `127.0.0.1`, and **a container cannot reach it**. To let
-forage's Windmill run the daily crawl, start the API on all interfaces:
+capture-scheduler's Windmill run the daily crawl, start the API on all interfaces:
 
 ```sh
 WAGGLE_API_HOST=0.0.0.0 pnpm run api
 ```
 
 The container then points at bridge100 — `http://192.168.64.1:7070`. **A host
-name will not resolve there.** That address is already forage's default for
+name will not resolve there.** That address is already capture-scheduler's default for
 `WAGGLE_API_URL`, so `pnpm run windmill:waggle-token` wires it up with nothing
 to configure. Opening the API beyond loopback puts it in front of whatever
 authentication you have configured — check that first.
@@ -140,7 +140,7 @@ take them, follow nothing. That is what the old `POST /api/runs` did.
 `WAGGLE_CRAWL_WEBHOOK_TOKEN` are both set** — waggle no longer talks to
 BrowserHive itself, so without somewhere to dispatch to there is nothing to
 serve, and the route answers `404`. The flow lives in
-[forage](https://github.com/uraitakahito/forage). Everything above this step
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler). Everything above this step
 works without it; capturing does not.
 
 Also note `can_submit`: a caller without the grant gets `404` too. See

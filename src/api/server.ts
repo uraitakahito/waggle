@@ -183,7 +183,7 @@ const start = async (options: ServerOptions): Promise<void> => {
    * リクエストだけで、実行は 202 を返した後に続いているので、その勘定に入らない。
    * 途中で落ちたクロールの行は `running` のまま残り、**部分 unique index が次を全部
    * 塞ぐ** —— 生きているものと区別する術が行に無い。締めるのは flow の failure_module で、
-   * `POST /api/crawls/:id/failed` を叩く (forage の fail_crawl.ts)。**waggle と flow が
+   * `POST /api/crawls/:id/failed` を叩く (capture-scheduler の fail_crawl.ts)。**waggle と flow が
    * 同時に落ちたときだけ**、残った行を手で締めることになる。
    */
   const shutdown = async (): Promise<void> => {

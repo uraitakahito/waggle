@@ -104,7 +104,7 @@ open http://127.0.0.1:7070/
 resolver が誰も通さず、picker は `401` で空のままになります。
 
 :::caution[スケジューラから叩くなら loopback では届きません]
-既定の待ち受けは `127.0.0.1` で、**コンテナから届きません**。forage の Windmill に
+既定の待ち受けは `127.0.0.1` で、**コンテナから届きません**。capture-scheduler の Windmill に
 日次を任せるなら 0.0.0.0 で起こしてください:
 
 ```sh
@@ -112,7 +112,7 @@ WAGGLE_API_HOST=0.0.0.0 pnpm run api
 ```
 
 コンテナ側が指す先は bridge100 の `http://192.168.64.1:7070` です ―― **ホスト名では
-引けません**。forage の `WAGGLE_API_URL` の既定がその値なので、通常は何も設定せずに
+引けません**。capture-scheduler の `WAGGLE_API_URL` の既定がその値なので、通常は何も設定せずに
 `pnpm run windmill:waggle-token` を走らせるだけで揃います。外に出す以上、
 前段の認証を確かめてから開けてください。
 :::
@@ -137,7 +137,7 @@ curl -X POST http://127.0.0.1:7070/api/crawls \
 `/api/crawls` は **`WAGGLE_CRAWL_WEBHOOK_URL` と `WAGGLE_CRAWL_WEBHOOK_TOKEN` の
 両方が設定されているときにしか出ません**。waggle はもう BrowserHive と直接
 話さないので、投げる先が無ければ出す口も無く、route は `404` を返します。flow は
-[forage](https://github.com/uraitakahito/forage) に居ます。ここより前の段は
+[capture-scheduler](https://github.com/uraitakahito/capture-scheduler) に居ます。ここより前の段は
 それ無しで動きますが、取り込みだけは動きません。
 
 `can_submit` にも注意してください。許可の無い呼び出し元にも `404` が返ります。

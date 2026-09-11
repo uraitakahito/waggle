@@ -15,7 +15,7 @@ description: Prerequisites, daily commands, running without Compose, and trouble
 - For an end-to-end capture, a **BrowserHive** and the Windmill flow that drives
   it. waggle no longer holds a BrowserHive address — it dispatches to
   `WAGGLE_CRAWL_WEBHOOK_URL` instead, and the flow lives in
-  [forage](https://github.com/uraitakahito/forage). The stack still builds
+  [capture-scheduler](https://github.com/uraitakahito/capture-scheduler). The stack still builds
   BrowserHive because the flow needs one; see
   [Upgrading BrowserHive](/waggle/upgrading-browserhive/) for the pinned version.
 
@@ -158,7 +158,7 @@ forwards the exit code as its own.
 
 **It no longer captures anything.** waggle does not speak gRPC to BrowserHive,
 so what this script proves is that the image boots: migrations apply, the seed
-lands, the API answers. The capture path is covered end to end by forage's
+lands, the API answers. The capture path is covered end to end by capture-scheduler's
 `pnpm run test:e2e`, which needs Windmill as well.
 
 The one-shot jobs are plain `container run` calls because container-compose has
