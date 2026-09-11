@@ -292,7 +292,7 @@ for different reasons and neither should wait on the other.
 
 ### Signing an archive
 
-Signing needs two things at once: `capping` and `tsa` running, and BrowserHive
+Signing needs two things at once: `wacz-signer` and `tsa` running, and BrowserHive
 knowing where to ask. **One line turns on both.**
 
 ```sh
@@ -301,15 +301,15 @@ WAGGLE_CAPTURE_SIGNING=1
 ```
 
 `pnpm run stack:up` reads that line and adds `--profile signing` (which starts
-`capping` and `tsa`) together with `--env-file signing.env` (which tells
-BrowserHive where to ask). It prints what it added, so the reason `capping` is
+`wacz-signer` and `tsa`) together with `--env-file signing.env` (which tells
+BrowserHive where to ask). It prints what it added, so the reason `wacz-signer` is
 running is never a mystery.
 
 **There is no way to pass one without the other**, and that is the point. The
 settings used to live in three places that did not know about each other — the
 `.env` flag, the profile, and four `BROWSERHIVE_SIGNING_*` entries hardcoded into
 `docker-compose.yml`. Turning signing on without starting the profile made every
-capture fail with `ENOTFOUND capping.waggle`, which reads like a DNS fault and is
+capture fail with `ENOTFOUND wacz-signer.waggle`, which reads like a DNS fault and is
 not one: the name is correct, the service simply was not running.
 
 The signing settings cannot go back into `docker-compose.yml`, not even blanked

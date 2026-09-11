@@ -208,10 +208,10 @@ services:
       #
       # ここに無条件で置くと、"signing" profile を起こしていないスタックが
       # 「宛先は在るが相手が居ない」状態になる —— 実際にそうなっていて、
-      # 署名を有効にした取り込みが全部 `ENOTFOUND capping.waggle` で落ちた。
+      # 署名を有効にした取り込みが全部 `ENOTFOUND wacz-signer.waggle` で落ちた。
       # **空文字で無効化することはできない**（理由は `signing.env` の冒頭）。
     volumes:
-      # 署名の anchor は **このコンテナの中の** パスなので、capping が署名に使う
+      # 署名の anchor は **このコンテナの中の** パスなので、wacz-signer が署名に使う
       # identity はここからも読めなければならない。
       #
       # **mount は無条件のまま。** 読み取り専用の fixture で、`signing.env` が
@@ -228,16 +228,16 @@ services:
   # 決まらないため (`pnpm run fga:deploy` が出力し、.env に入れる)。
   #
   # wacz-auth の署名サービス。browserhive のスタックにあるものと同じ構成で、
-  # build context だけ pin 済みの upstream (v5.7.0) の下を指す —— capping も
+  # build context だけ pin 済みの upstream (v5.7.0) の下を指す —— wacz-signer も
   # timestamp-authority も、あちらの submodule として既に手元に在る。
   #
   # 独自の CA を発行するので、ここが作る署名を信頼する者は居ない。それでよく、
   # 確かめたいのは「署名の経路が最後まで繋がっているか」であって「誰が信頼するか」
   # ではない。
-  capping:
+  wacz-signer:
     build:
-      context: ./.upstream/browserhive/capping
-    # --host 0.0.0.0 にするのは、capping の既定が 127.0.0.1 で他のコンテナから
+      context: ./.upstream/browserhive/wacz-signer
+    # --host 0.0.0.0 にするのは、wacz-signer の既定が 127.0.0.1 で他のコンテナから
     # 一切届かないため。
     command: [
         "serve",
@@ -249,7 +249,7 @@ services:
         "8080",
         "--token",
         "dev-token",
-        # timestamp の出どころ。capping は v0.5.0 以降 自前では発行しないので、これが
+        # timestamp の出どころ。wacz-signer は v0.5.0 以降 自前では発行しないので、これが
         # 無いと作る署名すべてに timeSignature が付かず、timestamp の検査が `skipped`
         # に落ちる。
         "--tsa-url",
@@ -281,7 +281,7 @@ services:
         # 既定は false で、そうするとトークンに leaf しか入らず、どの timestampCert も
         # root を欠く。**この環境では何も失敗しない** —— BrowserHive は設定された anchor と
         # 突き合わせるので `ok` と答え続ける。壊れるのは「アーカイブ単体で読む」ほうで、
-        # それをやるのが `capping verify`。
+        # それをやるのが `wacz-signer verify`。
         "--include-chain-in-response=true",
         # このネットワークから公開 NTP への経路が無い。致命的ではないが、周期ごとに
         # ログを出し続ける。
