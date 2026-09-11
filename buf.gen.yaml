@@ -1,6 +1,6 @@
 # Mirror of upstream BrowserHive's buf.gen.yaml, with one deliberate
 # difference: `outputServices=grpc-js` emits *both* the server interface and
-# the client stub, and waggle only ever calls. Keeping the option identical to
+# the client stub, and capture-ledger only ever calls. Keeping the option identical to
 # upstream's is still the right trade — a divergent generator config is how the
 # two ends drift apart, and the unused server half costs nothing but bytes.
 version: v2

@@ -1,9 +1,9 @@
 ---
 title: URL ソース
-description: waggle が読む capture_targets テーブルと、その運用方法。
+description: capture-ledger が読む capture_targets テーブルと、その運用方法。
 ---
 
-waggle の入力は Postgres のテーブル 1 つだけです。**waggle 自身は INSERT しません** —
+capture-ledger の入力は Postgres のテーブル 1 つだけです。**capture-ledger 自身は INSERT しません** —
 `capture_targets` への投入は呼び出し側の責務で、手動 `INSERT` でも、外部パイプラインでも、
 同梱の seed でもかまいません。
 

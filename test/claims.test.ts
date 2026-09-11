@@ -57,8 +57,8 @@ describe("identityFromClaims", () => {
 });
 
 /**
- * カンマ区切りから組織を読む規則。開発用ヘッダ (`X-Waggle-Organizations`) と
- * 環境変数 (`WAGGLE_DEV_ORGANIZATIONS`) が同じ綴りを使う。
+ * カンマ区切りから組織を読む規則。開発用ヘッダ (`X-Capture-ledger-Organizations`) と
+ * 環境変数 (`CAPTURE_LEDGER_DEV_ORGANIZATIONS`) が同じ綴りを使う。
  */
 describe("organizationsFromList", () => {
   it("カンマで割って前後の空白を落とす", () => {

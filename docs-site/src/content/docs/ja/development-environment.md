@@ -11,26 +11,26 @@ description: 前提・日々のコマンド・Compose を使わない実行・�
   （どちらも Homebrew）— スタックに必要。ホストだけの開発には不要。macOS 専用です。
 - **`curl`** と **`git`** が PATH にあること。
 - `DATABASE_URL` で届く **Postgres**。Compose スタックが立ち上げます。
-- 実際に取り込むには **BrowserHive** と、それを回す Windmill の flow。waggle は
-  もう BrowserHive の在り処を持たず、`WAGGLE_CRAWL_WEBHOOK_URL` へ投げるだけです。
+- 実際に取り込むには **BrowserHive** と、それを回す Windmill の flow。capture-ledger は
+  もう BrowserHive の在り処を持たず、`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` へ投げるだけです。
   flow は [capture-scheduler](https://github.com/uraitakahito/capture-scheduler) に居ます。スタックが今も
   BrowserHive を build するのは flow が要るからで、固定バージョンは
-  [BrowserHive の更新](/waggle/ja/upgrading-browserhive/)を参照。
+  [BrowserHive の更新](/capture-ledger/ja/upgrading-browserhive/)を参照。
 
 ## 初回セットアップ
 
 ```sh
-git clone https://github.com/<you>/waggle.git
-cd waggle
+git clone https://github.com/<you>/capture-ledger.git
+cd capture-ledger
 nvm use
 pnpm install
-sudo container system dns create waggle   # マシンごとに 1 回
+sudo container system dns create capture-ledger   # マシンごとに 1 回
 ./setup.sh          # submodule 初期化 + .env
 pnpm run check       # typecheck + lint + format:check + env + テスト
 ```
 
 `setup.sh` は `container-compose` を叩く前に必須です。すべての build context が
-指す `.upstream/browserhive` submodule を初期化し、`waggle` DNS ドメインが
+指す `.upstream/browserhive` submodule を初期化し、`capture-ledger` DNS ドメインが
 未登録なら止まります。
 
 ### 環境変数
@@ -44,7 +44,7 @@ pnpm run check       # typecheck + lint + format:check + env + テスト
 値には手を入れません。`.env` を作るものは他にありません
 —— 一覧が 2 つあれば必ずずれるからです。OpenFGA の 2 つの ID は
 `pnpm run fga:deploy` が出力するまで空のままです
-（[アーカイブ台帳](/waggle/ja/archive-ledger/#セットアップ)を参照）。
+（[アーカイブ台帳](/capture-ledger/ja/archive-ledger/#セットアップ)を参照）。
 
 `scripts/check-env.mjs`（`pnpm run check` に含まれ、CI では独立したステップ）が、
 コードの読み取りと `.env.example` の宣言を両方向で突き合わせます。古い雛形は
@@ -106,16 +106,16 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 
 **dev コンテナはありません。** container-compose のサブコマンドは
 `up` / `down` / `build` / `version` の 4 つだけで、入り込むための `exec` が
-そもそもありません。必要もありません — platform DNS は `<service>.waggle` を
-コンテナ間からもホストからも解決するので、waggle はホストで動かしたまま
+そもそもありません。必要もありません — platform DNS は `<service>.capture-ledger` を
+コンテナ間からもホストからも解決するので、capture-ledger はホストで動かしたまま
 コンテナ側のスタックに繋がります。接続文字列は `setup.sh` が `.env` に書きます。
 
 ```sh
-DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
+DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
 BrowserHive の在り処はもうここにありません。スタックが公開している唯一の gRPC の
-口 `localhost:50051` は、grpcurl と flow のためのもので、waggle のためではありません。
+口 `localhost:50051` は、grpcurl と flow のためのもので、capture-ledger のためではありません。
 
 `pnpm run` 系のコマンドはこの `.env` を自分で読みます
 （`node --env-file-if-exists=.env`）。シェルで `export` する必要はありません。
@@ -127,14 +127,14 @@ Postgres は `127.0.0.1:5432` にも公開しているので `localhost` でも�
 
 Docker Compose から来た場合、日常のコマンドはこう対応します。
 
-| Docker Compose                    | Apple Container                      |
-| --------------------------------- | ------------------------------------ |
-| `docker compose up -d --build`    | `container-compose up -d -b`         |
-| `docker compose down`             | `container-compose down`             |
-| `docker compose ps`               | `container ls`                       |
-| `docker compose logs browserhive` | `container logs browserhive.waggle`  |
-| `docker compose exec <svc> sh`    | `container exec -it <svc>.waggle sh` |
-| `docker compose run --rm <svc> …` | `container run --rm <image> …`       |
+| Docker Compose                    | Apple Container                              |
+| --------------------------------- | -------------------------------------------- |
+| `docker compose up -d --build`    | `container-compose up -d -b`                 |
+| `docker compose down`             | `container-compose down`                     |
+| `docker compose ps`               | `container ls`                               |
+| `docker compose logs browserhive` | `container logs browserhive.capture-ledger`  |
+| `docker compose exec <svc> sh`    | `container exec -it <svc>.capture-ledger sh` |
+| `docker compose run --rm <svc> …` | `container run --rm <image> …`               |
 
 Chromium ワーカーは **headless** です。描画を見たいときは、ローカルの Chrome で
 `chrome://inspect` を開き、_Configure…_ に `localhost:9222` と `localhost:9223`
@@ -147,29 +147,29 @@ Chromium ワーカーは **headless** です。描画を見たいときは、ロ
 ```
 
 スタックを起動し、BrowserHive が `GetStatus` に応答するまでポーリングし、
-`waggle:latest` をビルドしてから migrate → seed → API を `container run --rm` で
+`capture-ledger:latest` をビルドしてから migrate → seed → API を `container run --rm` で
 順に実行し、API に `/healthz` を訊き、`EXIT` トラップでスタックを片付け、
 終了コードを自分の終了コードとして返します。
 
-**もう取り込みはしません。** waggle は BrowserHive と gRPC で話さないので、
+**もう取り込みはしません。** capture-ledger は BrowserHive と gRPC で話さないので、
 このスクリプトが示すのは「イメージが起動すること」—— migration が当たり、seed が
 入り、API が答えること —— です。取り込みの経路は capture-scheduler の `pnpm run test:e2e` が
 端から端まで見ます（あちらは Windmill も要ります）。
 
 一発ジョブが素の `container run` なのは、container-compose に `run` が無いから
-です。これにより、以前の `--profile run --exit-code-from waggle` の回避策も
+です。これにより、以前の `--profile run --exit-code-from capture-ledger` の回避策も
 不要になりました — 回避対象だった Docker Compose の挙動（migrator の正当な
 exit 0 でスタック全体が停止する）が、こちらには存在しないためです。
 
 ## 外部の Postgres に対して動かす
 
 ```sh
-DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
   pnpm run db:migrate
 
-DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-WAGGLE_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
-WAGGLE_CRAWL_WEBHOOK_TOKEN=… \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
+CAPTURE_LEDGER_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
+CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN=… \
   pnpm run api
 ```
 
@@ -183,12 +183,12 @@ flow なので、CA は Windmill 側の変数 `u/admin/browserhive_tls_ca` に�
 
 身元の入口は API の 1 つだけで、**既定では全員を拒みます。**
 
-| 経路                 | 既定 | 開発用ヘッダ            | JWT                  |
-| -------------------- | ---- | ----------------------- | -------------------- |
-| API (`/api`, picker) | 拒否 | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| 経路                 | 既定 | 開発用ヘッダ                    | JWT                          |
+| -------------------- | ---- | ------------------------------- | ---------------------------- |
+| API (`/api`, picker) | 拒否 | `CAPTURE_LEDGER_DEV_IDENTITY=1` | `CAPTURE_LEDGER_OIDC_ISSUER` |
 
-以前は CLI の行がもう 1 つあり、環境から `WAGGLE_DEV_SUBJECT` と
-`WAGGLE_OIDC_TOKEN` を読んでいました。その 2 つは、読む側の CLI ごと畳んだときに
+以前は CLI の行がもう 1 つあり、環境から `CAPTURE_LEDGER_DEV_SUBJECT` と
+`CAPTURE_LEDGER_OIDC_TOKEN` を読んでいました。その 2 つは、読む側の CLI ごと畳んだときに
 `.env.example` からも消えています。**主体を名乗るのは投げる側の仕事**になりました。
 
 **JWT の経路が開発用ヘッダより優先されます。** 両方設定された環境で、
@@ -196,13 +196,13 @@ flow なので、CA は Windmill 側の変数 `u/admin/browserhive_tls_ca` に�
 
 ### 開発用の issuer
 
-`WAGGLE_OIDC_ISSUER` を設定すると、API は **本番と同じ検証コード** を通ります
+`CAPTURE_LEDGER_OIDC_ISSUER` を設定すると、API は **本番と同じ検証コード** を通ります
 —— 署名、`iss` / `aud` の照合、有効期限、JWKS の取得。本物の IdP が決まるまでは
 同梱の issuer を使います。
 
 ```bash
 pnpm run oidc:issuer                                   # :9099 に立つ
-export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
+export CAPTURE_LEDGER_OIDC_ISSUER=http://127.0.0.1:9099
 TOKEN=$(pnpm run oidc:token --subject alice --org acme)
 curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 ```
@@ -223,7 +223,7 @@ curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 
 ### 本物の IdP へ移るとき
 
-変わるのは `WAGGLE_OIDC_ISSUER` と `WAGGLE_OIDC_AUDIENCE` の値だけです。
+変わるのは `CAPTURE_LEDGER_OIDC_ISSUER` と `CAPTURE_LEDGER_OIDC_AUDIENCE` の値だけです。
 `jwtIdentityResolver` は 1 行も変わりません。
 
 ただし **JWKS を HTTP で取ってくる経路は単体試験では守れません**。
@@ -237,16 +237,16 @@ API は `identityFromClaims` を通してそこを読みます。
 ## トラブルシュート
 
 - **コンテナが上がらない** — `container ls` で起動状況、
-  `container logs <svc>.waggle` で理由を見る。Chromium なら
+  `container logs <svc>.capture-ledger` で理由を見る。Chromium なら
   `curl http://localhost:9222/json/version` で CDP の応答を確認。
-- **名前が解決しない** — `container system dns ls` に `waggle` があるか、
+- **名前が解決しない** — `container system dns ls` に `capture-ledger` があるか、
   `docker-compose.yml` のどのサービスにも `container_name:` が無いか
   （付けると DNS 命名が抑止される）を確認。
 - **BrowserHive が起動直後に落ちる** — 起動時の `HeadBucket` は fatal です。
   サービスに `WAIT_FOR_S3` が設定されているか、SeaweedFS が
   `Bucket browserhive ready.` を出しているか確認してください。
 - **`/api/crawls` が誰に対しても 404 を返す** — 呼び出し元に `can_submit` が
-  無いか、`WAGGLE_CRAWL_WEBHOOK_URL` が未設定で route がそもそも登録されて
+  無いか、`CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` が未設定で route がそもそも登録されて
   いないかのどちらかです。どちらかは起動時のログが言います
   （`… is not set — /api/crawls is not served`）。
 - **docs のビルドが BrowserHive のピンを読めない** —
@@ -261,17 +261,17 @@ profile 付きで入っている。見知らぬサイトに向けずにクロー
 pnpm run stack:up --profile capture-fixtures
 ```
 
-port は publish していない。`capture-fixtures.waggle:8080` はコンテナからも host からも引ける。
+port は publish していない。`capture-fixtures.capture-ledger:8080` はコンテナからも host からも引ける。
 種にするのは `/links/hub` —— `/links/*` はどれもそのページを 1 か所だけ変えたもので、
 それが「誤った規則を適用しているクローラ」と「単に壊れているクローラ」を分ける。
 
 fixtures はリクエストログも持っていて、**それを使うことがこのフィクスチャの要点**:
 
 ```sh
-curl -s http://capture-fixtures.waggle:8080/__request-counts
+curl -s http://capture-fixtures.capture-ledger:8080/__request-counts
 ```
 
-`crawl_pages` が言うのは waggle が**記録した**こと、ログが言うのはフィクスチャが
+`crawl_pages` が言うのは capture-ledger が**記録した**こと、ログが言うのはフィクスチャが
 **実際に要求された**こと。「robots を尊重した」は後者でしか決着しない —— 台帳に無い
 ページは、取りに行かなかったのか、取りに行って捨てたのか、台帳からは区別できない。
 
@@ -286,7 +286,7 @@ BrowserHive が署名の宛先を知っていること。**1 行で両方が立�
 
 ```sh
 # .env
-WAGGLE_CAPTURE_SIGNING=1
+CAPTURE_LEDGER_CAPTURE_SIGNING=1
 ```
 
 `pnpm run stack:up` がこの行を読み、`--profile signing`（wacz-signer と tsa を起こす）と
@@ -296,7 +296,7 @@ wacz-signer が起きている理由が分からなくなることはありま�
 **片方だけを渡す道はありません。**そこが眼目で、以前は設定が互いを知らない 3 か所に
 分かれていました —— `.env` の旗、profile、そして `docker-compose.yml` に直書きされた
 `BROWSERHIVE_SIGNING_*` の 4 つ。profile を起こさずに署名を on にすると、取り込みが全部
-`ENOTFOUND wacz-signer.waggle` で落ちました。**DNS の誤りに見えますが、そうではありません** ——
+`ENOTFOUND wacz-signer.capture-ledger` で落ちました。**DNS の誤りに見えますが、そうではありません** ——
 名前は正しく、サービスが起きていなかっただけです。
 
 署名の設定を `docker-compose.yml` へ戻すことはできません。空にしても駄目です。これは

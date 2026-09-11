@@ -14,7 +14,7 @@
  * 分割したくなるほど育ったら、そのとき入れる。
  *
  * **この画面は、それ自体では誰も認証しない。** 開発用の resolver は
- * `X-Waggle-Subject` を信じる (WAGGLE_DEV_IDENTITY=1 のときだけ到達できる) ので、
+ * `X-Capture-ledger-Subject` を信じる (CAPTURE_LEDGER_DEV_IDENTITY=1 のときだけ到達できる) ので、
  * subject は入力欄から来る —— 「そのポートに届く者は誰にでもなれる」という性質を
  * そのまま映している。**画面がそれ以上に安全に見えてはいけない**ので、そう書いてある。
  *
@@ -30,7 +30,7 @@ import { optional } from "../config/env.js";
  * bucket も資格情報もここには要らない —— 渡すのは object_key 1 つ。
  *
  * env にしてあるのは、replay を別の場所で動かす自由を残すため。replay は
- * waggle 専用ではない。
+ * ledger 専用ではない。
  */
 export const replayOriginFromEnv = (): string => optional("REPLAY_ORIGIN", "http://127.0.0.1:8899");
 
@@ -39,7 +39,7 @@ const html = (replayOrigin: string): string => `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>waggle — アーカイブ</title>
+<title>ledger — アーカイブ</title>
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
@@ -81,7 +81,7 @@ const html = (replayOrigin: string): string => `<!doctype html>
     <label>organizations <input id="orgs" size="20" placeholder="acme,beta"></label>
     <button id="reload" type="button">読み込む</button>
     <p class="why">
-      この画面は誰も認証しない。開発用の resolver が <code>X-Waggle-Subject</code> を
+      この画面は誰も認証しない。開発用の resolver が <code>X-Capture-ledger-Subject</code> を
       そのまま信じるので、ここに入れた名前で見えるものが変わる ——
       <b>そのポートに届く者は、誰にでもなれる</b>。
     </p>
@@ -104,13 +104,13 @@ let cursor = null;
 
 // 誰として見るかは覚えておく。毎回打ち直させると、使う気が失せる。
 for (const key of ["subject", "orgs"]) {
-  $(key).value = localStorage.getItem("waggle." + key) ?? "";
-  $(key).addEventListener("change", () => localStorage.setItem("waggle." + key, $(key).value));
+  $(key).value = localStorage.getItem("capture-ui." + key) ?? "";
+  $(key).addEventListener("change", () => localStorage.setItem("capture-ui." + key, $(key).value));
 }
 
 const headers = () => ({
-  "X-Waggle-Subject": $("subject").value.trim(),
-  "X-Waggle-Organizations": $("orgs").value.trim(),
+  "X-Capture-ledger-Subject": $("subject").value.trim(),
+  "X-Capture-ledger-Organizations": $("orgs").value.trim(),
 });
 
 const fmt = (iso) => new Date(iso).toLocaleString();
@@ -155,7 +155,7 @@ const load = async (append) => {
   const query = append && cursor ? "?before=" + encodeURIComponent(cursor) : "";
   const res = await fetch("/api/archives" + query, { headers: headers() });
   if (res.status === 401) {
-    $("out").innerHTML = '<p class="error">401 — subject が空か、WAGGLE_DEV_IDENTITY=1 になっていない</p>';
+    $("out").innerHTML = '<p class="error">401 — subject が空か、CAPTURE_LEDGER_DEV_IDENTITY=1 になっていない</p>';
     $("more").hidden = true;
     return;
   }

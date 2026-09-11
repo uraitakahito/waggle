@@ -4,7 +4,7 @@
  *
  * ついでにタイマーで outbox を掃き出す。別サービスにせずプロセス内で走らせても
  * 安全なのは、`drainOutbox` が `FOR UPDATE SKIP LOCKED` を取るから —— API の
- * インスタンスが複数あっても、手で叩く `waggle-ledger drain` が加わっても、
+ * インスタンスが複数あっても、手で叩く `capture-ledger drain` が加わっても、
  * 互いを踏まない。
  */
 import Fastify, { type FastifyError } from "fastify";
@@ -67,9 +67,9 @@ const start = async (options: ServerOptions): Promise<void> => {
   const s3 = createS3Client(storage);
   const resolveIdentity = resolveIdentityResolver();
 
-  if (process.env["WAGGLE_DEV_IDENTITY"] === "1") {
+  if (process.env["CAPTURE_LEDGER_DEV_IDENTITY"] === "1") {
     logger.warn(
-      "WAGGLE_DEV_IDENTITY=1 — callers are trusted on the X-Waggle-Subject header. Never enable this outside local development.",
+      "CAPTURE_LEDGER_DEV_IDENTITY=1 — callers are trusted on the X-Capture-ledger-Subject header. Never enable this outside local development.",
     );
   }
 
@@ -107,8 +107,8 @@ const start = async (options: ServerOptions): Promise<void> => {
   // **両方揃ったときだけ生きる。** 鍵だけでは口を出せない (誰でも書ける受け口になる)。
   // 宛先だけでも配れない (署名できない)。片方だけ設定できる道を残すと
   // 「宛先は在るが誰も検めない」が作れてしまう —— 署名の設定で一度踏んだ形。
-  const sinkOrigin = optional("WAGGLE_SINK_ORIGIN", "");
-  const sinkSecret = optional("WAGGLE_SINK_SECRET", "");
+  const sinkOrigin = optional("CAPTURE_LEDGER_SINK_ORIGIN", "");
+  const sinkSecret = optional("CAPTURE_LEDGER_SINK_SECRET", "");
   const sink: SinkConfig | undefined =
     sinkOrigin !== "" && sinkSecret !== "" ? { origin: sinkOrigin, secret: sinkSecret } : undefined;
   if (sink) {
@@ -118,7 +118,7 @@ const start = async (options: ServerOptions): Promise<void> => {
     // 配ったつもりの配備が「なぜか自前の保管庫へ書かれている」状態になり、気づく
     // 手がかりが無い。`crawl/dispatch.ts` が webhook の 2 つに対して同じことをしている。
     throw new Error(
-      "WAGGLE_SINK_ORIGIN and WAGGLE_SINK_SECRET must be set together " +
+      "CAPTURE_LEDGER_SINK_ORIGIN and CAPTURE_LEDGER_SINK_SECRET must be set together " +
         "(one without the other cannot hand out a sink)",
     );
   }
@@ -128,8 +128,8 @@ const start = async (options: ServerOptions): Promise<void> => {
   // (`config/capture-formats.ts` を見ること)。実行のたびに解釈すると、`waxz` のような
   // 打ち間違いは夜中の定期実行が失敗して初めて見つかる。
   const capture = parseCaptureFormats(
-    optional("WAGGLE_CAPTURE_FORMATS", DEFAULT_CAPTURE_FORMATS),
-    optional("WAGGLE_CAPTURE_SIGNING", "") === "1",
+    optional("CAPTURE_LEDGER_CAPTURE_FORMATS", DEFAULT_CAPTURE_FORMATS),
+    optional("CAPTURE_LEDGER_CAPTURE_SIGNING", "") === "1",
   );
 
   // リンクを辿るクロールの口。実行は Windmill の flow が回すので、ここが渡すのは
@@ -140,7 +140,7 @@ const start = async (options: ServerOptions): Promise<void> => {
   // 本当に無いので、「してはいけない」と同じ答えでよい。log で区別が付くようにする。
   const dispatch = createWindmillDispatcher();
   if (dispatch === undefined) {
-    logger.info("WAGGLE_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
+    logger.info("CAPTURE_LEDGER_CRAWL_WEBHOOK_URL is not set — /api/crawls is not served");
   } else {
     registerCrawlRoutes(app, {
       db,
@@ -158,7 +158,7 @@ const start = async (options: ServerOptions): Promise<void> => {
   // ありうるし、そこでは 404 が正しい答え。
   const searchSettings = searchConfig();
   if (searchSettings === undefined) {
-    logger.info("WAGGLE_OPENSEARCH_URL is not set — /api/search is not served");
+    logger.info("CAPTURE_LEDGER_OPENSEARCH_URL is not set — /api/search is not served");
   } else {
     registerSearchRoutes(app, {
       db,
@@ -183,7 +183,7 @@ const start = async (options: ServerOptions): Promise<void> => {
    * リクエストだけで、実行は 202 を返した後に続いているので、その勘定に入らない。
    * 途中で落ちたクロールの行は `running` のまま残り、**部分 unique index が次を全部
    * 塞ぐ** —— 生きているものと区別する術が行に無い。締めるのは flow の failure_module で、
-   * `POST /api/crawls/:id/failed` を叩く (capture-scheduler の fail_crawl.ts)。**waggle と flow が
+   * `POST /api/crawls/:id/failed` を叩く (capture-scheduler の fail_crawl.ts)。**ledger と flow が
    * 同時に落ちたときだけ**、残った行を手で締めることになる。
    */
   const shutdown = async (): Promise<void> => {
@@ -194,13 +194,13 @@ const start = async (options: ServerOptions): Promise<void> => {
   process.on("SIGINT", () => void shutdown().then(() => process.exit(0)));
   process.on("SIGTERM", () => void shutdown().then(() => process.exit(0)));
 
-  const host = optional("WAGGLE_API_HOST", DEFAULT_HOST);
+  const host = optional("CAPTURE_LEDGER_API_HOST", DEFAULT_HOST);
   await app.listen({ port: options.port, host });
   logger.info({ port: options.port }, "Archive API listening");
 };
 
 const program = new Command()
-  .name("waggle-api")
+  .name("capture-api")
   .description("Serve the archive ledger: authorization-gated signed URLs")
   .addOption(
     new Option("--database-url <url>", "Postgres connection string")
@@ -209,13 +209,13 @@ const program = new Command()
   )
   .addOption(
     new Option("--port <n>", "Port to listen on")
-      .env("WAGGLE_API_PORT")
+      .env("CAPTURE_LEDGER_API_PORT")
       .default(DEFAULT_PORT)
       .argParser(parsePort),
   )
   .addOption(
     new Option("--drain-interval-ms <ms>", "How often to deliver queued tuples to OpenFGA")
-      .env("WAGGLE_DRAIN_INTERVAL_MS")
+      .env("CAPTURE_LEDGER_DRAIN_INTERVAL_MS")
       .default(DEFAULT_DRAIN_INTERVAL_MS)
       .argParser((value: string) => Number.parseInt(value, 10)),
   )

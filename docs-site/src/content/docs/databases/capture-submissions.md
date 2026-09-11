@@ -11,7 +11,7 @@ description: Records who a capture was submitted for, at the moment it is submit
 
 ## Why it is needed
 
-**BrowserHive has no notion of an organization.** waggle passes it a URL and some
+**BrowserHive has no notion of an organization.** capture-ledger passes it a URL and some
 settings, and gets back a `taskId`.
 
 When the ledger is later filled from a `.result.json` in the bucket, **that
@@ -19,7 +19,7 @@ manifest carries nothing identifying an organization**. Writing it down at
 submission time is the only source.
 
 ```
-what waggle knows          what BrowserHive knows
+what capture-ledger knows          what BrowserHive knows
 ─────────────────          ──────────────────────
 capture_targets.org_id ──┐      taskId
                          │      where the artifacts are
@@ -69,19 +69,19 @@ read taskId from .result.json
 
 :::caution[`submitted_by` is not the result of authentication]
 What fills this column is whatever the API request claimed as its subject
-(see [Identity](/waggle/archive-ledger/#identity)). **The development header
-route verifies nothing** — with `WAGGLE_DEV_IDENTITY=1`, `X-Waggle-Subject` is
+(see [Identity](/capture-ledger/archive-ledger/#identity)). **The development header
+route verifies nothing** — with `CAPTURE_LEDGER_DEV_IDENTITY=1`, `X-Capture-ledger-Subject` is
 taken at face value, so any name can land here. The JWT route does check the
 signature and expiry.
 
 It is still worth filling, because this value becomes the `owner` tuple on the
 `capture_job`. An archive without one **cannot be deleted by anyone**:
-[`can_delete`](/waggle/archive-ledger/#the-authorization-model) reads
+[`can_delete`](/capture-ledger/archive-ledger/#the-authorization-model) reads
 `owner from parent` and nothing else.
 :::
 
 :::note[The counts will not match the ledger]
 Everything submitted lands here, but only captures that **produced an archive**
-land in [`archives`](/waggle/databases/archives/). A failed capture uploaded
+land in [`archives`](/capture-ledger/databases/archives/). A failed capture uploaded
 nothing, so a gap is expected.
 :::

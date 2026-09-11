@@ -1,9 +1,9 @@
 ---
 title: URL source
-description: The capture_targets table waggle reads, and how to manage it.
+description: The capture_targets table capture-ledger reads, and how to manage it.
 ---
 
-waggle's entire input is one Postgres table. **waggle never inserts into it** —
+capture-ledger's entire input is one Postgres table. **capture-ledger never inserts into it** —
 populating `capture_targets` is the caller's job, whether that is a manual `INSERT`, an
 external pipeline, or the bundled seed.
 

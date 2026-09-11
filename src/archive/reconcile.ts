@@ -17,7 +17,7 @@
  * だから listing を引いてから manifest をここで選ぶ。今の規模 (数十オブジェクト) なら
  * 全部歩いても数百 ms で、既定はいまも全走査。
  *
- * 絞れる手がかりは在る。受け口が受けた成果物の鍵は waggle が決めるので
+ * 絞れる手がかりは在る。受け口が受けた成果物の鍵は ledger が決めるので
  * `org/<orgId>/<YYYY-MM>/` の下に在り (`api/sink.ts` の `crawlKeyPrefix`)、その接頭辞は
  * `crawls.artifact_key_prefix` に書き残してある (`013`)。`prefixes` を渡せば、その月
  * だけを歩く。**BrowserHive が自前の保管庫へ書く経路は平らなまま**なので、そちらは
@@ -87,7 +87,7 @@ export const taskIdFromKey = (key: string): string => {
  * のに絞れば、その穴は二度と見つからない —— 冒頭に書いたとおり、気づかれない穴の
  * ある台帳は台帳が無いより悪い。**取りこぼしを速さと交換しない。**
  *
- * DB を触らない純関数にしてあるのは、この判断こそ検査したいから。waggle には DB に
+ * DB を触らない純関数にしてあるのは、この判断こそ検査したいから。ledger には DB に
  * 繋ぐ試験が 1 本も無いので、判断をクエリと同じ関数に置くと誰も確かめられなくなる。
  */
 export const narrowingFrom = (
@@ -141,7 +141,7 @@ export const reconcile = async (
     }
 
     // これがどの組織のためのものだったかは manifest に無い —— BrowserHive に
-    // そういう概念が無いので。`capture_submissions` は waggle がジョブを投げた
+    // そういう概念が無いので。`capture_submissions` は ledger がジョブを投げた
     // ときに書いた記録で、それが無ければアーカイブの帰属は言えない。推測するのは
     // 空けておくより悪い。
     const submission = await db

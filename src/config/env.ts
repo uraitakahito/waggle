@@ -22,40 +22,40 @@
  * `scripts/` だけが読む変数はここには入らない (`scripts/env.mjs` の SCRIPT_ENV)。
  */
 export const REQUIRED_ENV = [
-  "WAGGLE_S3_ENDPOINT",
-  "WAGGLE_S3_BUCKET",
-  "WAGGLE_S3_ACCESS_KEY_ID",
-  "WAGGLE_S3_SECRET_ACCESS_KEY",
-  "WAGGLE_FGA_STORE_ID",
-  "WAGGLE_FGA_MODEL_ID",
+  "CAPTURE_LEDGER_S3_ENDPOINT",
+  "CAPTURE_LEDGER_S3_BUCKET",
+  "CAPTURE_LEDGER_S3_ACCESS_KEY_ID",
+  "CAPTURE_LEDGER_S3_SECRET_ACCESS_KEY",
+  "CAPTURE_LEDGER_FGA_STORE_ID",
+  "CAPTURE_LEDGER_FGA_MODEL_ID",
 ] as const;
 
 export const OPTIONAL_ENV = [
-  "WAGGLE_S3_REGION",
-  "WAGGLE_S3_FORCE_PATH_STYLE",
-  "WAGGLE_FGA_API_URL",
-  "WAGGLE_FGA_API_TOKEN",
-  "WAGGLE_DEV_IDENTITY",
-  "WAGGLE_DEV_ISSUER_PORT",
-  "WAGGLE_OIDC_ISSUER",
-  "WAGGLE_OIDC_AUDIENCE",
+  "CAPTURE_LEDGER_S3_REGION",
+  "CAPTURE_LEDGER_S3_FORCE_PATH_STYLE",
+  "CAPTURE_LEDGER_FGA_API_URL",
+  "CAPTURE_LEDGER_FGA_API_TOKEN",
+  "CAPTURE_LEDGER_DEV_IDENTITY",
+  "CAPTURE_LEDGER_DEV_ISSUER_PORT",
+  "CAPTURE_LEDGER_OIDC_ISSUER",
+  "CAPTURE_LEDGER_OIDC_AUDIENCE",
   "DATABASE_URL",
   "LOG_LEVEL",
-  "WAGGLE_SINK_ORIGIN",
-  "WAGGLE_SINK_SECRET",
+  "CAPTURE_LEDGER_SINK_ORIGIN",
+  "CAPTURE_LEDGER_SINK_SECRET",
   "REPLAY_ORIGIN",
   "MIGRATION_FOLDER",
   "SEED_FOLDER",
-  "WAGGLE_API_PORT",
-  "WAGGLE_API_HOST",
-  "WAGGLE_CAPTURE_FORMATS",
-  "WAGGLE_CAPTURE_SIGNING",
-  "WAGGLE_CRAWL_WEBHOOK_URL",
-  "WAGGLE_CRAWL_WEBHOOK_TOKEN",
-  "WAGGLE_CRAWL_WEBHOOK_TIMEOUT_MS",
-  "WAGGLE_DRAIN_INTERVAL_MS",
-  "WAGGLE_OPENSEARCH_URL",
-  "WAGGLE_OPENSEARCH_INDEX",
+  "CAPTURE_LEDGER_API_PORT",
+  "CAPTURE_LEDGER_API_HOST",
+  "CAPTURE_LEDGER_CAPTURE_FORMATS",
+  "CAPTURE_LEDGER_CAPTURE_SIGNING",
+  "CAPTURE_LEDGER_CRAWL_WEBHOOK_URL",
+  "CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN",
+  "CAPTURE_LEDGER_CRAWL_WEBHOOK_TIMEOUT_MS",
+  "CAPTURE_LEDGER_DRAIN_INTERVAL_MS",
+  "CAPTURE_LEDGER_OPENSEARCH_URL",
+  "CAPTURE_LEDGER_OPENSEARCH_INDEX",
 ] as const;
 
 /**
@@ -181,10 +181,10 @@ export interface FgaConfig {
  * `collectEnv` にこれを渡して欠落をまとめる。
  */
 export const fgaFrom = (need: Need): FgaConfig => ({
-  apiUrl: optional("WAGGLE_FGA_API_URL", "http://localhost:8090"),
-  storeId: need("WAGGLE_FGA_STORE_ID"),
-  modelId: need("WAGGLE_FGA_MODEL_ID"),
-  apiToken: optional("WAGGLE_FGA_API_TOKEN", "dev-key"),
+  apiUrl: optional("CAPTURE_LEDGER_FGA_API_URL", "http://localhost:8090"),
+  storeId: need("CAPTURE_LEDGER_FGA_STORE_ID"),
+  modelId: need("CAPTURE_LEDGER_FGA_MODEL_ID"),
+  apiToken: optional("CAPTURE_LEDGER_FGA_API_TOKEN", "dev-key"),
 });
 
 export const fgaConfig = (): FgaConfig => collectEnv(fgaFrom);
@@ -204,12 +204,12 @@ export interface StorageConfig {
 }
 
 export const storageFrom = (need: Need): StorageConfig => ({
-  endpoint: need("WAGGLE_S3_ENDPOINT"),
-  region: optional("WAGGLE_S3_REGION", "us-east-1"),
-  bucket: need("WAGGLE_S3_BUCKET"),
-  accessKeyId: need("WAGGLE_S3_ACCESS_KEY_ID"),
-  secretAccessKey: need("WAGGLE_S3_SECRET_ACCESS_KEY"),
-  forcePathStyle: optional("WAGGLE_S3_FORCE_PATH_STYLE", "false") === "true",
+  endpoint: need("CAPTURE_LEDGER_S3_ENDPOINT"),
+  region: optional("CAPTURE_LEDGER_S3_REGION", "us-east-1"),
+  bucket: need("CAPTURE_LEDGER_S3_BUCKET"),
+  accessKeyId: need("CAPTURE_LEDGER_S3_ACCESS_KEY_ID"),
+  secretAccessKey: need("CAPTURE_LEDGER_S3_SECRET_ACCESS_KEY"),
+  forcePathStyle: optional("CAPTURE_LEDGER_S3_FORCE_PATH_STYLE", "false") === "true",
 });
 
 export const storageConfig = (): StorageConfig => collectEnv(storageFrom);
@@ -227,7 +227,7 @@ export interface SearchConfig {
  * 呼んだ側は索引されたつもりでいる。
  */
 export const searchConfig = (): SearchConfig | undefined => {
-  const url = optional("WAGGLE_OPENSEARCH_URL", "");
+  const url = optional("CAPTURE_LEDGER_OPENSEARCH_URL", "");
   if (url === "") return undefined;
-  return { url, index: optional("WAGGLE_OPENSEARCH_INDEX", "waggle-pages") };
+  return { url, index: optional("CAPTURE_LEDGER_OPENSEARCH_INDEX", "capture-pages") };
 };

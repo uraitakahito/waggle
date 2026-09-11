@@ -8,7 +8,7 @@
  * どう組み立てるか」を 1 か所に置くためのもの。
  *
  * 入口は API だけになった。以前は CLI 用の経路がもう 1 本あり、環境変数
- * (WAGGLE_DEV_SUBJECT / WAGGLE_DEV_ORGANIZATIONS / WAGGLE_OIDC_TOKEN) から主体を
+ * (CAPTURE_LEDGER_DEV_SUBJECT / CAPTURE_LEDGER_DEV_ORGANIZATIONS / CAPTURE_LEDGER_OIDC_TOKEN) から主体を
  * 組み立てていたが、その呼び出し元ごと畳んだので消えている。IdP が来たときに
  * 差し替わるのは `api/identity.ts` の resolver のほうで、この型は変わらない。
  */
@@ -30,9 +30,9 @@ export const ORGANIZATIONS_CLAIM = "organizations";
 
 /**
  * カンマ区切りから組織を読む。いまの読み手は開発用ヘッダ
- * `X-Waggle-Organizations` だけ。
+ * `X-Capture-ledger-Organizations` だけ。
  *
- * 以前は `WAGGLE_DEV_ORGANIZATIONS` と綴りを共有していて「片方だけ空白の落とし方が
+ * 以前は `CAPTURE_LEDGER_DEV_ORGANIZATIONS` と綴りを共有していて「片方だけ空白の落とし方が
  * 変わってはいけない」ことが分けてある理由だったが、**その環境変数を読む場所は
  * 上に書いたとおり畳んで消えた。** いま呼ぶのは `api/identity.ts` の 1 か所だけで、
  * 関数のまま残しているのは `test/claims.test.ts` が空要素の落とし方を直接見ているから

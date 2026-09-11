@@ -19,7 +19,7 @@ OpenFGA が持ちます。**
 「テーブルではこの組織だが、OpenFGA では別の組織に紐づいている」という状態が
 作れてしまいます。
 
-代わりに、登録と同時に [`fga_outbox`](/waggle/ja/databases/fga-outbox/) へ tuple を
+代わりに、登録と同時に [`fga_outbox`](/capture-ledger/ja/databases/fga-outbox/) へ tuple を
 積み、OpenFGA 側で関係として表します。
 
 ## 失敗した取り込みは入らない
@@ -36,7 +36,7 @@ if (report.status !== CaptureStatus.CAPTURE_STATUS_SUCCESS ||
 エンドポイントが**存在しないオブジェクトの URL を配る**ことになります ——
 404 に対して認可が完璧に働いている状態で、最も気づきにくい壊れ方です。
 
-だから[`capture_submissions`](/waggle/ja/databases/capture-submissions/)の件数と
+だから[`capture_submissions`](/capture-ledger/ja/databases/capture-submissions/)の件数と
 この表の行数は一致しません。**差が出るのが正常です。**
 
 ## 二重登録が起きない仕組み
@@ -58,14 +58,14 @@ if (report.status !== CaptureStatus.CAPTURE_STATUS_SUCCESS ||
 
 ## 列の要点
 
-| 列                      | 要点                                                                 |
-| ----------------------- | -------------------------------------------------------------------- |
-| `id`                    | `gen_random_uuid()`。OpenFGA の `archive:<id>` になる                |
-| `task_id`               | BrowserHive のタスク id                                              |
-| `correlation_id`        | waggle のログ行と成果物のファイル名を結ぶ糸（送信ごとの 16 進 8 桁） |
-| `bucket` / `object_key` | **server 自身の報告から取る。** ファイル名を組み直したものではない   |
-| `wacz_complete`         | `false` は本文が 1 つ以上欠けているという意味。詳細は下記            |
-| `captured_at`           | 取り込みの時刻。一覧はこれの降順                                     |
+| 列                      | 要点                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `id`                    | `gen_random_uuid()`。OpenFGA の `archive:<id>` になる                        |
+| `task_id`               | BrowserHive のタスク id                                                      |
+| `correlation_id`        | capture-ledger のログ行と成果物のファイル名を結ぶ糸（送信ごとの 16 進 8 桁） |
+| `bucket` / `object_key` | **server 自身の報告から取る。** ファイル名を組み直したものではない           |
+| `wacz_complete`         | `false` は本文が 1 つ以上欠けているという意味。詳細は下記                    |
+| `captured_at`           | 取り込みの時刻。一覧はこれの降順                                             |
 
 ### `wacz_complete` が `false` になるとき
 

@@ -1,14 +1,14 @@
-# Apple Container 上の waggle スタック。動かすのは container-compose
+# Apple Container 上の capture-ledger スタック。動かすのは container-compose
 # (https://github.com/Mcrich23/Container-Compose —— Homebrew で入れる)。
 #
 #   container-compose up -d -b     # 全部 build して起動する
 #   container-compose down         # 停止する。volume (とその中身) は残る
 #
 # マシンごとに 1 度だけ要る用意:
-#   sudo container system dns create waggle
+#   sudo container system dns create capture-ledger
 # project 名と同じ DNS ドメインがあると、container-compose は real-DNS モードに
-# 入る: コンテナは <service>.waggle という名前になり、プラットフォームの DNS に
-# 登録され、他のコンテナからも **host からも** 引ける —— waggle 自身を host 側で
+# 入る: コンテナは <service>.capture-ledger という名前になり、プラットフォームの DNS に
+# 登録され、他のコンテナからも **host からも** 引ける —— capture-ledger 自身を host 側で
 # 動かしてこのスタックに繋げられるのは、これのおかげ。
 # container_name: を足してはならない —— DNS の命名が抑止され、`container exec` で
 # **各コンテナの中の** /etc/hosts を書き換える方式に落ちる (ホストの /etc/hosts は
@@ -33,30 +33,30 @@
 # **browserhive のスタックと同時には立てられない** —— 8333 / 8899 / 50051 を
 # どちらも publish するので port がぶつかる。
 #
-# アーカイブを選ぶ画面 (picker) は waggle-api が配る。これは compose に入れず
+# アーカイブを選ぶ画面 (picker) は capture-api が配る。これは compose に入れず
 # host 側で動かす: `pnpm run api`。OpenFGA の store/model の ID が起動後にしか
 # 決まらない (`pnpm run fga:deploy` が出力して .env に入れる) ため、compose に
 # 書けない。
 
 # project 名を固定する。指定しないと container-compose はディレクトリ名から導くが、
 # ここでは project 名が そのまま DNS ドメインになる: `container system dns create <name>`
-# で作ったドメインと、下に出てくる `<service>.waggle` というホスト名の両方と
+# で作ったドメインと、下に出てくる `<service>.capture-ledger` というホスト名の両方と
 # 一致していなければならない。
-name: waggle
+name: capture-ledger
 
 services:
   postgres:
     image: docker.io/library/postgres:17-alpine
     environment:
-      - POSTGRES_USER=waggle
-      - POSTGRES_PASSWORD=waggle
-      - POSTGRES_DB=waggle
+      - POSTGRES_USER=capture_ledger
+      - POSTGRES_PASSWORD=capture_ledger
+      - POSTGRES_DB=capture_ledger
       # ここでの named volume はフォーマット済みのファイルシステムなので、mount 先には
       # 最初から lost+found が居る。すると initdb が使うことを拒む
       # ("directory exists but is not empty")。クラスタは mount 先の
       # サブディレクトリに置く —— この場合の対処として image 自身が案内している方法。
       - PGDATA=/var/lib/postgresql/data/pgdata
-    # host 側の道具 (psql、そして waggle 自身) が名前 (postgres.waggle) でも
+    # host 側の道具 (psql、そして capture-ledger 自身) が名前 (postgres.capture-ledger) でも
     # localhost でも届くように publish している。
     ports:
       - "127.0.0.1:5432:5432"
@@ -65,7 +65,7 @@ services:
 
   # OpenFGA 自身の保存先。上の `postgres` サービスと共用しないのは意図的。
   #
-  # 1 つのインスタンスを共用すると、tuple を waggle のアプリケーション
+  # 1 つのインスタンスを共用すると、tuple を capture-ledger のアプリケーション
   # トランザクションの中で書けるかのような思い込みを誘う —— 実際には書けない:
   # OpenFGA へは HTTP API 経由でしか書かず、SQL では書かないので、両方にまたがる
   # トランザクションは存在しない。データベースを分けておくとその境界が目に見える。
@@ -102,9 +102,9 @@ services:
     command:
       - "run"
       - "--datastore-engine=postgres"
-      - "--datastore-uri=postgres://openfga:openfga@openfga-db.waggle:5432/openfga?sslmode=disable"
+      - "--datastore-uri=postgres://openfga:openfga@openfga-db.capture-ledger:5432/openfga?sslmode=disable"
     environment:
-      # 既定では認証が一切無い。waggle は publish された loopback のポート越しに
+      # 既定では認証が一切無い。capture-ledger は publish された loopback のポート越しに
       # OpenFGA へ届くが、それは host 上の他の何かにとっても同じこと。
       # (/healthz は開いたまま —— キーを要求するのは API だけ。)
       - OPENFGA_AUTHN_METHOD=preshared
@@ -112,7 +112,7 @@ services:
       - OPENFGA_LOG_LEVEL=info
     ports:
       # 8080 ではなく 8090 で publish しているのは、慣例のポートをどのサービスが
-      # 持っているかを host 側で推測せずに済ませるため。WAGGLE_FGA_API_URL は
+      # 持っているかを host 側で推測せずに済ませるため。CAPTURE_LEDGER_FGA_API_URL は
       # 8090 を使うこと。
       - "127.0.0.1:8090:8080"
     depends_on:
@@ -124,7 +124,7 @@ services:
     # 気にしてやる必要のある、使い捨ての init コンテナは別に無い。
     entrypoint: ["/etc/seaweedfs/entrypoint.sh"]
     environment:
-      # bucket 名は browserhive のまま —— waggle は browserhive が置いた成果物を
+      # bucket 名は browserhive のまま —— capture-ledger は browserhive が置いた成果物を
       # 読む側なので、名前が一致していないと manifest の鍵が引けない。
       - S3_ACCESS_KEY_ID=browserhive
       - S3_SECRET_ACCESS_KEY=browserhive
@@ -133,7 +133,7 @@ services:
       # 一覧も書き込みもできない。**この穴は広げても何も言わない**ので、
       # 触るときは browserhive の test/e2e/s3-anonymous.e2e.test.ts を見ること。
       - S3_ANONYMOUS_READ=true
-    # host 側の道具のために publish している。browserhive は名前で届くが、waggle は
+    # host 側の道具のために publish している。browserhive は名前で届くが、capture-ledger は
     # host 上で動いていて、いまは結果の manifest を読み、URL の署名もここに対して
     # 行う —— 8333 が S3 API、8888 が filer の UI。
     ports:
@@ -177,9 +177,9 @@ services:
       # gRPC。BrowserHive は v3 で HTTP の提供をやめた。
       - "127.0.0.1:50051:50051"
     environment:
-      # プラットフォームの DNS (<service>.waggle) を使った、名前による結線。
-      - BROWSERHIVE_BROWSER_URLS=http://chromium-1.waggle:9222,http://chromium-2.waggle:9222
-      - BROWSERHIVE_S3_ENDPOINT=http://seaweedfs.waggle:8333
+      # プラットフォームの DNS (<service>.capture-ledger) を使った、名前による結線。
+      - BROWSERHIVE_BROWSER_URLS=http://chromium-1.capture-ledger:9222,http://chromium-2.capture-ledger:9222
+      - BROWSERHIVE_S3_ENDPOINT=http://seaweedfs.capture-ledger:8333
       - BROWSERHIVE_S3_REGION=us-east-1
       - BROWSERHIVE_S3_BUCKET=browserhive
       - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
@@ -191,7 +191,7 @@ services:
       - LOG_LEVEL=info
       # entrypoint の shim が、server を起動する前にここを叩いて待つ —— depends_on は
       # 起動順序でしかなく、起動時の HeadBucket は失敗すると致命的なため。
-      - WAIT_FOR_S3=http://seaweedfs.waggle:8333
+      - WAIT_FOR_S3=http://seaweedfs.capture-ledger:8333
       # プラットフォームの DNS は AAAA レコードも publish するが、VM 間に v6 の経路は
       # 無い —— v4 を先に引かせないと、worker の WS URL が到達できない v6 アドレスに
       # 着地する。
@@ -204,11 +204,11 @@ services:
       - BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true
       #
       # **署名の設定はここに書かない。** `signing.env` に在り、`scripts/stack.sh` が
-      # `WAGGLE_CAPTURE_SIGNING=1` のときだけ `--env-file` で注ぐ。
+      # `CAPTURE_LEDGER_CAPTURE_SIGNING=1` のときだけ `--env-file` で注ぐ。
       #
       # ここに無条件で置くと、"signing" profile を起こしていないスタックが
       # 「宛先は在るが相手が居ない」状態になる —— 実際にそうなっていて、
-      # 署名を有効にした取り込みが全部 `ENOTFOUND wacz-signer.waggle` で落ちた。
+      # 署名を有効にした取り込みが全部 `ENOTFOUND wacz-signer.capture-ledger` で落ちた。
       # **空文字で無効化することはできない**（理由は `signing.env` の冒頭）。
     volumes:
       # 署名の anchor は **このコンテナの中の** パスなので、wacz-signer が署名に使う
@@ -223,7 +223,7 @@ services:
 
   # WACZ のビューア。picker がここへ ?source=/wacz/<key> で渡す。
   #
-  # picker を配る waggle-api は **host 側で動かす** (`pnpm run api`) —— waggle 自身と
+  # picker を配る capture-api は **host 側で動かす** (`pnpm run api`) —— capture-ledger 自身と
   # 同じ。compose に入れられないのは、OpenFGA の store/model の ID が起動後にしか
   # 決まらないため (`pnpm run fga:deploy` が出力し、.env に入れる)。
   #
@@ -253,7 +253,7 @@ services:
         # 無いと作る署名すべてに timeSignature が付かず、timestamp の検査が `skipped`
         # に落ちる。
         "--tsa-url",
-        "http://tsa.waggle:3004/api/v1/timestamp",
+        "http://tsa.capture-ledger:3004/api/v1/timestamp",
       ]
     volumes:
       - ./.upstream/browserhive/test/fixtures/dev-ca:/id:ro
@@ -293,13 +293,13 @@ services:
 
   # browserhive のスタックの replay では代用できない —— replay は内部の DNS 名で
   # 上流を引くので、あちらは browserhive の seaweedfs を見る。成果物があるのは
-  # こちらの seaweedfs なので、waggle 用のものが要る。
+  # こちらの seaweedfs なので、capture-ledger 用のものが要る。
   # クロールの e2e が辿るフィクスチャ origin。既定では起動しない:
   #
   #   container-compose --profile capture-fixtures up -d -b
   #
   # port は publish しない —— browserhive も host 側の道具も、プラットフォーム DNS が
-  # 配る capture-capture-fixtures.waggle:8080 という **同じ名前** で引ける。browserhive の compose の
+  # 配る capture-capture-fixtures.capture-ledger:8080 という **同じ名前** で引ける。browserhive の compose の
   # capture-fixtures と同じ形。
   #
   # 取り込み対象がここに居るので、browserhive 側に
@@ -323,7 +323,7 @@ services:
     environment:
       # 上流は複合値で渡す。素のサービス名を値に書くと container-compose が
       # その IP に書き換えてしまい、読みが全部 403 になる (browserhive で実測)。
-      - S3_BUCKET_URL=http://seaweedfs.waggle:8333/browserhive
+      - S3_BUCKET_URL=http://seaweedfs.capture-ledger:8333/browserhive
     ports:
       # loopback であることが要件。Service Worker は secure context (https か
       # loopback) でしか登録できないので、DNS 名で開くと **ページは出るのに
@@ -336,7 +336,7 @@ services:
   #
   # **開発スタック限定の設定が 2 つ入っている。** security plugin を切っているので
   # 認証も TLS も無く、`discovery.type=single-node` なので冗長性も無い。API に
-  # 触れるのは waggle だけ (`WAGGLE_OPENSEARCH_URL`) で、認可は OpenFGA が持つ ——
+  # 触れるのは capture-ledger だけ (`CAPTURE_LEDGER_OPENSEARCH_URL`) で、認可は OpenFGA が持つ ——
   # 索引そのものは誰に見せてよいかを知らない (`api/search.ts` に理由がある)。
   #
   # 解析器は組み込みの `cjk`。kuromoji は plugin の導入が要り、既製イメージでは
@@ -353,7 +353,7 @@ services:
       - cluster.routing.allocation.disk.threshold_enabled=false
     ports:
       # host 側から索引を直接覗くため (`curl 127.0.0.1:9200/_cat/indices`)。
-      # waggle 自身は DNS 名で引く。
+      # capture-ledger 自身は DNS 名で引く。
       - "127.0.0.1:9200:9200"
     # JVM は 512m の heap の外にも要る。2g は実測ではなく安全側の見積り。
     mem_limit: 2gb

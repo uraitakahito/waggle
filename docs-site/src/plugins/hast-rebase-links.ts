@@ -8,7 +8,7 @@
 import { fileURLToPath } from "node:url";
 import { defineHastPlugin } from "satteri";
 
-const BASE = "/waggle";
+const BASE = "/capture-ledger";
 
 export default defineHastPlugin({
   name: "rebase-links",

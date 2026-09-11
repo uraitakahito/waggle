@@ -13,27 +13,27 @@ description: Prerequisites, daily commands, running without Compose, and trouble
 - **`curl`** and **`git`** on PATH.
 - A **Postgres** at `DATABASE_URL`. The Compose stack brings one up.
 - For an end-to-end capture, a **BrowserHive** and the Windmill flow that drives
-  it. waggle no longer holds a BrowserHive address — it dispatches to
-  `WAGGLE_CRAWL_WEBHOOK_URL` instead, and the flow lives in
+  it. capture-ledger no longer holds a BrowserHive address — it dispatches to
+  `CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` instead, and the flow lives in
   [capture-scheduler](https://github.com/uraitakahito/capture-scheduler). The stack still builds
   BrowserHive because the flow needs one; see
-  [Upgrading BrowserHive](/waggle/upgrading-browserhive/) for the pinned version.
+  [Upgrading BrowserHive](/capture-ledger/upgrading-browserhive/) for the pinned version.
 
 ## First-time setup
 
 ```sh
-git clone https://github.com/<you>/waggle.git
-cd waggle
+git clone https://github.com/<you>/capture-ledger.git
+cd capture-ledger
 nvm use
 pnpm install
-sudo container system dns create waggle   # once per machine
+sudo container system dns create capture-ledger   # once per machine
 ./setup.sh          # submodules + .env
 pnpm run check       # typecheck + lint + format:check + env + tests
 ```
 
 `setup.sh` is mandatory before any `container-compose` invocation: it
 initialises the `.upstream/browserhive` submodule that every build context
-points at, and refuses to continue if the `waggle` DNS domain is missing.
+points at, and refuses to continue if the `capture-ledger` DNS domain is missing.
 
 ### Environment variables
 
@@ -46,7 +46,7 @@ into `scripts/` too. Seven are mandatory.
 copies it verbatim, changing no values; nothing else generates
 `.env`, because a second list drifts from the first. The two OpenFGA ids stay
 empty until `pnpm run fga:deploy` prints them — see
-[Archive ledger](/waggle/archive-ledger/#setup).
+[Archive ledger](/capture-ledger/archive-ledger/#setup).
 
 `scripts/check-env.mjs` (part of `pnpm run check`, and a step of its own in CI)
 compares the names the code reads against the names `.env.example` declares, in
@@ -111,16 +111,16 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 
 **There is no dev container.** container-compose has exactly four subcommands —
 `up`, `down`, `build`, `version` — so there is no `exec` to drop into. It does
-not need one: the platform DNS resolves `<service>.waggle` from the host as well
-as between containers, so waggle runs on the host against the containerised
+not need one: the platform DNS resolves `<service>.capture-ledger` from the host as well
+as between containers, so capture-ledger runs on the host against the containerised
 stack. `setup.sh` writes the connection string into `.env`:
 
 ```sh
-DATABASE_URL=postgres://waggle:waggle@postgres.waggle:5432/waggle
+DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
 There is no BrowserHive address here any more. The one gRPC endpoint the stack
-publishes, `localhost:50051`, is for grpcurl and for the flow — not for waggle.
+publishes, `localhost:50051`, is for grpcurl and for the flow — not for capture-ledger.
 
 The `pnpm run` scripts read that `.env` themselves
 (`node --env-file-if-exists=.env`) — no shell `export` needed. **Variables
@@ -132,14 +132,14 @@ Postgres is also published on `127.0.0.1:5432`, so `localhost` works too.
 
 Coming from Docker Compose, the everyday commands map like this:
 
-| Docker Compose                    | Apple Container                      |
-| --------------------------------- | ------------------------------------ |
-| `docker compose up -d --build`    | `container-compose up -d -b`         |
-| `docker compose down`             | `container-compose down`             |
-| `docker compose ps`               | `container ls`                       |
-| `docker compose logs browserhive` | `container logs browserhive.waggle`  |
-| `docker compose exec <svc> sh`    | `container exec -it <svc>.waggle sh` |
-| `docker compose run --rm <svc> …` | `container run --rm <image> …`       |
+| Docker Compose                    | Apple Container                              |
+| --------------------------------- | -------------------------------------------- |
+| `docker compose up -d --build`    | `container-compose up -d -b`                 |
+| `docker compose down`             | `container-compose down`                     |
+| `docker compose ps`               | `container ls`                               |
+| `docker compose logs browserhive` | `container logs browserhive.capture-ledger`  |
+| `docker compose exec <svc> sh`    | `container exec -it <svc>.capture-ledger sh` |
+| `docker compose run --rm <svc> …` | `container run --rm <image> …`               |
 
 The Chromium workers are **headless**. To watch one render, open
 `chrome://inspect` in a local Chrome, add `localhost:9222` and `localhost:9223`
@@ -152,30 +152,30 @@ under _Configure…_, and inspect the target.
 ```
 
 It brings the stack up, polls `GetStatus` until BrowserHive answers, builds
-`waggle:latest`, then runs migrate → seed → the API with `container run --rm`,
+`capture-ledger:latest`, then runs migrate → seed → the API with `container run --rm`,
 asks the API for `/healthz`, tears the stack down through an `EXIT` trap, and
 forwards the exit code as its own.
 
-**It no longer captures anything.** waggle does not speak gRPC to BrowserHive,
+**It no longer captures anything.** capture-ledger does not speak gRPC to BrowserHive,
 so what this script proves is that the image boots: migrations apply, the seed
 lands, the API answers. The capture path is covered end to end by capture-scheduler's
 `pnpm run test:e2e`, which needs Windmill as well.
 
 The one-shot jobs are plain `container run` calls because container-compose has
 no `run` subcommand. That also retires the old
-`--profile run --exit-code-from waggle` workaround: the Docker Compose behaviour
+`--profile run --exit-code-from capture-ledger` workaround: the Docker Compose behaviour
 it worked around — aborting the whole stack on the migrator's legitimate exit 0
 — has no equivalent here.
 
 ## Working against an external Postgres
 
 ```sh
-DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
   pnpm run db:migrate
 
-DATABASE_URL=postgres://user:pass@db.host:5432/waggle \
-WAGGLE_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
-WAGGLE_CRAWL_WEBHOOK_TOKEN=… \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
+CAPTURE_LEDGER_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
+CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN=… \
   pnpm run api
 ```
 
@@ -191,12 +191,12 @@ channel, so its CA lives on the Windmill side — the variable
 There is one entry point for identity — the API — and it **denies everyone by
 default.**
 
-| Path                 | Default | Dev header              | JWT                  |
-| -------------------- | ------- | ----------------------- | -------------------- |
-| API (`/api`, picker) | deny    | `WAGGLE_DEV_IDENTITY=1` | `WAGGLE_OIDC_ISSUER` |
+| Path                 | Default | Dev header                      | JWT                          |
+| -------------------- | ------- | ------------------------------- | ---------------------------- |
+| API (`/api`, picker) | deny    | `CAPTURE_LEDGER_DEV_IDENTITY=1` | `CAPTURE_LEDGER_OIDC_ISSUER` |
 
-There used to be a second row for the CLI, reading `WAGGLE_DEV_SUBJECT` and
-`WAGGLE_OIDC_TOKEN` from the environment. Both went with it, and are no longer
+There used to be a second row for the CLI, reading `CAPTURE_LEDGER_DEV_SUBJECT` and
+`CAPTURE_LEDGER_OIDC_TOKEN` from the environment. Both went with it, and are no longer
 declared in `.env.example` — **claiming a subject is the caller's job now.**
 
 **The JWT path wins over the dev header.** When both are set, an environment must not
@@ -204,13 +204,13 @@ fall back to the weaker one, where anyone who reaches the port can be anyone.
 
 ### The dev issuer
 
-Setting `WAGGLE_OIDC_ISSUER` makes the API run **the same verification code
+Setting `CAPTURE_LEDGER_OIDC_ISSUER` makes the API run **the same verification code
 production will run** — signature, `iss` / `aud`, expiry, and the JWKS fetch. Until a
 real IdP is chosen, the bundled issuer stands in for one.
 
 ```bash
 pnpm run oidc:issuer                                   # listens on :9099
-export WAGGLE_OIDC_ISSUER=http://127.0.0.1:9099
+export CAPTURE_LEDGER_OIDC_ISSUER=http://127.0.0.1:9099
 TOKEN=$(pnpm run oidc:token --subject alice --org acme)
 curl -H "authorization: Bearer $TOKEN" http://127.0.0.1:7070/api/crawls
 ```
@@ -231,7 +231,7 @@ and previously minted tokens stop verifying. That is key rotation, reproduced.
 
 ### Moving to a real IdP
 
-Only the values of `WAGGLE_OIDC_ISSUER` and `WAGGLE_OIDC_AUDIENCE` change.
+Only the values of `CAPTURE_LEDGER_OIDC_ISSUER` and `CAPTURE_LEDGER_OIDC_AUDIENCE` change.
 `jwtIdentityResolver` does not change at all.
 
 Note that **the JWKS-over-HTTP path cannot be covered by unit tests**. Swapping
@@ -245,17 +245,17 @@ which the API reads through `identityFromClaims`.
 ## Troubleshooting
 
 - **A container will not come up** — `container ls` shows what is running and
-  `container logs <svc>.waggle` shows why. For Chromium,
+  `container logs <svc>.capture-ledger` shows why. For Chromium,
   `curl http://localhost:9222/json/version` tells you whether CDP is answering.
 - **Names do not resolve** — check that `container system dns ls` lists
-  `waggle`, and that no service in `docker-compose.yml` has a `container_name:`
+  `capture-ledger`, and that no service in `docker-compose.yml` has a `container_name:`
   key (it suppresses the DNS naming).
 - **BrowserHive exits at boot** — its startup `HeadBucket` is fatal. Check that
   `WAIT_FOR_S3` is set on the service and that SeaweedFS logged
   `Bucket browserhive ready.`
 - **`/api/crawls` answers 404 to everyone** — either the caller lacks
   `can_submit`, or the route was never registered because
-  `WAGGLE_CRAWL_WEBHOOK_URL` is unset. The startup log says which
+  `CAPTURE_LEDGER_CRAWL_WEBHOOK_URL` is unset. The startup log says which
   (`… is not set — /api/crawls is not served`).
 - **The docs build cannot read the BrowserHive pin** — run
   `git submodule update --init --recursive`.
@@ -270,7 +270,7 @@ site:
 pnpm run stack:up --profile capture-fixtures
 ```
 
-It publishes no port; `capture-fixtures.waggle:8080` resolves from containers and from the
+It publishes no port; `capture-fixtures.capture-ledger:8080` resolves from containers and from the
 host alike. `/links/hub` is the seed to use — every `/links/*` page is that page
 with exactly one thing changed, which is what lets a crawler applying the wrong
 rule be told apart from one that is simply broken.
@@ -278,10 +278,10 @@ rule be told apart from one that is simply broken.
 fixtures also keeps a request log, and that is the point of using it:
 
 ```sh
-curl -s http://capture-fixtures.waggle:8080/__request-counts
+curl -s http://capture-fixtures.capture-ledger:8080/__request-counts
 ```
 
-`crawl_pages` says what waggle _recorded_; the log says what the fixture was
+`crawl_pages` says what capture-ledger _recorded_; the log says what the fixture was
 _actually asked for_. "The crawler honoured robots" is a claim only the second one
 can settle — a page missing from the ledger might never have been fetched, or might
 have been fetched and dropped.
@@ -297,7 +297,7 @@ knowing where to ask. **One line turns on both.**
 
 ```sh
 # .env
-WAGGLE_CAPTURE_SIGNING=1
+CAPTURE_LEDGER_CAPTURE_SIGNING=1
 ```
 
 `pnpm run stack:up` reads that line and adds `--profile signing` (which starts
@@ -309,7 +309,7 @@ running is never a mystery.
 settings used to live in three places that did not know about each other — the
 `.env` flag, the profile, and four `BROWSERHIVE_SIGNING_*` entries hardcoded into
 `docker-compose.yml`. Turning signing on without starting the profile made every
-capture fail with `ENOTFOUND wacz-signer.waggle`, which reads like a DNS fault and is
+capture fail with `ENOTFOUND wacz-signer.capture-ledger`, which reads like a DNS fault and is
 not one: the name is correct, the service simply was not running.
 
 The signing settings cannot go back into `docker-compose.yml`, not even blanked

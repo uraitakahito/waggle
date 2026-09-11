@@ -24,7 +24,7 @@ export const up = async (db: Kysely<Database>): Promise<void> => {
       // `loadTargets` を通り、そこが **呼んだ人の組織で絞る** —— 別の組織の対象を
       // 混ぜると、クロールが持つ 1 つの `org_id` では帰属が言えなくなるから。
       //
-      // docs が案内する開発用の主体は `X-Waggle-Organizations: acme` なので、
+      // docs が案内する開発用の主体は `X-Capture-ledger-Organizations: acme` なので、
       // 既定の "default" のままだと 1 件も一致せず
       // `no enabled capture targets for this organization` で 400 になる。
       // seed が在るのに空、という一番読めない出方をする。

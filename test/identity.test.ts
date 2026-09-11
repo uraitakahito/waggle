@@ -15,7 +15,10 @@ describe("devIdentityResolver", () => {
   it("reads the subject and organizations from headers", async () => {
     await expect(
       devIdentityResolver(
-        request({ "x-waggle-subject": "bob", "x-waggle-organizations": "acme,contoso" }),
+        request({
+          "x-capture-ledger-subject": "bob",
+          "x-capture-ledger-organizations": "acme,contoso",
+        }),
       ),
     ).resolves.toEqual({ subject: "bob", organizations: ["acme", "contoso"] });
   });
@@ -23,13 +26,18 @@ describe("devIdentityResolver", () => {
   it("trims and drops empty organization entries", async () => {
     await expect(
       devIdentityResolver(
-        request({ "x-waggle-subject": "bob", "x-waggle-organizations": " acme , , contoso ," }),
+        request({
+          "x-capture-ledger-subject": "bob",
+          "x-capture-ledger-organizations": " acme , , contoso ,",
+        }),
       ),
     ).resolves.toEqual({ subject: "bob", organizations: ["acme", "contoso"] });
   });
 
   it("yields no organizations when the header is absent", async () => {
-    await expect(devIdentityResolver(request({ "x-waggle-subject": "bob" }))).resolves.toEqual({
+    await expect(
+      devIdentityResolver(request({ "x-capture-ledger-subject": "bob" })),
+    ).resolves.toEqual({
       subject: "bob",
       organizations: [],
     });
@@ -39,18 +47,20 @@ describe("devIdentityResolver", () => {
   // 対する Check へ落ちるのではなく、401 で答える。
   it("returns undefined without a subject", async () => {
     await expect(devIdentityResolver(request({}))).resolves.toBeUndefined();
-    await expect(devIdentityResolver(request({ "x-waggle-subject": "" }))).resolves.toBeUndefined();
+    await expect(
+      devIdentityResolver(request({ "x-capture-ledger-subject": "" })),
+    ).resolves.toBeUndefined();
   });
 });
 
 describe("resolveIdentityResolver", () => {
-  const original = process.env["WAGGLE_DEV_IDENTITY"];
+  const original = process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
   beforeEach(() => {
-    delete process.env["WAGGLE_DEV_IDENTITY"];
+    delete process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
   });
   afterEach(() => {
-    if (original === undefined) delete process.env["WAGGLE_DEV_IDENTITY"];
-    else process.env["WAGGLE_DEV_IDENTITY"] = original;
+    if (original === undefined) delete process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
+    else process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = original;
   });
 
   // header の resolver は言われたことを何でも信じるので、設定していない配備が
@@ -58,14 +68,14 @@ describe("resolveIdentityResolver", () => {
   it("denies everyone by default", async () => {
     expect(resolveIdentityResolver()).toBe(denyAllResolver);
     await expect(
-      resolveIdentityResolver()(request({ "x-waggle-subject": "mallory" })),
+      resolveIdentityResolver()(request({ "x-capture-ledger-subject": "mallory" })),
     ).resolves.toBeUndefined();
   });
 
   it("only enables the dev resolver on an exact opt-in", () => {
-    process.env["WAGGLE_DEV_IDENTITY"] = "true";
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "true";
     expect(resolveIdentityResolver()).toBe(denyAllResolver);
-    process.env["WAGGLE_DEV_IDENTITY"] = "1";
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "1";
     expect(resolveIdentityResolver()).toBe(devIdentityResolver);
   });
 
@@ -75,17 +85,19 @@ describe("resolveIdentityResolver", () => {
    * 落ちてはいけない。
    */
   it("issuer が在れば、開発用ヘッダより JWT を優先する", async () => {
-    const originalIssuer = process.env["WAGGLE_OIDC_ISSUER"];
-    process.env["WAGGLE_DEV_IDENTITY"] = "1";
-    process.env["WAGGLE_OIDC_ISSUER"] = "http://127.0.0.1:9099";
+    const originalIssuer = process.env["CAPTURE_LEDGER_OIDC_ISSUER"];
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "1";
+    process.env["CAPTURE_LEDGER_OIDC_ISSUER"] = "http://127.0.0.1:9099";
     try {
       const resolve = resolveIdentityResolver();
       expect(resolve).not.toBe(devIdentityResolver);
       // ヘッダだけを渡しても、もう通らない。
-      await expect(resolve(request({ "x-waggle-subject": "mallory" }))).resolves.toBeUndefined();
+      await expect(
+        resolve(request({ "x-capture-ledger-subject": "mallory" })),
+      ).resolves.toBeUndefined();
     } finally {
-      if (originalIssuer === undefined) delete process.env["WAGGLE_OIDC_ISSUER"];
-      else process.env["WAGGLE_OIDC_ISSUER"] = originalIssuer;
+      if (originalIssuer === undefined) delete process.env["CAPTURE_LEDGER_OIDC_ISSUER"];
+      else process.env["CAPTURE_LEDGER_OIDC_ISSUER"] = originalIssuer;
     }
   });
 });
@@ -101,7 +113,7 @@ describe("resolveIdentityResolver", () => {
  * `jose` の `jwtVerify` がどちらも受ける。
  */
 const ISSUER = "http://127.0.0.1:9099";
-const AUDIENCE = "waggle";
+const AUDIENCE = "capture-ledger";
 
 // describe の中では await できないので、module の頭で作る。
 const keys = await generateKeyPair("RS256");

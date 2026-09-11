@@ -11,7 +11,7 @@ description: 投げた瞬間に「誰のために投げたか」を残すテー�
 
 ## なぜ必要か
 
-**BrowserHive に「組織」という概念はありません。** 取り込みを投げるとき waggle は
+**BrowserHive に「組織」という概念はありません。** 取り込みを投げるとき capture-ledger は
 URL と設定だけを渡し、返ってくるのは `taskId` です。
 
 後から bucket の `.result.json` を拾って台帳を埋めるとき、その manifest には
@@ -19,7 +19,7 @@ URL と設定だけを渡し、返ってくるのは `taskId` です。
 おくのが唯一の出どころになります。
 
 ```
-waggle が知っている        BrowserHive が知っている
+capture-ledger が知っている        BrowserHive が知っている
 ─────────────────          ─────────────────────
 capture_targets.org_id ──┐      taskId
                          │      成果物の場所
@@ -69,18 +69,18 @@ await db
 
 :::caution[`submitted_by` は認証の結果ではありません]
 この列を埋めているのは、API のリクエストが名乗った主体です
-（[身元](/waggle/ja/archive-ledger/#身元)）。**開発用のヘッダ経路では検証されません**
-—— `WAGGLE_DEV_IDENTITY=1` のとき `X-Waggle-Subject` はそのまま信じられ、誰の名前でも
+（[身元](/capture-ledger/ja/archive-ledger/#身元)）。**開発用のヘッダ経路では検証されません**
+—— `CAPTURE_LEDGER_DEV_IDENTITY=1` のとき `X-Capture-ledger-Subject` はそのまま信じられ、誰の名前でも
 入ります。JWT の経路では署名と期限が検証されます。
 
 それでも `null` のままにしないのは、この値がそのまま `capture_job` の
 `owner` tuple になるからです。埋まっていないアーカイブは、
-[`can_delete`](/waggle/ja/archive-ledger/#認可モデル) が `owner from parent`
+[`can_delete`](/capture-ledger/ja/archive-ledger/#認可モデル) が `owner from parent`
 だけを見るので、**誰にも削除できません**。
 :::
 
 :::note[台帳と件数が一致しません]
-この表には**投げたものすべて**が入りますが、[`archives`](/waggle/ja/databases/archives/)
+この表には**投げたものすべて**が入りますが、[`archives`](/capture-ledger/ja/databases/archives/)
 に入るのは**アーカイブを生んだものだけ**です。失敗した取り込みは何もアップロード
 していないので、差が出るのが正常です。
 :::

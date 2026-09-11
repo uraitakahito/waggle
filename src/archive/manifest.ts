@@ -25,7 +25,7 @@ export const readManifest = (raw: unknown): CaptureResultReport =>
  * 合わせないと存在しない鍵を作ることになる。値の中の `_` `.` `/` 空白などは
  * `%XX` へ逃がす —— 逃がさないと区切りと衝突して、鍵が 1 文字ずれる。
  *
- * waggle が、server から渡された鍵を読むのではなく自分で組み立てる唯一の場所。
+ * ledger が、server から渡された鍵を読むのではなく自分で組み立てる唯一の場所。
  * **間違えても静かに壊れる** —— 失うのはこの代替経路だけで、reconciler のほうは
  * listing でオブジェクトを見つけてしまうので、ログにも結果にも出ない。
  * だから test/manifest-key.test.ts は BrowserHive と同じケースを並べてある。

@@ -1,12 +1,12 @@
 /**
  * クロールを Windmill へ渡す。
  *
- * waggle は上流に居て、実行そのものは持たない。ここは「頼んだ」を伝えるだけの薄い層。
+ * ledger は上流に居て、実行そのものは持たない。ここは「頼んだ」を伝えるだけの薄い層。
  *
  * ## なぜ webhook なのか
  *
  * Windmill の flow は path で webhook を持っていて、token 付きの POST 1 回で起動できる。
- * waggle 側に Windmill の client を抱えずに済むので、依存はこの URL と token だけになる。
+ * ledger 側に Windmill の client を抱えずに済むので、依存はこの URL と token だけになる。
  *
  * ## 設定していない配備では口ごと出さない
  *
@@ -35,17 +35,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * そのときには行が既に立っていて、締める処理が要る。
  */
 export const createWindmillDispatcher = (): CrawlDispatcher | undefined => {
-  const url = optional("WAGGLE_CRAWL_WEBHOOK_URL", "");
-  const token = optional("WAGGLE_CRAWL_WEBHOOK_TOKEN", "");
+  const url = optional("CAPTURE_LEDGER_CRAWL_WEBHOOK_URL", "");
+  const token = optional("CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN", "");
 
   if (url === "" && token === "") return undefined;
   if (url === "" || token === "") {
     throw new Error(
-      "WAGGLE_CRAWL_WEBHOOK_URL and WAGGLE_CRAWL_WEBHOOK_TOKEN must be set together " +
+      "CAPTURE_LEDGER_CRAWL_WEBHOOK_URL and CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN must be set together " +
         "(one without the other cannot dispatch a crawl)",
     );
   }
-  const timeoutMs = Number(optional("WAGGLE_CRAWL_WEBHOOK_TIMEOUT_MS", String(DEFAULT_TIMEOUT_MS)));
+  const timeoutMs = Number(
+    optional("CAPTURE_LEDGER_CRAWL_WEBHOOK_TIMEOUT_MS", String(DEFAULT_TIMEOUT_MS)),
+  );
 
   return async (crawl: DispatchedCrawl): Promise<void> => {
     // **snake_case で送る。** Windmill の script は引数名がそのまま入力の契約で、
@@ -54,7 +56,7 @@ export const createWindmillDispatcher = (): CrawlDispatcher | undefined => {
     // 「u16 として読めない」で落ちる (実測)。
     //
     // `waggle_url` / `token` / `browserhive_target` は送らない —— flow の schema の
-    // 既定値 (`$var:` 参照) が埋める。waggle は自分がコンテナからどう見えるかを
+    // 既定値 (`$var:` 参照) が埋める。ledger は自分がコンテナからどう見えるかを
     // 知らないし、issuer の鍵も持っていないので、どちらもここでは決められない。
     const res = await fetch(url, {
       method: "POST",
@@ -66,7 +68,7 @@ export const createWindmillDispatcher = (): CrawlDispatcher | undefined => {
         per_host_delay_ms: crawl.perHostDelayMs,
         host_parallelism: crawl.hostParallelism,
         // **形式と署名は必ず送る。** flow の schema の既定値は webhook 起動では
-        // 埋まらないので、送らなければ `undefined` が届く。決めるのは waggle 側。
+        // 埋まらないので、送らなければ `undefined` が届く。決めるのは ledger 側。
         capture_formats: crawl.captureFormats,
         signing: crawl.signing,
       }),

@@ -31,15 +31,15 @@ export type IdentityResolver = (request: FastifyRequest) => Promise<Identity | u
 /**
  * ローカル開発用の、header を信じる resolver。
  *
- * `X-Waggle-Subject` と `X-Waggle-Organizations` (カンマ区切り) をそのまま受け取る
- * —— そのポートに届く者は誰にでもなれる。`WAGGLE_DEV_IDENTITY=1` のときしか
+ * `X-Capture-ledger-Subject` と `X-Capture-ledger-Organizations` (カンマ区切り) をそのまま受け取る
+ * —— そのポートに届く者は誰にでもなれる。`CAPTURE_LEDGER_DEV_IDENTITY=1` のときしか
  * 到達できない。
  */
 export const devIdentityResolver: IdentityResolver = (request) => {
-  const subject = request.headers["x-waggle-subject"];
+  const subject = request.headers["x-capture-ledger-subject"];
   if (typeof subject !== "string" || subject === "") return Promise.resolve(undefined);
 
-  const orgHeader = request.headers["x-waggle-organizations"];
+  const orgHeader = request.headers["x-capture-ledger-organizations"];
   // 綴りは環境変数の側と同じ。片方だけ空白の落とし方が変わってはいけない。
   const organizations = organizationsFromList(typeof orgHeader === "string" ? orgHeader : "");
 
@@ -82,21 +82,21 @@ export const denyAllResolver: IdentityResolver = () => Promise.resolve(undefined
 /**
  * 3 つのうちどれを使うか。**既定は拒否**。
  *
- * `WAGGLE_OIDC_ISSUER` が在れば JWT を検証する —— 開発用の issuer でも本物の IdP でも
- * 同じ経路を通り、違うのは URL だけ。無ければ従来どおり `WAGGLE_DEV_IDENTITY=1` の
+ * `CAPTURE_LEDGER_OIDC_ISSUER` が在れば JWT を検証する —— 開発用の issuer でも本物の IdP でも
+ * 同じ経路を通り、違うのは URL だけ。無ければ従来どおり `CAPTURE_LEDGER_DEV_IDENTITY=1` の
  * ときにヘッダを信じ、それも無ければ全員を拒む。
  *
  * JWT が開発用ヘッダより優先されるのは、**両方設定されている環境で弱いほうへ
  * 落ちない**ようにするため。
  */
 export const resolveIdentityResolver = (): IdentityResolver => {
-  const issuer = optional("WAGGLE_OIDC_ISSUER", "");
+  const issuer = optional("CAPTURE_LEDGER_OIDC_ISSUER", "");
   if (issuer !== "") {
-    const audience = optional("WAGGLE_OIDC_AUDIENCE", "waggle");
+    const audience = optional("CAPTURE_LEDGER_OIDC_AUDIENCE", "capture-ledger");
     return jwtIdentityResolver(createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`)), {
       issuer,
       audience,
     });
   }
-  return process.env["WAGGLE_DEV_IDENTITY"] === "1" ? devIdentityResolver : denyAllResolver;
+  return process.env["CAPTURE_LEDGER_DEV_IDENTITY"] === "1" ? devIdentityResolver : denyAllResolver;
 };

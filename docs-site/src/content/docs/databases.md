@@ -1,15 +1,15 @@
 ---
 title: Databases
-description: The two Postgres instances behind waggle and OpenFGA, and the sixteen tables in them.
+description: The two Postgres instances behind capture-ledger and OpenFGA, and the sixteen tables in them.
 ---
 
-The waggle dev stack runs **two Postgres instances**. They hold different things
+The capture-ledger dev stack runs **two Postgres instances**. They hold different things
 and are different databases.
 
-| Container           | Holds                                                                    | Who touches it with SQL |
-| ------------------- | ------------------------------------------------------------------------ | ----------------------- |
-| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` and 7 more — **10 tables** | waggle                  |
-| `openfga-db.waggle` | `tuple` / `authorization_model` and 4 more — **6 tables**                | OpenFGA only            |
+| Container                   | Holds                                                                    | Who touches it with SQL |
+| --------------------------- | ------------------------------------------------------------------------ | ----------------------- |
+| `postgres.capture-ledger`   | `capture_targets` / `archives` / `fga_outbox` and 7 more — **10 tables** | capture-ledger          |
+| `openfga-db.capture-ledger` | `tuple` / `authorization_model` and 4 more — **6 tables**                | OpenFGA only            |
 
 No table appears in both. The credentials do not cross either, and `openfga-db`
 publishes no port, so reaching it takes `container exec`.
@@ -17,40 +17,40 @@ publishes no port, so reaching it takes `container exec`.
 ## Why they are separate
 
 Sharing one instance would invite the assumption that a tuple can be written
-inside waggle's application transaction. **It cannot** — OpenFGA is written
+inside capture-ledger's application transaction. **It cannot** — OpenFGA is written
 through its HTTP API, never through SQL, so no transaction spans both.
 
 Keeping them apart removes the room for that assumption. And it is precisely
-what makes [`fga_outbox`](/waggle/databases/fga-outbox/) necessary.
+what makes [`fga_outbox`](/capture-ledger/databases/fga-outbox/) necessary.
 
 ## The tables
 
-### waggle's database
+### capture-ledger's database
 
-| Table                                                           | Role                                                   |
-| --------------------------------------------------------------- | ------------------------------------------------------ |
-| [`capture_targets`](/waggle/databases/capture-targets/)         | What to capture                                        |
-| [`capture_submissions`](/waggle/databases/capture-submissions/) | What was submitted; the only source of organizations   |
-| [`archives`](/waggle/databases/archives/)                       | The ledger — captures that produced an archive         |
-| [`fga_outbox`](/waggle/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                        |
-| `crawls`                                                        | One row per crawl — its policy, state and stop reason  |
-| `crawl_pages`                                                   | One row per page a crawl reached; also the dedup index |
-| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`       | Kysely's own bookkeeping (below)                       |
+| Table                                                                   | Role                                                   |
+| ----------------------------------------------------------------------- | ------------------------------------------------------ |
+| [`capture_targets`](/capture-ledger/databases/capture-targets/)         | What to capture                                        |
+| [`capture_submissions`](/capture-ledger/databases/capture-submissions/) | What was submitted; the only source of organizations   |
+| [`archives`](/capture-ledger/databases/archives/)                       | The ledger — captures that produced an archive         |
+| [`fga_outbox`](/capture-ledger/databases/fga-outbox/)                   | Tuples waiting to reach OpenFGA                        |
+| `crawls`                                                                | One row per crawl — its policy, state and stop reason  |
+| `crawl_pages`                                                           | One row per page a crawl reached; also the dedup index |
+| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`               | Kysely's own bookkeeping (below)                       |
 
 ### OpenFGA's database
 
-| Table                               | Role                                               |
-| ----------------------------------- | -------------------------------------------------- |
-| [`tuple`](/waggle/databases/tuple/) | The relationships themselves                       |
-| `authorization_model`               | The model — one row per version, immutable (below) |
-| `changelog`                         | History of writes (below)                          |
-| `store`                             | Namespaces; deletion is soft (below)               |
-| `assertion`                         | Unused (below)                                     |
-| `goose_db_version`                  | OpenFGA's own schema migrations (below)            |
+| Table                                       | Role                                               |
+| ------------------------------------------- | -------------------------------------------------- |
+| [`tuple`](/capture-ledger/databases/tuple/) | The relationships themselves                       |
+| `authorization_model`                       | The model — one row per version, immutable (below) |
+| `changelog`                                 | History of writes (below)                          |
+| `store`                                     | Namespaces; deletion is soft (below)               |
+| `assertion`                                 | Unused (below)                                     |
+| `goose_db_version`                          | OpenFGA's own schema migrations (below)            |
 
 ## Tables without a page of their own
 
-These are **created by tooling and used by tooling**; waggle rarely has to think
+These are **created by tooling and used by tooling**; capture-ledger rarely has to think
 about them.
 
 ### The four tables Kysely creates
@@ -68,7 +68,7 @@ leaves the old rows in place; the whole model is serialized into
 `serialized_protobuf`.
 
 A Check that names an id evaluates against that version; omitting it always uses
-the newest. **That is why `WAGGLE_FGA_MODEL_ID` is pinned** — without it, editing
+the newest. **That is why `CAPTURE_LEDGER_FGA_MODEL_ID` is pinned** — without it, editing
 the model would change every decision the moment it lands.
 
 ### changelog
@@ -91,7 +91,7 @@ The API sets `deleted_at` and nothing else; `tuple` and `changelog` rows remain
 
 ### assertion
 
-Where OpenFGA can store tests attached to a model — **waggle does not use it.**
+Where OpenFGA can store tests attached to a model — **capture-ledger does not use it.**
 The tests live in `fga/model.fga.yaml` and run in-process via
 `pnpm run fga:test`, with no server, which is why CI can verify them without
 bringing the stack up.
@@ -99,17 +99,17 @@ bringing the stack up.
 ### goose_db_version
 
 OpenFGA's own schema migrations, filled by `pnpm run fga:migrate`. It plays the
-same role as waggle's `kysely_migration` — **each database tracking its own
+same role as capture-ledger's `kysely_migration` — **each database tracking its own
 migrations** is one more sign that they are separate things.
 
 ## Looking inside
 
 ```sh
-# waggle's — the host psql also works (5432 is published)
-container exec postgres.waggle psql -U waggle -d waggle -c "\dt"
+# capture-ledger's — the host psql also works (5432 is published)
+container exec postgres.capture-ledger psql -U capture-ledger -d capture-ledger -c "\dt"
 
 # OpenFGA's — no published port, so container exec
-container exec openfga-db.waggle psql -U openfga -d openfga -c "\d tuple"
+container exec openfga-db.capture-ledger psql -U openfga -d openfga -c "\d tuple"
 ```
 
 **Read OpenFGA's database if you like, but do not write to it.** A direct

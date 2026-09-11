@@ -1,56 +1,56 @@
 ---
 title: データベース
-description: waggle と OpenFGA がそれぞれ持つ Postgres と、その中にある 16 のテーブル。
+description: capture-ledger と OpenFGA がそれぞれ持つ Postgres と、その中にある 16 のテーブル。
 ---
 
-waggle の開発スタックには **Postgres が 2 つ**あります。別々のものを入れる、
+capture-ledger の開発スタックには **Postgres が 2 つ**あります。別々のものを入れる、
 別々のデータベースです。
 
-| コンテナ            | 中身                                                         | 誰が SQL で触るか |
-| ------------------- | ------------------------------------------------------------ | ----------------- |
-| `postgres.waggle`   | `capture_targets` / `archives` / `fga_outbox` ほか **10 表** | waggle            |
-| `openfga-db.waggle` | `tuple` / `authorization_model` ほか **6 表**                | OpenFGA だけ      |
+| コンテナ                    | 中身                                                         | 誰が SQL で触るか |
+| --------------------------- | ------------------------------------------------------------ | ----------------- |
+| `postgres.capture-ledger`   | `capture_targets` / `archives` / `fga_outbox` ほか **10 表** | capture-ledger    |
+| `openfga-db.capture-ledger` | `tuple` / `authorization_model` ほか **6 表**                | OpenFGA だけ      |
 
 重なるテーブルは 1 つもありません。資格情報も相互に通らず、`openfga-db` は
 ポートを公開していないので、覗くには `container exec` が要ります。
 
 ## なぜ分けたのか
 
-同じインスタンスに同居していると、`tuple` を waggle のトランザクションの中で
+同じインスタンスに同居していると、`tuple` を capture-ledger のトランザクションの中で
 書けるかのように錯覚します。**実際には書けません** — OpenFGA へは HTTP API 経由
 でしか書かず、SQL では書かないので、両方にまたがるトランザクションは存在しません。
 
 分けておけば、その錯覚が起きる余地が物理的に消えます。そして分けた結果として
-[`fga_outbox`](/waggle/ja/databases/fga-outbox/) が必要になります。
+[`fga_outbox`](/capture-ledger/ja/databases/fga-outbox/) が必要になります。
 
 ## テーブル
 
-### waggle の DB
+### capture-ledger の DB
 
-| テーブル                                                           | 役割                                                             |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| [`capture_targets`](/waggle/ja/databases/capture-targets/)         | 撮る対象の一覧                                                   |
-| [`capture_submissions`](/waggle/ja/databases/capture-submissions/) | 投げた記録。組織を知る唯一の出どころ                             |
-| [`archives`](/waggle/ja/databases/archives/)                       | 台帳。アーカイブを生んだ取り込みだけ                             |
-| [`fga_outbox`](/waggle/ja/databases/fga-outbox/)                   | OpenFGA へ送る予定のタプル                                       |
-| `crawls`                                                           | クロール 1 本につき 1 行。方針・状態・停止理由                   |
-| `crawl_pages`                                                      | クロールが到達したページ 1 件につき 1 行。重複排除の索引でもある |
-| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`          | Kysely が作る帳簿（下記）                                        |
+| テーブル                                                                   | 役割                                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`capture_targets`](/capture-ledger/ja/databases/capture-targets/)         | 撮る対象の一覧                                                   |
+| [`capture_submissions`](/capture-ledger/ja/databases/capture-submissions/) | 投げた記録。組織を知る唯一の出どころ                             |
+| [`archives`](/capture-ledger/ja/databases/archives/)                       | 台帳。アーカイブを生んだ取り込みだけ                             |
+| [`fga_outbox`](/capture-ledger/ja/databases/fga-outbox/)                   | OpenFGA へ送る予定のタプル                                       |
+| `crawls`                                                                   | クロール 1 本につき 1 行。方針・状態・停止理由                   |
+| `crawl_pages`                                                              | クロールが到達したページ 1 件につき 1 行。重複排除の索引でもある |
+| `kysely_migration` / `_lock`<br />`kysely_seed` / `_lock`                  | Kysely が作る帳簿（下記）                                        |
 
 ### OpenFGA の DB
 
-| テーブル                               | 役割                                 |
-| -------------------------------------- | ------------------------------------ |
-| [`tuple`](/waggle/ja/databases/tuple/) | 関係そのもの。OpenFGA の中核         |
-| `authorization_model`                  | モデル。版ごとに 1 行、不変（下記）  |
-| `changelog`                            | 書き込みの履歴（下記）               |
-| `store`                                | 名前空間。削除は soft delete（下記） |
-| `assertion`                            | 使っていない（下記）                 |
-| `goose_db_version`                     | OpenFGA 自身のスキーマ移行（下記）   |
+| テーブル                                       | 役割                                 |
+| ---------------------------------------------- | ------------------------------------ |
+| [`tuple`](/capture-ledger/ja/databases/tuple/) | 関係そのもの。OpenFGA の中核         |
+| `authorization_model`                          | モデル。版ごとに 1 行、不変（下記）  |
+| `changelog`                                    | 書き込みの履歴（下記）               |
+| `store`                                        | 名前空間。削除は soft delete（下記） |
+| `assertion`                                    | 使っていない（下記）                 |
+| `goose_db_version`                             | OpenFGA 自身のスキーマ移行（下記）   |
 
 ## 子ページを持たないテーブル
 
-以下は**道具が作って道具が使う**もので、waggle 側から意識することがほとんど
+以下は**道具が作って道具が使う**もので、capture-ledger 側から意識することがほとんど
 ありません。
 
 ### Kysely が作る 4 表
@@ -67,7 +67,7 @@ migration と seed に使い回しています。
 古い行はそのまま残ります。モデル全体が `serialized_protobuf` に直列化されて入ります。
 
 Check で ID を指定すればその版で評価され、省略すれば常に最新です。**だから
-`WAGGLE_FGA_MODEL_ID` を固定します** — 固定しないと、モデルを書き換えた瞬間に
+`CAPTURE_LEDGER_FGA_MODEL_ID` を固定します** — 固定しないと、モデルを書き換えた瞬間に
 すべての判断が一斉に変わります。
 
 ### changelog
@@ -89,24 +89,24 @@ API で削除しても `deleted_at` が立つだけで、`tuple` も `changelog`
 
 ### assertion
 
-モデルに紐づくテストを OpenFGA 側に保存する場所ですが、**waggle は使っていません**。
+モデルに紐づくテストを OpenFGA 側に保存する場所ですが、**capture-ledger は使っていません**。
 テストは `fga/model.fga.yaml` としてリポジトリに置き、`pnpm run fga:test` で
 サーバ不要・in-process で走らせています。だから CI ではスタックを立てずに検証できます。
 
 ### goose_db_version
 
-OpenFGA 自身のスキーマ移行の記録です。waggle 側の `kysely_migration` と同じ役割で、
+OpenFGA 自身のスキーマ移行の記録です。capture-ledger 側の `kysely_migration` と同じ役割で、
 `pnpm run fga:migrate` がこれを流します。**2 つの DB がそれぞれ自分の migration 管理を
 持っている**ことも、別物であることの傍証です。
 
 ## 覗き方
 
 ```sh
-# waggle 側 — ホストの psql でも繋がる (5432 を公開している)
-container exec postgres.waggle psql -U waggle -d waggle -c "\dt"
+# capture-ledger 側 — ホストの psql でも繋がる (5432 を公開している)
+container exec postgres.capture-ledger psql -U capture-ledger -d capture-ledger -c "\dt"
 
 # OpenFGA 側 — ポート非公開なので container exec から
-container exec openfga-db.waggle psql -U openfga -d openfga -c "\d tuple"
+container exec openfga-db.capture-ledger psql -U openfga -d openfga -c "\d tuple"
 ```
 
 **OpenFGA の DB は読んでよいが、書いてはいけません。** 直接 `INSERT` や `UPDATE` を

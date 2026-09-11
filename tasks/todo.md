@@ -1,6 +1,6 @@
-# 段 6 — waggle を gRPC/Protobuf クライアントへ
+# 段 6 — capture-ledger を gRPC/Protobuf クライアントへ
 
-browserhive v3.0.0 で transport が gRPC になった。waggle は生成 SDK
+browserhive v3.0.0 で transport が gRPC になった。capture-ledger は生成 SDK
 (`src/http/generated/`, 6 ファイル / 1,140 行) 越しに HTTP を叩いているので、
 そこを丸ごと差し替える。破壊的変更でよい。
 
@@ -58,7 +58,7 @@ browserhive v3.0.0 で transport が gRPC になった。waggle は生成 SDK
 段 6 は完了。全項目済み。加えて、移行の過程で **browserhive 側の欠陥を 2 件**
 見つけて別途リリースした。
 
-### waggle 側で見つけた欠陥
+### capture-ledger 側で見つけた欠陥
 
 - **`register.ts` の `report.status !== "success"`**。マニフェストが protobuf
   JSON になり `CAPTURE_STATUS_SUCCESS` になるので、この比較は型が通るのに常に真
@@ -68,7 +68,7 @@ browserhive v3.0.0 で transport が gRPC になった。waggle は生成 SDK
 - **Dockerfile が `COPY openapi/`** で消えたディレクトリを指していた。冒頭の
   コメントも全滅 (`Dockerfile.prod` / `compose.prod.yaml` / `--data` / `--jpeg`
   はどれも存在しない)
-- **architecture の「waggle はポーリングしない」が嘘**。`watch.ts` と
+- **architecture の「capture-ledger はポーリングしない」が嘘**。`watch.ts` と
   `reconcile.ts` がある
 
 ### browserhive 側で見つけた欠陥
@@ -112,6 +112,6 @@ msg="Request summary" accepted=1 rejected=0 durationMs=6122
 
 ### 残っているもの
 
-**waggle のリリースは CI 待ち。** `Docs sync guard` が GitHub App の設定待ちで
+**capture-ledger のリリースは CI 待ち。** `Docs sync guard` が GitHub App の設定待ちで
 赤い (browserhive の private 化の副作用。この PR とは無関係に develop / main も
 落ちる)。App を作って UPSTREAM_APP_ID / UPSTREAM_APP_KEY を登録すれば緑になる。

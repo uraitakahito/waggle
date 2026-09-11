@@ -23,7 +23,7 @@ const unreachableDeps = {
   dispatch: explode,
 } as unknown as CrawlRouteDeps;
 
-const SUBJECT = { "x-waggle-subject": "alice", "x-waggle-organizations": "acme" };
+const SUBJECT = { "x-capture-ledger-subject": "alice", "x-capture-ledger-organizations": "acme" };
 const UUID = "d272d256-e528-4581-bb4e-8d9477d78196";
 const SEED = "https://example.com/start";
 
@@ -41,17 +41,17 @@ const buildApp = async (deps: CrawlRouteDeps): Promise<FastifyInstance> => {
 
 describe("クロール route の入力検証", () => {
   let app: FastifyInstance;
-  const original = process.env["WAGGLE_DEV_IDENTITY"];
+  const original = process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
 
   beforeEach(async () => {
-    process.env["WAGGLE_DEV_IDENTITY"] = "1";
+    process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = "1";
     app = await buildApp(unreachableDeps);
   });
 
   afterEach(async () => {
     await app.close();
-    if (original === undefined) delete process.env["WAGGLE_DEV_IDENTITY"];
-    else process.env["WAGGLE_DEV_IDENTITY"] = original;
+    if (original === undefined) delete process.env["CAPTURE_LEDGER_DEV_IDENTITY"];
+    else process.env["CAPTURE_LEDGER_DEV_IDENTITY"] = original;
   });
 
   const post = (payload: Record<string, unknown>) =>

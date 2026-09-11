@@ -2,8 +2,8 @@ name: docs
 
 # Publishes the Astro/Starlight site to GitHub Pages:
 #
-#   /waggle/      → English
-#   /waggle/ja/   → Japanese
+#   /capture-ledger/      → English
+#   /capture-ledger/ja/   → Japanese
 #
 # Security:
 #   - Triggered only by push to main and manual dispatch, never on
@@ -49,12 +49,12 @@ jobs:
       # GitHub does not distinguish absent from unreadable). A GitHub App token
       # scoped to both repositories does.
       #
-      # The token has to cover waggle as well as browserhive: actions/checkout
+      # The token has to cover capture-ledger as well as browserhive: actions/checkout
       # uses the same credential for the superproject and its submodules.
       #
       # Setup (one time, outside this repo):
       #   1. A GitHub App with Contents: Read — uraitakahito-submodule-reader
-      #      — installed with access to waggle AND browserhive.
+      #      — installed with access to capture-ledger AND browserhive.
       #   2. Its Client ID as the repository variable SUBMODULE_CLIENT_ID and
       #      its private key as the secret SUBMODULE_APP_KEY. The numeric App
       #      ID also works, but the action calls that input legacy and GitHub
@@ -71,7 +71,7 @@ jobs:
           private-key: ${{ secrets.SUBMODULE_APP_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: |
-            waggle
+            capture-ledger
             browserhive
           # Narrow the minted token to exactly what a clone needs. This matters
           # if the App is one that also does something else — reusing the

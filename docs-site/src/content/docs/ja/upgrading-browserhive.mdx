@@ -1,11 +1,11 @@
 ---
 title: BrowserHive の更新
-description: waggle を新しい BrowserHive の版へ上げる手順と、そこで起きうる問題。
+description: capture-ledger を新しい BrowserHive の版へ上げる手順と、そこで起きうる問題。
 ---
 
 import { browserhivePin } from "../../../lib/extract";
 
-waggle は `main` ではなく **特定の BrowserHive の版**に固定されています。
+capture-ledger は `main` ではなく **特定の BrowserHive の版**に固定されています。
 現在のピンは **{browserhivePin()}** です。
 
 これは `.upstream/browserhive` submodule から来ています。ビルド時に
@@ -45,7 +45,7 @@ pnpm run check
 ```
 
 Chromium は自動的に追随します。submodule の submodule なので、
-**BrowserHive 自身が検証した版**がそのまま手に入ります。以前 waggle は
+**BrowserHive 自身が検証した版**がそのまま手に入ります。以前 capture-ledger は
 これを独立に `main` で追跡しており、それがスタック崩壊の原因になりました —
 上流が開発用 Dockerfile を `attic/` へ移した瞬間、すべてのビルドが止まりました。
 
@@ -68,7 +68,7 @@ container build -f .upstream/browserhive/Dockerfile.prod -t bh-probe .upstream/b
 
 :::
 
-## waggle 側で何が変わるか
+## capture-ledger 側で何が変わるか
 
 API の追加だけの変更 (オプショナルなリクエストフィールドが増える等) なら、手順 2
 以外は何も要りません。再生成した型はそのままコンパイルが通り、テストも無修正で
@@ -79,7 +79,7 @@ API の追加だけの変更 (オプショナルなリクエストフィール�
 厄介なのは**インフラの変更**です。`.proto` の差分にはまったく現れません。
 1.5.2 → 1.6.0 の移行で実際にあった 2 例:
 
-- BrowserHive の SeaweedFS entrypoint がバケットを自分で作るようになり、waggle
+- BrowserHive の SeaweedFS entrypoint がバケットを自分で作るようになり、capture-ledger
   側の一発 init コンテナが不要になった (同時に `depends_on` による順序保証も
   意味を失い、`WAIT_FOR_S3` が置き換えた)。
 - 上流の Chromium イメージが開発用 Dockerfile を `attic/` へ退避させた。

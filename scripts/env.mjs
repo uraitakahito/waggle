@@ -21,11 +21,11 @@ export const optional = (name, fallback) => {
  * どれも既定値を持つ。必須のものは無いので、required との区別は要らない。
  */
 export const SCRIPT_ENV = [
-  "WAGGLE_FGA_API_URL",
-  "WAGGLE_FGA_API_TOKEN",
-  "WAGGLE_FGA_STORE_NAME",
-  "WAGGLE_FGA_IMAGE",
-  "WAGGLE_FGA_DATASTORE_URI",
+  "CAPTURE_LEDGER_FGA_API_URL",
+  "CAPTURE_LEDGER_FGA_API_TOKEN",
+  "CAPTURE_LEDGER_FGA_STORE_NAME",
+  "CAPTURE_LEDGER_FGA_IMAGE",
+  "CAPTURE_LEDGER_FGA_DATASTORE_URI",
 ];
 
 /**
