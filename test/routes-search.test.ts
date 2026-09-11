@@ -22,7 +22,7 @@ const NOT_MINE = "22222222-2222-2222-2222-222222222222";
 const hit = (archiveId: string, title: string) => ({
   _source: {
     archiveId,
-    url: `http://meadow.waggle:8080/${title}`,
+    url: `http://capture-fixtures.waggle:8080/${title}`,
     title,
     objectKey: `${archiveId}.wacz`,
     capturedAt: "2026-09-07T22:06:40.697Z",

@@ -21,10 +21,10 @@
 #   .upstream/browserhive   本体と、それが動作確認された版の chromium-server-docker
 #   .upstream/seaweedfs     object store の起動設定
 #   .upstream/replay        WACZ のビューア
-#   .upstream/meadow        取り込み対象のフィクスチャ (profile: meadow)
+#   .upstream/capture-fixtures        取り込み対象のフィクスチャ (profile: capture-fixtures)
 #
-# meadow を browserhive 越しではなく **直接** vendor しているのは、あちらの pin が
-# 別の都合で動くため。browserhive が持つ meadow は v0.12.0 で、こちらが要る
+# capture-fixtures を browserhive 越しではなく **直接** vendor しているのは、あちらの pin が
+# 別の都合で動くため。browserhive が持つ capture-fixtures は v0.12.0 で、こちらが要る
 # `/links/*` はそれより後に入った —— 経由すると browserhive の版上げを待つことになる。
 #
 # 分けてあるのは、S3 が欲しいだけのときに browserhive 全体を要求しないため。
@@ -296,22 +296,22 @@ services:
   # こちらの seaweedfs なので、waggle 用のものが要る。
   # クロールの e2e が辿るフィクスチャ origin。既定では起動しない:
   #
-  #   container-compose --profile meadow up -d -b
+  #   container-compose --profile capture-fixtures up -d -b
   #
   # port は publish しない —— browserhive も host 側の道具も、プラットフォーム DNS が
-  # 配る meadow.waggle:8080 という **同じ名前** で引ける。browserhive の compose の
-  # meadow と同じ形。
+  # 配る capture-capture-fixtures.waggle:8080 という **同じ名前** で引ける。browserhive の compose の
+  # capture-fixtures と同じ形。
   #
   # 取り込み対象がここに居るので、browserhive 側に
   # BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true が要る (上に入れてある)。
-  meadow:
+  capture-fixtures:
     build:
-      context: ./.upstream/meadow
+      context: ./.upstream/capture-fixtures
       args:
-        # browserhive と同じ理由。meadow は `/__version` でこれを出す。
-        GIT_TAG: "${MEADOW_TAG:-}"
-        GIT_REV: "${MEADOW_REV:-dev}"
-    profiles: ["meadow"]
+        # browserhive と同じ理由。capture-fixtures は `/__version` でこれを出す。
+        GIT_TAG: "${CAPTURE_FIXTURES_TAG:-}"
+        GIT_REV: "${CAPTURE_FIXTURES_REV:-dev}"
+    profiles: ["capture-fixtures"]
 
   replay:
     build:

@@ -22,10 +22,10 @@
 #
 #   ./scripts/stack.sh up            # 起動 (-d -b は既定で付く)
 #   ./scripts/stack.sh down          # 停止
-#   ./scripts/stack.sh up --profile meadow --profile search
+#   ./scripts/stack.sh up --profile capture-fixtures --profile search
 #
-# 余分な引数はそのまま container-compose へ渡る。`meadow` と `search` を包まないのは、
-# どちらも黙っては壊れないから —— meadow は実行時に種として選ぶもので、search は
+# 余分な引数はそのまま container-compose へ渡る。`fixtures` と `search` を包まないのは、
+# どちらも黙っては壊れないから —— fixtures は実行時に種として選ぶもので、search は
 # URL が空なら waggle が口ごと出さない。
 set -euo pipefail
 
