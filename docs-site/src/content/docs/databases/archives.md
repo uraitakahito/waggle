@@ -81,7 +81,7 @@ The latter arrived in BrowserHive v1.11.0. **Before that, a capture that hit the
 cap reported `true`.** It is `NULL` for captures from before the field existed,
 or ones that were not recorded.
 
-Worth knowing before handing an archive to waxlens.
+Worth knowing before handing an archive to wacz-validator.
 
 ## Indexes
 

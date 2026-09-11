@@ -79,7 +79,7 @@ if (report.status !== CaptureStatus.CAPTURE_STATUS_SUCCESS ||
 `true` と報告していました。** この field より前の取り込みや、記録しなかった
 取り込みでは `NULL` です。
 
-アーカイブを waxlens に渡す前に知っておく価値があります。
+アーカイブを wacz-validator に渡す前に知っておく価値があります。
 
 ## 索引
 

@@ -24,7 +24,7 @@
  *
  *   - **消えたファイルの歴史** 「以前の CLI 経路 (run.ts) が読んでいたのと同じ表で」。
  *     歴史は残すが、開けないものを開けるかのように書かない。
- *   - **他の repo のファイル** 「waxlens の packages/core/src/wacz/s3-range-reader.ts」。
+ *   - **他の repo のファイル** 「wacz-validator の packages/core/src/wacz/s3-range-reader.ts」。
  *     CI は 1 つの repo しか checkout しないので、そもそもここからは解決できない。
  *
  * 除外リストを作ると、腐った参照を消す代わりにリストへ足す道ができてしまう。

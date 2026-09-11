@@ -22,7 +22,7 @@ guardEnv();
 
 const API_URL = optional("WAGGLE_FGA_API_URL", "http://localhost:8090");
 const API_TOKEN = optional("WAGGLE_FGA_API_TOKEN", "dev-key");
-const STORE_NAME = optional("WAGGLE_FGA_STORE_NAME", "waxlens");
+const STORE_NAME = optional("WAGGLE_FGA_STORE_NAME", "wacz-validator");
 
 const fga = (args) => {
   const result = spawnSync("fga", args, {
