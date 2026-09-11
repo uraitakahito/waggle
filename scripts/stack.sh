@@ -6,13 +6,13 @@
 #
 # 署名を使うには 2 つのことが同時に要る:
 #
-#   1. `capping` と `tsa` が起きていること      → --profile signing
+#   1. `wacz-signer` と `tsa` が起きていること      → --profile signing
 #   2. BrowserHive が署名の宛先を知っていること  → --env-file signing.env
 #
 # `container-compose` に `COMPOSE_PROFILES` は無いので、この 2 つを 1 つの設定から
 # 導くには薄い層が要る。生の `container-compose up` を叩くと片方だけを渡せてしまい、
 # **「宛先は在るが相手が居ない」状態が作れる** —— 実際にそうなっていて、署名を
-# 有効にした取り込みが全部 `ENOTFOUND capping.waggle` で落ちた。
+# 有効にした取り込みが全部 `ENOTFOUND wacz-signer.waggle` で落ちた。
 #
 # 出どころは `.env` の `WAGGLE_CAPTURE_SIGNING` **1 つだけ**。同じ変数を waggle 自身も
 # 読む (`config/capture-formats.ts`) ので、「署名を頼む側」と「署名を用意する側」が
@@ -51,11 +51,11 @@ if signing_enabled; then
   profile_args=(--profile signing)
   env_args=(--env-file signing.env)
   echo "署名: 有効 (.env の WAGGLE_CAPTURE_SIGNING=1)"
-  echo "  → --profile signing   capping と tsa を起こす"
+  echo "  → --profile signing   wacz-signer と tsa を起こす"
   echo "  → --env-file signing.env   BrowserHive に署名の宛先を渡す"
 else
   echo "署名: 無効"
-  echo "  capping と tsa は起こさない。BrowserHive は署名の宛先を持たない ——"
+  echo "  wacz-signer と tsa は起こさない。BrowserHive は署名の宛先を持たない ——"
   echo "  署名を要求した取り込みは 'no signing service is configured' で失敗する。"
   echo "  有効にするには .env に WAGGLE_CAPTURE_SIGNING=1 を書く。"
 fi
