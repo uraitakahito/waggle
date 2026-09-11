@@ -48,8 +48,8 @@ services:
   postgres:
     image: docker.io/library/postgres:17-alpine
     environment:
-      - POSTGRES_USER=capture-ledger
-      - POSTGRES_PASSWORD=capture-ledger
+      - POSTGRES_USER=capture_ledger
+      - POSTGRES_PASSWORD=capture_ledger
       - POSTGRES_DB=capture_ledger
       # ここでの named volume はフォーマット済みのファイルシステムなので、mount 先には
       # 最初から lost+found が居る。すると initdb が使うことを拒む

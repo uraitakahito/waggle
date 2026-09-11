@@ -78,8 +78,8 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: capture-ledger
-          POSTGRES_PASSWORD: capture-ledger
+          POSTGRES_USER: capture_ledger
+          POSTGRES_PASSWORD: capture_ledger
           POSTGRES_DB: capture_ledger
         ports:
           - 5432:5432
@@ -90,7 +90,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://capture-ledger:capture-ledger@localhost:5432/capture-ledger
+      DATABASE_URL: postgres://capture_ledger:capture_ledger@localhost:5432/capture_ledger
 
     steps:
       - uses: actions/checkout@v7

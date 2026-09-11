@@ -111,7 +111,7 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 コンテナ側のスタックに繋がります。接続文字列は `setup.sh` が `.env` に書きます。
 
 ```sh
-DATABASE_URL=postgres://capture-ledger:capture-ledger@postgres.capture-ledger:5432/capture-ledger
+DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
 BrowserHive の在り処はもうここにありません。スタックが公開している唯一の gRPC の
@@ -164,10 +164,10 @@ exit 0 でスタック全体が停止する）が、こちらには存在しな�
 ## 外部の Postgres に対して動かす
 
 ```sh
-DATABASE_URL=postgres://user:pass@db.host:5432/capture-ledger \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
   pnpm run db:migrate
 
-DATABASE_URL=postgres://user:pass@db.host:5432/capture-ledger \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
 CAPTURE_LEDGER_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
 CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN=… \
   pnpm run api

@@ -22,7 +22,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DATABASE_URL="postgres://capture-ledger:capture-ledger@postgres.capture-ledger:5432/capture-ledger"
+DATABASE_URL="postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger"
 HEALTH_TARGET="localhost:50051"
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
 

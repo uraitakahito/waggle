@@ -7,7 +7,7 @@
 #
 # Run (the API; it does not capture anything itself — Windmill's flow does):
 #   container run --rm -p 7070:7070 \
-#     -e DATABASE_URL=postgres://capture-ledger:capture-ledger@postgres.capture-ledger:5432/capture-ledger \
+#     -e DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger \
 #     capture-ledger:latest
 #
 # capture-ledger no longer speaks gRPC to BrowserHive. Captures are submitted by the

@@ -116,7 +116,7 @@ as between containers, so capture-ledger runs on the host against the containeri
 stack. `setup.sh` writes the connection string into `.env`:
 
 ```sh
-DATABASE_URL=postgres://capture-ledger:capture-ledger@postgres.capture-ledger:5432/capture-ledger
+DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
 There is no BrowserHive address here any more. The one gRPC endpoint the stack
@@ -170,10 +170,10 @@ it worked around — aborting the whole stack on the migrator's legitimate exit 
 ## Working against an external Postgres
 
 ```sh
-DATABASE_URL=postgres://user:pass@db.host:5432/capture-ledger \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
   pnpm run db:migrate
 
-DATABASE_URL=postgres://user:pass@db.host:5432/capture-ledger \
+DATABASE_URL=postgres://user:pass@db.host:5432/capture_ledger \
 CAPTURE_LEDGER_CRAWL_WEBHOOK_URL=https://windmill.example/api/w/…/jobs/run/f/f/crawl \
 CAPTURE_LEDGER_CRAWL_WEBHOOK_TOKEN=… \
   pnpm run api
