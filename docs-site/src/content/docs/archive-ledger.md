@@ -104,6 +104,13 @@ next to the artifacts, and where the two disagree the manifest wins. So the
 level handler looks the manifest up for **every** page that carried a task id,
 and corrects the `crawl_pages` row when the manifest says the capture succeeded.
 
+**One disagreement never resolves that way: a cancelled capture.** If the flow's
+deadline runs out mid-capture, BrowserHive (since v9.1.0) tears the page down and
+writes a manifest of its own saying `ERROR_TYPE_CANCELLED`. There are no
+artifacts to find, so the page stays failed — correctly. A run of those in the
+bucket means the flow's deadline is shorter than the pages it is being asked to
+capture, and the fix is on the flow's side.
+
 ### Attribution
 
 A manifest says nothing about organizations; BrowserHive has no such concept.
