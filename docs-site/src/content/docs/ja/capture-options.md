@@ -69,7 +69,7 @@ zip を 1 つも開かずに答えられます。
 
 ## capture-ledger が決めなくなったもの
 
-以前の CLI は `SubmitCapture` のフィールドそれぞれに旗を対応させていました
+以前の CLI は BrowserHive の `CaptureRequest` のフィールドそれぞれに旗を対応させていました
 （`--device-pixel-ratios` / `--operation-delay-ms` / `--behaviors` /
 `--no-site-behaviors` / `--dismiss-banners` / `--accept-language` / `--session`）。
 **これらはもう存在しません。** capture-ledger が送るのは `captureFormats` と `signing` だけで、

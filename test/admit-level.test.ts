@@ -38,8 +38,6 @@ const manifest = (taskId: string) => ({
   status: "CAPTURE_STATUS_SUCCESS",
   timestamp: "2026-08-30T00:00:00.000Z",
   captureProcessingTimeMs: 100,
-  retryCount: 0,
-  workerIndex: 0,
   artifacts: { wacz: `s3://b/${taskId}.wacz` },
 });
 

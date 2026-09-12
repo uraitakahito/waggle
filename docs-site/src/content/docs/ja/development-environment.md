@@ -99,9 +99,10 @@ NAME=value     # 値を渡す
 
 ```sh
 pnpm run stack:up
-# grpcurl は vendored の契約を読む。準備完了の判定は GetStatus。
+# grpcurl は vendored の契約を読む。準備完了の判定は GetServerStatus。
+# browserhive-2 も同じ (localhost:50052)。
 until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus >/dev/null 2>&1; do sleep 1; done
 ```
 
 **dev コンテナはありません。** container-compose のサブコマンドは
@@ -114,8 +115,9 @@ until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto 
 DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
-BrowserHive の在り処はもうここにありません。スタックが公開している唯一の gRPC の
-口 `localhost:50051` は、grpcurl と flow のためのもので、capture-ledger のためではありません。
+BrowserHive の在り処はもうここにありません。スタックが公開している 2 つの gRPC の
+口 `localhost:50051` と `localhost:50052`（Chromium 1 台に BrowserHive 1 つ）は、
+grpcurl と flow のためのもので、capture-ledger のためではありません。
 
 `pnpm run` 系のコマンドはこの `.env` を自分で読みます
 （`node --env-file-if-exists=.env`）。シェルで `export` する必要はありません。
@@ -127,16 +129,16 @@ Postgres は `127.0.0.1:5432` にも公開しているので `localhost` でも�
 
 Docker Compose から来た場合、日常のコマンドはこう対応します。
 
-| Docker Compose                    | Apple Container                              |
-| --------------------------------- | -------------------------------------------- |
-| `docker compose up -d --build`    | `container-compose up -d -b`                 |
-| `docker compose down`             | `container-compose down`                     |
-| `docker compose ps`               | `container ls`                               |
-| `docker compose logs browserhive` | `container logs browserhive.capture-ledger`  |
-| `docker compose exec <svc> sh`    | `container exec -it <svc>.capture-ledger sh` |
-| `docker compose run --rm <svc> …` | `container run --rm <image> …`               |
+| Docker Compose                      | Apple Container                               |
+| ----------------------------------- | --------------------------------------------- |
+| `docker compose up -d --build`      | `container-compose up -d -b`                  |
+| `docker compose down`               | `container-compose down`                      |
+| `docker compose ps`                 | `container ls`                                |
+| `docker compose logs browserhive-1` | `container logs browserhive-1.capture-ledger` |
+| `docker compose exec <svc> sh`      | `container exec -it <svc>.capture-ledger sh`  |
+| `docker compose run --rm <svc> …`   | `container run --rm <image> …`                |
 
-Chromium ワーカーは **headless** です。描画を見たいときは、ローカルの Chrome で
+Chromium は 2 台とも **headless** です。描画を見たいときは、ローカルの Chrome で
 `chrome://inspect` を開き、_Configure…_ に `localhost:9222` と `localhost:9223`
 を登録してターゲットを inspect します。
 
@@ -146,7 +148,7 @@ Chromium ワーカーは **headless** です。描画を見たいときは、ロ
 ./scripts/prod-smoke.sh
 ```
 
-スタックを起動し、BrowserHive が `GetStatus` に応答するまでポーリングし、
+スタックを起動し、BrowserHive が 2 つとも `GetServerStatus` に応答するまでポーリングし、
 `capture-ledger:latest` をビルドしてから migrate → seed → API を `container run --rm` で
 順に実行し、API に `/healthz` を訊き、`EXIT` トラップでスタックを片付け、
 終了コードを自分の終了コードとして返します。

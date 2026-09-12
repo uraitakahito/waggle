@@ -14,7 +14,7 @@ options, archive ledger, architecture) — lives on the docs site:
 - **English** — <https://uraitakahito.github.io/capture-ledger/>
 - **日本語** — <https://uraitakahito.github.io/capture-ledger/ja/>
 
-Anything about _how_ a page is captured — behaviors, WACZ, storage, workers —
+Anything about _how_ a page is captured — behaviors, WACZ, storage, the browser —
 belongs to BrowserHive. Its docs are not published on the web; build them from the
 BrowserHive checkout with `pnpm run docs:local`.
 

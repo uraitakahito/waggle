@@ -16,22 +16,27 @@ flowchart LR
     API --> DIS
   end
   DIS -->|"webhook + token"| WM["Windmill の flow<br/>(capture-scheduler)"]
-  WM -->|SubmitCapture| BH
-  subgraph BH["BrowserHive"]
-    COORD[coordinator + worker pool]
+  WM -->|Capture| BH1
+  WM -->|Capture| BH2
+  subgraph BH["BrowserHive — browser 1 台に 1 プロセス"]
+    BH1[browserhive-1]
+    BH2[browserhive-2]
   end
-  COORD -->|CDP| C1[chromium-server-1]
-  COORD -->|CDP| C2[chromium-server-2]
-  COORD -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
+  BH1 -->|CDP| C1[chromium-1]
+  BH2 -->|CDP| C2[chromium-2]
+  BH1 -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
+  BH2 -->|PutObject| S3
   WM -->|"POST /api/crawls/:id/pages"| API
   S3 -.->|".links.json / .result.json"| API
 ```
 
 ## 投げてから、結末を回収するまで
 
-**capture-ledger はもう BrowserHive と gRPC で話しません。** 投げて待って報告するのは
-Windmill の flow で、capture-ledger は次の段を組み立てて記録します。capture-ledger の設定に
-BrowserHive の在り処は 1 つも入っていません。
+**capture-ledger はもう BrowserHive と gRPC で話しません。** `Capture` を呼んで答えを
+待ち、報告するのは Windmill の flow で、capture-ledger は次の段を組み立てて記録します。
+capture-ledger の設定に BrowserHive の在り処は 1 つも入っていません。BrowserHive は
+1 プロセスが browser 1 台を持ち、取り込みは 1 度に 1 つ —— 走行中なら
+`RESOURCE_EXHAUSTED` で断る —— ので、空いている口を選ぶのも flow の仕事です。
 
 1 段が 1 往復です。flow は渡された URL を取り込み、`POST /api/crawls/:id/pages` に
 ページごとの `taskId` と状態を載せて返します。capture-ledger は `crawl_pages` を書き、
@@ -40,8 +45,7 @@ BrowserHive の在り処は 1 つも入っていません。
 
 段の報告に**成果物の在り処は載っていません**。そこで capture-ledger は、BrowserHive が
 成果物の隣に書く `{taskId}_{correlationId}[_{labels}].result.json` を読み直します。
-この file は BrowserHive の再起動にも、有界な結果キャッシュの追い出しにも耐えるので、
-ここで使えます。
+この file は BrowserHive の再起動にも耐えるので、ここで使えます。
 
 知っておくべき帰結:
 
@@ -136,14 +140,15 @@ Fastify の既定は `err.message` と `err.code` をそのまま返しますが
 なるので、各サービスは `<service>.capture-ledger` です。**コンテナ間からもホストからも**
 解決できるため、capture-ledger 自身はコンテナを必要としません。
 
-| サービス       | DNS 名                       | コンテナポート     | ホストポート |
-| -------------- | ---------------------------- | ------------------ | ------------ |
-| postgres       | `postgres.capture-ledger`    | 5432               | 5432         |
-| seaweedfs      | `seaweedfs.capture-ledger`   | 8333 / 8888 / 9333 | — (内部のみ) |
-| chromium-1     | `chromium-1.capture-ledger`  | 9222 (CDP)         | 9222         |
-| chromium-2     | `chromium-2.capture-ledger`  | 9222 (CDP)         | 9223         |
-| browserhive    | `browserhive.capture-ledger` | 50051 (gRPC)       | 50051        |
-| capture-ledger | —（ホストで動く）            | —                  | —            |
+| サービス       | DNS 名                         | コンテナポート     | ホストポート |
+| -------------- | ------------------------------ | ------------------ | ------------ |
+| postgres       | `postgres.capture-ledger`      | 5432               | 5432         |
+| seaweedfs      | `seaweedfs.capture-ledger`     | 8333 / 8888 / 9333 | — (内部のみ) |
+| chromium-1     | `chromium-1.capture-ledger`    | 9222 (CDP)         | 9222         |
+| chromium-2     | `chromium-2.capture-ledger`    | 9222 (CDP)         | 9223         |
+| browserhive-1  | `browserhive-1.capture-ledger` | 50051 (gRPC)       | 50051        |
+| browserhive-2  | `browserhive-2.capture-ledger` | 50051 (gRPC)       | 50052        |
+| capture-ledger | —（ホストで動く）              | —                  | —            |
 
 compose ファイルは 1 つです。migrate / seed の一発ジョブはサービスではなく、
 `scripts/prod-smoke.sh` が `container run --rm` で起動します（container-compose に

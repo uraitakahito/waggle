@@ -2,7 +2,7 @@
  * BrowserHive の `.result.json` manifest を読む。
  *
  * manifest は取り込み結果の永続化された複製で、成果物の隣に書かれる。BrowserHive
- * v3 以降これは **protobuf JSON**: server は `GetCapture` に答えるのと同じ
+ * v3 以降これは **protobuf JSON**: server は `Capture` の応答に載せるのと同じ
  * `CaptureResultReport` メッセージを、生成された `toJSON` を通して直列化している。
  *
  * つまり enum は protobuf の名前で綴られる —— `status` は `"success"` ではなく

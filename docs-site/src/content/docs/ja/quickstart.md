@@ -4,8 +4,8 @@ description: Compose スタックを立ち上げ、capture_targets を seed し�
 ---
 
 スタックは capture-ledger に必要なものを一式立ち上げます — Postgres、SeaweedFS、
-headless の Chromium ワーカー 2 台、そして[固定した submodule](/capture-ledger/ja/upgrading-browserhive/)から
-ビルドされる BrowserHive です。実行基盤は
+headless の Chromium 2 台、そしてその 1 台ずつに付く BrowserHive
+（[固定した submodule](/capture-ledger/ja/upgrading-browserhive/)からビルド）です。実行基盤は
 [Apple Container](https://github.com/apple/container)で、`container-compose` が駆動します。
 
 ## 1. DNS ドメインを登録する（マシンごとに 1 回）
@@ -43,11 +43,16 @@ pnpm run stack:up
 状態を確認します (まだ起動していなければ grpcurl がそのまま失敗を報告します):
 
 ```sh
-grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  localhost:50051 browserhive.v1.CaptureService/GetStatus \
-  | jq '{isRunning, workers: [.workers[].health]}'
-# → { "isRunning": true, "workers": ["WORKER_HEALTH_READY", "WORKER_HEALTH_READY"] }
+grpcurl -plaintext -emit-defaults -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus \
+  | jq '{busy, browser: .browser.url}'
+# → { "busy": false, "browser": "http://chromium-1.capture-ledger:9222/" }
 ```
+
+これは `browserhive-1` です。スタックには 2 つ在ります —— BrowserHive は browser を
+ちょうど 1 台持つので、Chromium 1 台に 1 つ —— 2 つ目は `localhost:50052` で答えます。
+`-emit-defaults` を付けているのは `busy: false` を見せるためです。grpcurl は既定値の
+フィールドを落とすので、付けないと空いている server は `null` と出ます。
 
 `-import-path proto -proto …` は、この repo に vendor した契約を grpcurl に
 指しています。BrowserHive は reflection を提供しません —— 未実装ではなく意図的な
@@ -55,7 +60,7 @@ grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
 `.proto` がランタイムの資産になってしまうためです。したがって呼ぶ側がサービスを
 知る手段がこの `.proto` です —— クライアントの生成元と同じファイルです。
 
-ワーカーは headless です。描画を見たい場合は、ローカルの Chrome で
+Chromium は 2 台とも headless です。描画を見たい場合は、ローカルの Chrome で
 `chrome://inspect` を開き、_Configure…_ に `localhost:9222` と `localhost:9223`
 を登録してください。
 
@@ -162,18 +167,18 @@ API の全体は[アーカイブ台帳](/capture-ledger/ja/archive-ledger/)に�
 ### まだ終わっていないとき
 
 **ページが台帳に載るのは、そのページの居た段を flow が報告した後**です。picker に
-出てこないなら、段がまだ開いているか、そのページが失敗しています。**進行中の状態は
-BrowserHive にしかありません** —— そちらが正本で、capture-ledger が持っているのは終わった
-事実の写しです。capture-ledger はもう問い合わせませんが、手で訊くことはできます。
+出てこないなら、段がまだ開いているか、そのページが失敗しています。走行中の取り込みに
+問い合わせる口はありません —— 取り込みは 1 回の gRPC 呼び出しで、結果は呼んだ側
+（Windmill の run）に返り、成果物の隣の `.result.json` manifest にも書かれます。
+BrowserHive が答えるのは「いま busy かどうか」です。
 
 ```sh
-grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  -d '{"taskId":"<taskId>"}' \
-  localhost:50051 browserhive.v1.CaptureService/GetCapture \
-  | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
+grpcurl -plaintext -emit-defaults -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus \
+  | jq '{busy, browser: .browser.url}'
 ```
 
-`state` が `CAPTURE_STATE_PENDING` か `_PROCESSING` ならまだ処理中です。
+`"busy": true` ならその browser はページの途中です。もう 1 つは `localhost:50052`。
 
 成果物は同梱の SeaweedFS バケット (`browserhive`) に置かれます。命名規則や
 WACZ の中身は BrowserHive のストレージのページにあります。
