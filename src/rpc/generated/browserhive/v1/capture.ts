@@ -71,63 +71,6 @@ export function captureStatusToJSON(object: CaptureStatus): string {
   }
 }
 
-/**
- * GetCapture の進行。
- * タスクがいまどこにいるか。GetCapture と GetCaptureProgress は **同じ瞬間に同じ値**
- * を返す —— どちらを呼んだかで意味が変わらないように。
- *
- * PENDING と PROCESSING を分けるのは、PENDING が「キューで待っている」という具体的な
- * 意味を持つ値だから。worker が既に抱えているタスクにそう答えるのは、粗いのではなく
- * 事実と違う。
- */
-export enum CaptureState {
-  CAPTURE_STATE_UNSPECIFIED = 0,
-  /** CAPTURE_STATE_PENDING - キューで順番を待っている。 */
-  CAPTURE_STATE_PENDING = 1,
-  /** CAPTURE_STATE_PROCESSING - worker が抱えて走らせている (リトライ中もここ)。 */
-  CAPTURE_STATE_PROCESSING = 2,
-  /** CAPTURE_STATE_DONE - 終わった。GetCapture なら report が付く。 */
-  CAPTURE_STATE_DONE = 3,
-  UNRECOGNIZED = -1,
-}
-
-export function captureStateFromJSON(object: any): CaptureState {
-  switch (object) {
-    case 0:
-    case "CAPTURE_STATE_UNSPECIFIED":
-      return CaptureState.CAPTURE_STATE_UNSPECIFIED;
-    case 1:
-    case "CAPTURE_STATE_PENDING":
-      return CaptureState.CAPTURE_STATE_PENDING;
-    case 2:
-    case "CAPTURE_STATE_PROCESSING":
-      return CaptureState.CAPTURE_STATE_PROCESSING;
-    case 3:
-    case "CAPTURE_STATE_DONE":
-      return CaptureState.CAPTURE_STATE_DONE;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return CaptureState.UNRECOGNIZED;
-  }
-}
-
-export function captureStateToJSON(object: CaptureState): string {
-  switch (object) {
-    case CaptureState.CAPTURE_STATE_UNSPECIFIED:
-      return "CAPTURE_STATE_UNSPECIFIED";
-    case CaptureState.CAPTURE_STATE_PENDING:
-      return "CAPTURE_STATE_PENDING";
-    case CaptureState.CAPTURE_STATE_PROCESSING:
-      return "CAPTURE_STATE_PROCESSING";
-    case CaptureState.CAPTURE_STATE_DONE:
-      return "CAPTURE_STATE_DONE";
-    case CaptureState.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 /** 署名の検査 1 つぶんの結果。 */
 export enum CheckOutcome {
   CHECK_OUTCOME_UNSPECIFIED = 0,
@@ -174,58 +117,6 @@ export function checkOutcomeToJSON(object: CheckOutcome): string {
   }
 }
 
-/** worker の健康状態。 */
-export enum WorkerHealth {
-  WORKER_HEALTH_UNSPECIFIED = 0,
-  WORKER_HEALTH_READY = 1,
-  WORKER_HEALTH_BUSY = 2,
-  WORKER_HEALTH_ERROR = 3,
-  WORKER_HEALTH_DISCONNECTED = 4,
-  UNRECOGNIZED = -1,
-}
-
-export function workerHealthFromJSON(object: any): WorkerHealth {
-  switch (object) {
-    case 0:
-    case "WORKER_HEALTH_UNSPECIFIED":
-      return WorkerHealth.WORKER_HEALTH_UNSPECIFIED;
-    case 1:
-    case "WORKER_HEALTH_READY":
-      return WorkerHealth.WORKER_HEALTH_READY;
-    case 2:
-    case "WORKER_HEALTH_BUSY":
-      return WorkerHealth.WORKER_HEALTH_BUSY;
-    case 3:
-    case "WORKER_HEALTH_ERROR":
-      return WorkerHealth.WORKER_HEALTH_ERROR;
-    case 4:
-    case "WORKER_HEALTH_DISCONNECTED":
-      return WorkerHealth.WORKER_HEALTH_DISCONNECTED;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return WorkerHealth.UNRECOGNIZED;
-  }
-}
-
-export function workerHealthToJSON(object: WorkerHealth): string {
-  switch (object) {
-    case WorkerHealth.WORKER_HEALTH_UNSPECIFIED:
-      return "WORKER_HEALTH_UNSPECIFIED";
-    case WorkerHealth.WORKER_HEALTH_READY:
-      return "WORKER_HEALTH_READY";
-    case WorkerHealth.WORKER_HEALTH_BUSY:
-      return "WORKER_HEALTH_BUSY";
-    case WorkerHealth.WORKER_HEALTH_ERROR:
-      return "WORKER_HEALTH_ERROR";
-    case WorkerHealth.WORKER_HEALTH_DISCONNECTED:
-      return "WORKER_HEALTH_DISCONNECTED";
-    case WorkerHealth.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 /** 失敗の分類。 */
 export enum ErrorType {
   ERROR_TYPE_UNSPECIFIED = 0,
@@ -239,6 +130,8 @@ export enum ErrorType {
    * 取り込みは丸ごと失われている。受け口を直して投げ直す。
    */
   ERROR_TYPE_ARTIFACT_SINK = 6,
+  /** ERROR_TYPE_CANCELLED - 呼ぶ側が途中で切った(deadline / cancel)。取り込みは打ち切られ、成果物は残らない。 */
+  ERROR_TYPE_CANCELLED = 7,
   UNRECOGNIZED = -1,
 }
 
@@ -265,6 +158,9 @@ export function errorTypeFromJSON(object: any): ErrorType {
     case 6:
     case "ERROR_TYPE_ARTIFACT_SINK":
       return ErrorType.ERROR_TYPE_ARTIFACT_SINK;
+    case 7:
+    case "ERROR_TYPE_CANCELLED":
+      return ErrorType.ERROR_TYPE_CANCELLED;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -288,6 +184,8 @@ export function errorTypeToJSON(object: ErrorType): string {
       return "ERROR_TYPE_INTERNAL";
     case ErrorType.ERROR_TYPE_ARTIFACT_SINK:
       return "ERROR_TYPE_ARTIFACT_SINK";
+    case ErrorType.ERROR_TYPE_CANCELLED:
+      return "ERROR_TYPE_CANCELLED";
     case ErrorType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -536,7 +434,11 @@ export interface ArtifactSink {
   token: string;
 }
 
-export interface SubmitCaptureRequest {
+/**
+ * Capture の要求。取り込みの中身を全部ここで決める —— 応答は結果そのもの
+ * (`CaptureResponse`)で、受理の印は無い。
+ */
+export interface CaptureRequest {
   url: string;
   /**
    * 成果物のファイル名に入る札。使える文字の制限は無い —— 名前を組むときに
@@ -662,27 +564,14 @@ export interface SubmitCaptureRequest {
   artifactSink?: ArtifactSink | undefined;
 }
 
-export interface GetCaptureRequest {
-  taskId: string;
-}
-
-export interface GetCaptureProgressRequest {
-  taskId: string;
-}
-
 export interface GetServerStatusRequest {
-  /**
-   * 返す pending task の上限。0–200 で、省略時は 50。proto は値域を持てないので、
-   * 既定を当てるのも範囲の検査も handler の仕事。
-   */
-  pendingLimit?: number | undefined;
 }
 
-export interface SubmitCaptureResponse {
-  /** 失敗は status code で返るので、ここに来るのは受理されたときだけ。 */
-  accepted: boolean;
+/** Capture の応答。結果そのもの。 */
+export interface CaptureResponse {
+  /** 成果物と manifest(`.result.json`)の鍵。ここで初めて呼ぶ側に渡る。 */
   taskId: string;
-  correlationId?: string | undefined;
+  report?: CaptureResultReport | undefined;
 }
 
 /** 成果物の置き場所 (s3://…)。取得しなかった形式は空のまま。 */
@@ -759,8 +648,6 @@ export interface CaptureResultReport {
   httpStatusCode?: number | undefined;
   timestamp: string;
   captureProcessingTimeMs: number;
-  retryCount: number;
-  workerIndex: number;
   artifacts?: CaptureArtifacts | undefined;
   waczStats?: WaczStats | undefined;
   completeness?: WaczCompleteness | undefined;
@@ -768,156 +655,12 @@ export interface CaptureResultReport {
   errorDetails?: CaptureErrorDetails | undefined;
 }
 
-/**
- * GetCapture の答え。state と report は独立していない —— report が入るのは state が
- * DONE のときだけで、その対応を protobuf で書く手段が無いため、型ではなく約束として
- * 守られている。
- */
-export interface GetCaptureResponse {
-  state: CaptureState;
-  /**
-   * 触る前に `state == DONE` を確かめること。`state != PENDING` では足りない ——
-   * PENDING と PROCESSING はどちらも「まだ終わっていない」側で、**この RPC は
-   * その両方を返す**。
-   *
-   * 確かめずに読むと status = 0 (CAPTURE_STATUS_UNSPECIFIED) を掴む。言語によっては
-   * 落ちもしない。そして「SUCCESS ではない」は「失敗した」と区別が付かないので、
-   * まだ走っている取り込みが失敗として台帳に載る。
-   */
-  report?: CaptureResultReport | undefined;
-}
-
-/** 取り込みが **終わる前** の様子。どのフィールドが入るかは state で決まる。 */
-export interface CaptureProgress {
-  /**
-   * キューに入ってからの時間。requeue が enqueued_at を保つので、リトライを
-   * またいでも「本当に待っている時間」になる。
-   */
-  queuedMs: number;
-  /**
-   * 何度目の試行か。0 のまま増えなければ順調。増えていれば、前の試行が
-   * 持ち時間を使い切った —— これが「詰まっている」の信号。あと何回やり直せるかは
-   * attempts_remaining が持つ (上限そのものは wire に出ていない)。
-   */
-  retryCount: number;
-  /**
-   * PROCESSING のときだけ。いまの試行が始まってからの経過。どこまで来たかは
-   * これ単体では分からない —— 1 回の試行に与えられている時間は wire に出ていない。
-   * 「あとどれだけか」は worst_case_remaining_ms を見ること。
-   */
-  elapsedMs?: number | undefined;
-  workerIndex?:
-    | number
-    | undefined;
-  /**
-   * PENDING のときだけ。0 が先頭。切り詰めない探索で数えるので、キューが
-   * 深くても正しい (GetServerStatus の pending_tasks は pending_limit で
-   * 切られるので、そこからは数えられない)。
-   */
-  queuePosition?:
-    | number
-    | undefined;
-  /**
-   * PROCESSING のときだけ。許される限りすべてが悪く進んでも、これだけ待てば
-   * 終端 (DONE) に至る。「いまの試行の残り」+「残りの試行 × 1 回ぶんの持ち時間」。
-   *
-   * **見積もりではない** —— server が自分に課している上限そのもの。これを超えても
-   * DONE が来ないなら、遅い取り込みではなく server の異常。client 側に
-   * 「だいたいこれくらい」という定数を置く必要は無くなる。
-   *
-   * ただし厳密な上界ではない: 上限が掛かるのは取り込み処理の部分で、dequeue から
-   * 成果物のアップロードまでの全体ではない。実測では試行 1 回あたり 300ms 弱を
-   * 超過する。猶予を詰めすぎると、正常な取り込みを異常と判定する。
-   *
-   * PENDING には付かない。順番待ちの長さは他人の仕事の量で決まり、server は
-   * そこに上限を課していない。数字を入れれば、それは予報になる。
-   */
-  worstCaseRemainingMs?:
-    | number
-    | undefined;
-  /**
-   * PROCESSING のときだけ。あと何回やり直せるか。0 なら、この試行が最後。
-   *
-   * retry_count からは導けない —— 上限 (max_retry_count) は wire に出ていない。
-   */
-  attemptsRemaining?: number | undefined;
-}
-
-export interface GetCaptureProgressResponse {
-  state: CaptureState;
-  /**
-   * state != DONE のときに入る。DONE なら report を GetCapture で取ること
-   * —— こちらは結果を運ばない。
-   */
-  progress?: CaptureProgress | undefined;
-}
-
-export interface ErrorTaskInfo {
-  taskId: string;
+/** この台が抱えている browser。 */
+export interface BrowserStatus {
   url: string;
-  labels: string[];
-}
-
-export interface ErrorRecord {
-  type: ErrorType;
-  message: string;
-  httpStatusCode?: number | undefined;
-  httpStatusText?: string | undefined;
-  timeoutMs?: number | undefined;
-  timestamp: string;
-  task?: ErrorTaskInfo | undefined;
-}
-
-export interface BrowserOptions {
-  browserUrl: string;
-}
-
-export interface CurrentTask {
-  taskId: string;
-  url: string;
-  labels: string[];
-  correlationId?: string | undefined;
-  startedAt: string;
-  elapsedMs: number;
-  retryCount: number;
-}
-
-export interface WorkerInfo {
-  index: number;
-  browserOptions?: BrowserOptions | undefined;
-  health: WorkerHealth;
-  processedCount: number;
-  errorCount: number;
-  errorHistory: ErrorRecord[];
-  currentTask?: CurrentTask | undefined;
-}
-
-export interface PendingTask {
-  taskId: string;
-  url: string;
-  labels: string[];
-  correlationId?: string | undefined;
-  enqueuedAt: string;
-  queuedMs: number;
-  retryCount: number;
-}
-
-export interface ProcessingTask {
-  taskId: string;
-  url: string;
-  labels: string[];
-  correlationId?: string | undefined;
-  enqueuedAt: string;
-  queuedMs: number;
-  retryCount: number;
-  workerIndex: number;
-  startedAt: string;
-  elapsedMs: number;
-}
-
-export interface QueueSnapshot {
-  pendingTasks: PendingTask[];
-  processingTasks: ProcessingTask[];
+  connected: boolean;
+  /** Chromium が自称する版(例 `Chrome/150.0.7871.181`)。接続していないときは無い。 */
+  version?: string | undefined;
 }
 
 export interface BuildInfo {
@@ -947,26 +690,11 @@ export interface ServerLimits {
 }
 
 export interface GetServerStatusResponse {
-  pending: number;
-  processing: number;
-  succeeded: number;
-  failed: number;
-  operationalWorkers: number;
-  totalWorkers: number;
-  isRunning: boolean;
-  isDegraded: boolean;
-  workers: WorkerInfo[];
-  queue?: QueueSnapshot | undefined;
+  /** 走行中の取り込みが在るか。true のとき Capture は RESOURCE_EXHAUSTED を返す。 */
+  busy: boolean;
+  browser?: BrowserStatus | undefined;
   build?: BuildInfo | undefined;
-  limits?:
-    | ServerLimits
-    | undefined;
-  /**
-   * 取り込みが policy を指定しなかったときに効くもの。順序のまま。
-   *
-   * 晒すのは、呼ぶ側が「既定とだいたい同じ、ただし 1 つだけ違う」を組み立てられる
-   * ようにするため —— url_policies は丸ごと置き換えなので、足すには既定を知る必要がある。
-   */
+  limits?: ServerLimits | undefined;
   defaultUrlPolicies: UrlPolicy[];
   defaultContentTypePolicies: ContentTypePolicy[];
 }
@@ -2515,7 +2243,7 @@ export const ArtifactSink: MessageFns<ArtifactSink> = {
   },
 };
 
-function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
+function createBaseCaptureRequest(): CaptureRequest {
   return {
     url: "",
     labels: [],
@@ -2540,8 +2268,8 @@ function createBaseSubmitCaptureRequest(): SubmitCaptureRequest {
   };
 }
 
-export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
-  encode(message: SubmitCaptureRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const CaptureRequest: MessageFns<CaptureRequest> = {
+  encode(message: CaptureRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.url !== "") {
       writer.uint32(10).string(message.url);
     }
@@ -2607,7 +2335,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): SubmitCaptureRequest {
+  decode(input: BinaryReader | Uint8Array, length?: number): CaptureRequest {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -2616,7 +2344,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseSubmitCaptureRequest();
+      const message = createBaseCaptureRequest();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
@@ -2802,7 +2530,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     }
   },
 
-  fromJSON(object: any): SubmitCaptureRequest {
+  fromJSON(object: any): CaptureRequest {
     return {
       url: isSet(object.url) ? globalThis.String(object.url) : "",
       labels: globalThis.Array.isArray(object?.labels) ? object.labels.map((e: any) => globalThis.String(e)) : [],
@@ -2879,7 +2607,7 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     };
   },
 
-  toJSON(message: SubmitCaptureRequest): unknown {
+  toJSON(message: CaptureRequest): unknown {
     const obj: any = {};
     if (message.url !== "") {
       obj.url = message.url;
@@ -2944,11 +2672,11 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<SubmitCaptureRequest>, I>>(base?: I): SubmitCaptureRequest {
-    return SubmitCaptureRequest.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<CaptureRequest>, I>>(base?: I): CaptureRequest {
+    return CaptureRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<SubmitCaptureRequest>, I>>(object: I): SubmitCaptureRequest {
-    const message = createBaseSubmitCaptureRequest();
+  fromPartial<I extends Exact<DeepPartial<CaptureRequest>, I>>(object: I): CaptureRequest {
+    const message = createBaseCaptureRequest();
     message.url = object.url ?? "";
     message.labels = object.labels?.map((e) => e) || [];
     message.correlationId = object.correlationId ?? undefined;
@@ -2987,161 +2715,12 @@ export const SubmitCaptureRequest: MessageFns<SubmitCaptureRequest> = {
   },
 };
 
-function createBaseGetCaptureRequest(): GetCaptureRequest {
-  return { taskId: "" };
-}
-
-export const GetCaptureRequest: MessageFns<GetCaptureRequest> = {
-  encode(message: GetCaptureRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureRequest {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetCaptureRequest();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): GetCaptureRequest {
-    return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
-    };
-  },
-
-  toJSON(message: GetCaptureRequest): unknown {
-    const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<GetCaptureRequest>, I>>(base?: I): GetCaptureRequest {
-    return GetCaptureRequest.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<GetCaptureRequest>, I>>(object: I): GetCaptureRequest {
-    const message = createBaseGetCaptureRequest();
-    message.taskId = object.taskId ?? "";
-    return message;
-  },
-};
-
-function createBaseGetCaptureProgressRequest(): GetCaptureProgressRequest {
-  return { taskId: "" };
-}
-
-export const GetCaptureProgressRequest: MessageFns<GetCaptureProgressRequest> = {
-  encode(message: GetCaptureProgressRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureProgressRequest {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetCaptureProgressRequest();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): GetCaptureProgressRequest {
-    return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
-    };
-  },
-
-  toJSON(message: GetCaptureProgressRequest): unknown {
-    const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<GetCaptureProgressRequest>, I>>(base?: I): GetCaptureProgressRequest {
-    return GetCaptureProgressRequest.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<GetCaptureProgressRequest>, I>>(object: I): GetCaptureProgressRequest {
-    const message = createBaseGetCaptureProgressRequest();
-    message.taskId = object.taskId ?? "";
-    return message;
-  },
-};
-
 function createBaseGetServerStatusRequest(): GetServerStatusRequest {
-  return { pendingLimit: undefined };
+  return {};
 }
 
 export const GetServerStatusRequest: MessageFns<GetServerStatusRequest> = {
-  encode(message: GetServerStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.pendingLimit !== undefined) {
-      writer.uint32(8).int32(message.pendingLimit);
-    }
+  encode(_: GetServerStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     return writer;
   },
 
@@ -3158,14 +2737,6 @@ export const GetServerStatusRequest: MessageFns<GetServerStatusRequest> = {
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.pendingLimit = reader.int32();
-            continue;
-          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3178,53 +2749,40 @@ export const GetServerStatusRequest: MessageFns<GetServerStatusRequest> = {
     }
   },
 
-  fromJSON(object: any): GetServerStatusRequest {
-    return {
-      pendingLimit: isSet(object.pendingLimit)
-        ? globalThis.Number(object.pendingLimit)
-        : isSet(object.pending_limit)
-        ? globalThis.Number(object.pending_limit)
-        : undefined,
-    };
+  fromJSON(_: any): GetServerStatusRequest {
+    return {};
   },
 
-  toJSON(message: GetServerStatusRequest): unknown {
+  toJSON(_: GetServerStatusRequest): unknown {
     const obj: any = {};
-    if (message.pendingLimit !== undefined) {
-      obj.pendingLimit = Math.round(message.pendingLimit);
-    }
     return obj;
   },
 
   create<I extends Exact<DeepPartial<GetServerStatusRequest>, I>>(base?: I): GetServerStatusRequest {
     return GetServerStatusRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<GetServerStatusRequest>, I>>(object: I): GetServerStatusRequest {
+  fromPartial<I extends Exact<DeepPartial<GetServerStatusRequest>, I>>(_: I): GetServerStatusRequest {
     const message = createBaseGetServerStatusRequest();
-    message.pendingLimit = object.pendingLimit ?? undefined;
     return message;
   },
 };
 
-function createBaseSubmitCaptureResponse(): SubmitCaptureResponse {
-  return { accepted: false, taskId: "", correlationId: undefined };
+function createBaseCaptureResponse(): CaptureResponse {
+  return { taskId: "", report: undefined };
 }
 
-export const SubmitCaptureResponse: MessageFns<SubmitCaptureResponse> = {
-  encode(message: SubmitCaptureResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.accepted !== false) {
-      writer.uint32(8).bool(message.accepted);
-    }
+export const CaptureResponse: MessageFns<CaptureResponse> = {
+  encode(message: CaptureResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.taskId !== "") {
-      writer.uint32(18).string(message.taskId);
+      writer.uint32(10).string(message.taskId);
     }
-    if (message.correlationId !== undefined) {
-      writer.uint32(26).string(message.correlationId);
+    if (message.report !== undefined) {
+      CaptureResultReport.encode(message.report, writer.uint32(18).fork()).join();
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): SubmitCaptureResponse {
+  decode(input: BinaryReader | Uint8Array, length?: number): CaptureResponse {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -3233,16 +2791,16 @@ export const SubmitCaptureResponse: MessageFns<SubmitCaptureResponse> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseSubmitCaptureResponse();
+      const message = createBaseCaptureResponse();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
           case 1: {
-            if (tag !== 8) {
+            if (tag !== 10) {
               break;
             }
 
-            message.accepted = reader.bool();
+            message.taskId = reader.string();
             continue;
           }
           case 2: {
@@ -3250,15 +2808,7 @@ export const SubmitCaptureResponse: MessageFns<SubmitCaptureResponse> = {
               break;
             }
 
-            message.taskId = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 26) {
-              break;
-            }
-
-            message.correlationId = reader.string();
+            message.report = CaptureResultReport.decode(reader, reader.uint32());
             continue;
           }
         }
@@ -3273,44 +2823,37 @@ export const SubmitCaptureResponse: MessageFns<SubmitCaptureResponse> = {
     }
   },
 
-  fromJSON(object: any): SubmitCaptureResponse {
+  fromJSON(object: any): CaptureResponse {
     return {
-      accepted: isSet(object.accepted) ? globalThis.Boolean(object.accepted) : false,
       taskId: isSet(object.taskId)
         ? globalThis.String(object.taskId)
         : isSet(object.task_id)
         ? globalThis.String(object.task_id)
         : "",
-      correlationId: isSet(object.correlationId)
-        ? globalThis.String(object.correlationId)
-        : isSet(object.correlation_id)
-        ? globalThis.String(object.correlation_id)
-        : undefined,
+      report: isSet(object.report) ? CaptureResultReport.fromJSON(object.report) : undefined,
     };
   },
 
-  toJSON(message: SubmitCaptureResponse): unknown {
+  toJSON(message: CaptureResponse): unknown {
     const obj: any = {};
-    if (message.accepted !== false) {
-      obj.accepted = message.accepted;
-    }
     if (message.taskId !== "") {
       obj.taskId = message.taskId;
     }
-    if (message.correlationId !== undefined) {
-      obj.correlationId = message.correlationId;
+    if (message.report !== undefined) {
+      obj.report = CaptureResultReport.toJSON(message.report);
     }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<SubmitCaptureResponse>, I>>(base?: I): SubmitCaptureResponse {
-    return SubmitCaptureResponse.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<CaptureResponse>, I>>(base?: I): CaptureResponse {
+    return CaptureResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<SubmitCaptureResponse>, I>>(object: I): SubmitCaptureResponse {
-    const message = createBaseSubmitCaptureResponse();
-    message.accepted = object.accepted ?? false;
+  fromPartial<I extends Exact<DeepPartial<CaptureResponse>, I>>(object: I): CaptureResponse {
+    const message = createBaseCaptureResponse();
     message.taskId = object.taskId ?? "";
-    message.correlationId = object.correlationId ?? undefined;
+    message.report = (object.report !== undefined && object.report !== null)
+      ? CaptureResultReport.fromPartial(object.report)
+      : undefined;
     return message;
   },
 };
@@ -4207,8 +3750,6 @@ function createBaseCaptureResultReport(): CaptureResultReport {
     httpStatusCode: undefined,
     timestamp: "",
     captureProcessingTimeMs: 0,
-    retryCount: 0,
-    workerIndex: 0,
     artifacts: undefined,
     waczStats: undefined,
     completeness: undefined,
@@ -4242,12 +3783,6 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
     }
     if (message.captureProcessingTimeMs !== 0) {
       writer.uint32(64).int32(message.captureProcessingTimeMs);
-    }
-    if (message.retryCount !== 0) {
-      writer.uint32(72).int32(message.retryCount);
-    }
-    if (message.workerIndex !== 0) {
-      writer.uint32(80).int32(message.workerIndex);
     }
     if (message.artifacts !== undefined) {
       CaptureArtifacts.encode(message.artifacts, writer.uint32(90).fork()).join();
@@ -4344,22 +3879,6 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
             message.captureProcessingTimeMs = reader.int32();
             continue;
           }
-          case 9: {
-            if (tag !== 72) {
-              break;
-            }
-
-            message.retryCount = reader.int32();
-            continue;
-          }
-          case 10: {
-            if (tag !== 80) {
-              break;
-            }
-
-            message.workerIndex = reader.int32();
-            continue;
-          }
           case 11: {
             if (tag !== 90) {
               break;
@@ -4438,16 +3957,6 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
         : isSet(object.capture_processing_time_ms)
         ? globalThis.Number(object.capture_processing_time_ms)
         : 0,
-      retryCount: isSet(object.retryCount)
-        ? globalThis.Number(object.retryCount)
-        : isSet(object.retry_count)
-        ? globalThis.Number(object.retry_count)
-        : 0,
-      workerIndex: isSet(object.workerIndex)
-        ? globalThis.Number(object.workerIndex)
-        : isSet(object.worker_index)
-        ? globalThis.Number(object.worker_index)
-        : 0,
       artifacts: isSet(object.artifacts) ? CaptureArtifacts.fromJSON(object.artifacts) : undefined,
       waczStats: isSet(object.waczStats)
         ? WaczStats.fromJSON(object.waczStats)
@@ -4490,12 +3999,6 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
     if (message.captureProcessingTimeMs !== 0) {
       obj.captureProcessingTimeMs = Math.round(message.captureProcessingTimeMs);
     }
-    if (message.retryCount !== 0) {
-      obj.retryCount = Math.round(message.retryCount);
-    }
-    if (message.workerIndex !== 0) {
-      obj.workerIndex = Math.round(message.workerIndex);
-    }
     if (message.artifacts !== undefined) {
       obj.artifacts = CaptureArtifacts.toJSON(message.artifacts);
     }
@@ -4527,8 +4030,6 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
     message.httpStatusCode = object.httpStatusCode ?? undefined;
     message.timestamp = object.timestamp ?? "";
     message.captureProcessingTimeMs = object.captureProcessingTimeMs ?? 0;
-    message.retryCount = object.retryCount ?? 0;
-    message.workerIndex = object.workerIndex ?? 0;
     message.artifacts = (object.artifacts !== undefined && object.artifacts !== null)
       ? CaptureArtifacts.fromPartial(object.artifacts)
       : undefined;
@@ -4548,22 +4049,25 @@ export const CaptureResultReport: MessageFns<CaptureResultReport> = {
   },
 };
 
-function createBaseGetCaptureResponse(): GetCaptureResponse {
-  return { state: 0, report: undefined };
+function createBaseBrowserStatus(): BrowserStatus {
+  return { url: "", connected: false, version: undefined };
 }
 
-export const GetCaptureResponse: MessageFns<GetCaptureResponse> = {
-  encode(message: GetCaptureResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.state !== 0) {
-      writer.uint32(8).int32(message.state);
+export const BrowserStatus: MessageFns<BrowserStatus> = {
+  encode(message: BrowserStatus, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
     }
-    if (message.report !== undefined) {
-      CaptureResultReport.encode(message.report, writer.uint32(18).fork()).join();
+    if (message.connected !== false) {
+      writer.uint32(16).bool(message.connected);
+    }
+    if (message.version !== undefined) {
+      writer.uint32(26).string(message.version);
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureResponse {
+  decode(input: BinaryReader | Uint8Array, length?: number): BrowserStatus {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
     if (previousRecursionDepth >= 100) {
@@ -4572,126 +4076,16 @@ export const GetCaptureResponse: MessageFns<GetCaptureResponse> = {
     (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
     try {
       const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetCaptureResponse();
+      const message = createBaseBrowserStatus();
       while (reader.pos < end) {
         const tag = reader.uint32();
         switch (tag >>> 3) {
           case 1: {
-            if (tag !== 8) {
+            if (tag !== 10) {
               break;
             }
 
-            message.state = reader.int32() as any;
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.report = CaptureResultReport.decode(reader, reader.uint32());
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): GetCaptureResponse {
-    return {
-      state: isSet(object.state) ? captureStateFromJSON(object.state) : 0,
-      report: isSet(object.report) ? CaptureResultReport.fromJSON(object.report) : undefined,
-    };
-  },
-
-  toJSON(message: GetCaptureResponse): unknown {
-    const obj: any = {};
-    if (message.state !== 0) {
-      obj.state = captureStateToJSON(message.state);
-    }
-    if (message.report !== undefined) {
-      obj.report = CaptureResultReport.toJSON(message.report);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<GetCaptureResponse>, I>>(base?: I): GetCaptureResponse {
-    return GetCaptureResponse.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<GetCaptureResponse>, I>>(object: I): GetCaptureResponse {
-    const message = createBaseGetCaptureResponse();
-    message.state = object.state ?? 0;
-    message.report = (object.report !== undefined && object.report !== null)
-      ? CaptureResultReport.fromPartial(object.report)
-      : undefined;
-    return message;
-  },
-};
-
-function createBaseCaptureProgress(): CaptureProgress {
-  return {
-    queuedMs: 0,
-    retryCount: 0,
-    elapsedMs: undefined,
-    workerIndex: undefined,
-    queuePosition: undefined,
-    worstCaseRemainingMs: undefined,
-    attemptsRemaining: undefined,
-  };
-}
-
-export const CaptureProgress: MessageFns<CaptureProgress> = {
-  encode(message: CaptureProgress, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.queuedMs !== 0) {
-      writer.uint32(8).int32(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      writer.uint32(16).int32(message.retryCount);
-    }
-    if (message.elapsedMs !== undefined) {
-      writer.uint32(24).int32(message.elapsedMs);
-    }
-    if (message.workerIndex !== undefined) {
-      writer.uint32(32).int32(message.workerIndex);
-    }
-    if (message.queuePosition !== undefined) {
-      writer.uint32(40).int32(message.queuePosition);
-    }
-    if (message.worstCaseRemainingMs !== undefined) {
-      writer.uint32(48).int32(message.worstCaseRemainingMs);
-    }
-    if (message.attemptsRemaining !== undefined) {
-      writer.uint32(56).int32(message.attemptsRemaining);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): CaptureProgress {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseCaptureProgress();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.queuedMs = reader.int32();
+            message.url = reader.string();
             continue;
           }
           case 2: {
@@ -4699,275 +4093,7 @@ export const CaptureProgress: MessageFns<CaptureProgress> = {
               break;
             }
 
-            message.retryCount = reader.int32();
-            continue;
-          }
-          case 3: {
-            if (tag !== 24) {
-              break;
-            }
-
-            message.elapsedMs = reader.int32();
-            continue;
-          }
-          case 4: {
-            if (tag !== 32) {
-              break;
-            }
-
-            message.workerIndex = reader.int32();
-            continue;
-          }
-          case 5: {
-            if (tag !== 40) {
-              break;
-            }
-
-            message.queuePosition = reader.int32();
-            continue;
-          }
-          case 6: {
-            if (tag !== 48) {
-              break;
-            }
-
-            message.worstCaseRemainingMs = reader.int32();
-            continue;
-          }
-          case 7: {
-            if (tag !== 56) {
-              break;
-            }
-
-            message.attemptsRemaining = reader.int32();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): CaptureProgress {
-    return {
-      queuedMs: isSet(object.queuedMs)
-        ? globalThis.Number(object.queuedMs)
-        : isSet(object.queued_ms)
-        ? globalThis.Number(object.queued_ms)
-        : 0,
-      retryCount: isSet(object.retryCount)
-        ? globalThis.Number(object.retryCount)
-        : isSet(object.retry_count)
-        ? globalThis.Number(object.retry_count)
-        : 0,
-      elapsedMs: isSet(object.elapsedMs)
-        ? globalThis.Number(object.elapsedMs)
-        : isSet(object.elapsed_ms)
-        ? globalThis.Number(object.elapsed_ms)
-        : undefined,
-      workerIndex: isSet(object.workerIndex)
-        ? globalThis.Number(object.workerIndex)
-        : isSet(object.worker_index)
-        ? globalThis.Number(object.worker_index)
-        : undefined,
-      queuePosition: isSet(object.queuePosition)
-        ? globalThis.Number(object.queuePosition)
-        : isSet(object.queue_position)
-        ? globalThis.Number(object.queue_position)
-        : undefined,
-      worstCaseRemainingMs: isSet(object.worstCaseRemainingMs)
-        ? globalThis.Number(object.worstCaseRemainingMs)
-        : isSet(object.worst_case_remaining_ms)
-        ? globalThis.Number(object.worst_case_remaining_ms)
-        : undefined,
-      attemptsRemaining: isSet(object.attemptsRemaining)
-        ? globalThis.Number(object.attemptsRemaining)
-        : isSet(object.attempts_remaining)
-        ? globalThis.Number(object.attempts_remaining)
-        : undefined,
-    };
-  },
-
-  toJSON(message: CaptureProgress): unknown {
-    const obj: any = {};
-    if (message.queuedMs !== 0) {
-      obj.queuedMs = Math.round(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      obj.retryCount = Math.round(message.retryCount);
-    }
-    if (message.elapsedMs !== undefined) {
-      obj.elapsedMs = Math.round(message.elapsedMs);
-    }
-    if (message.workerIndex !== undefined) {
-      obj.workerIndex = Math.round(message.workerIndex);
-    }
-    if (message.queuePosition !== undefined) {
-      obj.queuePosition = Math.round(message.queuePosition);
-    }
-    if (message.worstCaseRemainingMs !== undefined) {
-      obj.worstCaseRemainingMs = Math.round(message.worstCaseRemainingMs);
-    }
-    if (message.attemptsRemaining !== undefined) {
-      obj.attemptsRemaining = Math.round(message.attemptsRemaining);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<CaptureProgress>, I>>(base?: I): CaptureProgress {
-    return CaptureProgress.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<CaptureProgress>, I>>(object: I): CaptureProgress {
-    const message = createBaseCaptureProgress();
-    message.queuedMs = object.queuedMs ?? 0;
-    message.retryCount = object.retryCount ?? 0;
-    message.elapsedMs = object.elapsedMs ?? undefined;
-    message.workerIndex = object.workerIndex ?? undefined;
-    message.queuePosition = object.queuePosition ?? undefined;
-    message.worstCaseRemainingMs = object.worstCaseRemainingMs ?? undefined;
-    message.attemptsRemaining = object.attemptsRemaining ?? undefined;
-    return message;
-  },
-};
-
-function createBaseGetCaptureProgressResponse(): GetCaptureProgressResponse {
-  return { state: 0, progress: undefined };
-}
-
-export const GetCaptureProgressResponse: MessageFns<GetCaptureProgressResponse> = {
-  encode(message: GetCaptureProgressResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.state !== 0) {
-      writer.uint32(8).int32(message.state);
-    }
-    if (message.progress !== undefined) {
-      CaptureProgress.encode(message.progress, writer.uint32(18).fork()).join();
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): GetCaptureProgressResponse {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseGetCaptureProgressResponse();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.state = reader.int32() as any;
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.progress = CaptureProgress.decode(reader, reader.uint32());
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): GetCaptureProgressResponse {
-    return {
-      state: isSet(object.state) ? captureStateFromJSON(object.state) : 0,
-      progress: isSet(object.progress) ? CaptureProgress.fromJSON(object.progress) : undefined,
-    };
-  },
-
-  toJSON(message: GetCaptureProgressResponse): unknown {
-    const obj: any = {};
-    if (message.state !== 0) {
-      obj.state = captureStateToJSON(message.state);
-    }
-    if (message.progress !== undefined) {
-      obj.progress = CaptureProgress.toJSON(message.progress);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<GetCaptureProgressResponse>, I>>(base?: I): GetCaptureProgressResponse {
-    return GetCaptureProgressResponse.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<GetCaptureProgressResponse>, I>>(object: I): GetCaptureProgressResponse {
-    const message = createBaseGetCaptureProgressResponse();
-    message.state = object.state ?? 0;
-    message.progress = (object.progress !== undefined && object.progress !== null)
-      ? CaptureProgress.fromPartial(object.progress)
-      : undefined;
-    return message;
-  },
-};
-
-function createBaseErrorTaskInfo(): ErrorTaskInfo {
-  return { taskId: "", url: "", labels: [] };
-}
-
-export const ErrorTaskInfo: MessageFns<ErrorTaskInfo> = {
-  encode(message: ErrorTaskInfo, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    if (message.url !== "") {
-      writer.uint32(18).string(message.url);
-    }
-    for (const v of message.labels) {
-      writer.uint32(26).string(v!);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): ErrorTaskInfo {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseErrorTaskInfo();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.url = reader.string();
+            message.connected = reader.bool();
             continue;
           }
           case 3: {
@@ -4975,7 +4101,7 @@ export const ErrorTaskInfo: MessageFns<ErrorTaskInfo> = {
               break;
             }
 
-            message.labels.push(reader.string());
+            message.version = reader.string();
             continue;
           }
         }
@@ -4990,1216 +4116,36 @@ export const ErrorTaskInfo: MessageFns<ErrorTaskInfo> = {
     }
   },
 
-  fromJSON(object: any): ErrorTaskInfo {
+  fromJSON(object: any): BrowserStatus {
     return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
       url: isSet(object.url) ? globalThis.String(object.url) : "",
-      labels: globalThis.Array.isArray(object?.labels) ? object.labels.map((e: any) => globalThis.String(e)) : [],
+      connected: isSet(object.connected) ? globalThis.Boolean(object.connected) : false,
+      version: isSet(object.version) ? globalThis.String(object.version) : undefined,
     };
   },
 
-  toJSON(message: ErrorTaskInfo): unknown {
+  toJSON(message: BrowserStatus): unknown {
     const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
     if (message.url !== "") {
       obj.url = message.url;
     }
-    if (message.labels?.length) {
-      obj.labels = message.labels;
+    if (message.connected !== false) {
+      obj.connected = message.connected;
+    }
+    if (message.version !== undefined) {
+      obj.version = message.version;
     }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ErrorTaskInfo>, I>>(base?: I): ErrorTaskInfo {
-    return ErrorTaskInfo.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<BrowserStatus>, I>>(base?: I): BrowserStatus {
+    return BrowserStatus.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ErrorTaskInfo>, I>>(object: I): ErrorTaskInfo {
-    const message = createBaseErrorTaskInfo();
-    message.taskId = object.taskId ?? "";
+  fromPartial<I extends Exact<DeepPartial<BrowserStatus>, I>>(object: I): BrowserStatus {
+    const message = createBaseBrowserStatus();
     message.url = object.url ?? "";
-    message.labels = object.labels?.map((e) => e) || [];
-    return message;
-  },
-};
-
-function createBaseErrorRecord(): ErrorRecord {
-  return {
-    type: 0,
-    message: "",
-    httpStatusCode: undefined,
-    httpStatusText: undefined,
-    timeoutMs: undefined,
-    timestamp: "",
-    task: undefined,
-  };
-}
-
-export const ErrorRecord: MessageFns<ErrorRecord> = {
-  encode(message: ErrorRecord, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.type !== 0) {
-      writer.uint32(8).int32(message.type);
-    }
-    if (message.message !== "") {
-      writer.uint32(18).string(message.message);
-    }
-    if (message.httpStatusCode !== undefined) {
-      writer.uint32(24).int32(message.httpStatusCode);
-    }
-    if (message.httpStatusText !== undefined) {
-      writer.uint32(34).string(message.httpStatusText);
-    }
-    if (message.timeoutMs !== undefined) {
-      writer.uint32(40).int32(message.timeoutMs);
-    }
-    if (message.timestamp !== "") {
-      writer.uint32(50).string(message.timestamp);
-    }
-    if (message.task !== undefined) {
-      ErrorTaskInfo.encode(message.task, writer.uint32(58).fork()).join();
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): ErrorRecord {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseErrorRecord();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.type = reader.int32() as any;
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.message = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 24) {
-              break;
-            }
-
-            message.httpStatusCode = reader.int32();
-            continue;
-          }
-          case 4: {
-            if (tag !== 34) {
-              break;
-            }
-
-            message.httpStatusText = reader.string();
-            continue;
-          }
-          case 5: {
-            if (tag !== 40) {
-              break;
-            }
-
-            message.timeoutMs = reader.int32();
-            continue;
-          }
-          case 6: {
-            if (tag !== 50) {
-              break;
-            }
-
-            message.timestamp = reader.string();
-            continue;
-          }
-          case 7: {
-            if (tag !== 58) {
-              break;
-            }
-
-            message.task = ErrorTaskInfo.decode(reader, reader.uint32());
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): ErrorRecord {
-    return {
-      type: isSet(object.type) ? errorTypeFromJSON(object.type) : 0,
-      message: isSet(object.message) ? globalThis.String(object.message) : "",
-      httpStatusCode: isSet(object.httpStatusCode)
-        ? globalThis.Number(object.httpStatusCode)
-        : isSet(object.http_status_code)
-        ? globalThis.Number(object.http_status_code)
-        : undefined,
-      httpStatusText: isSet(object.httpStatusText)
-        ? globalThis.String(object.httpStatusText)
-        : isSet(object.http_status_text)
-        ? globalThis.String(object.http_status_text)
-        : undefined,
-      timeoutMs: isSet(object.timeoutMs)
-        ? globalThis.Number(object.timeoutMs)
-        : isSet(object.timeout_ms)
-        ? globalThis.Number(object.timeout_ms)
-        : undefined,
-      timestamp: isSet(object.timestamp) ? globalThis.String(object.timestamp) : "",
-      task: isSet(object.task) ? ErrorTaskInfo.fromJSON(object.task) : undefined,
-    };
-  },
-
-  toJSON(message: ErrorRecord): unknown {
-    const obj: any = {};
-    if (message.type !== 0) {
-      obj.type = errorTypeToJSON(message.type);
-    }
-    if (message.message !== "") {
-      obj.message = message.message;
-    }
-    if (message.httpStatusCode !== undefined) {
-      obj.httpStatusCode = Math.round(message.httpStatusCode);
-    }
-    if (message.httpStatusText !== undefined) {
-      obj.httpStatusText = message.httpStatusText;
-    }
-    if (message.timeoutMs !== undefined) {
-      obj.timeoutMs = Math.round(message.timeoutMs);
-    }
-    if (message.timestamp !== "") {
-      obj.timestamp = message.timestamp;
-    }
-    if (message.task !== undefined) {
-      obj.task = ErrorTaskInfo.toJSON(message.task);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<ErrorRecord>, I>>(base?: I): ErrorRecord {
-    return ErrorRecord.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<ErrorRecord>, I>>(object: I): ErrorRecord {
-    const message = createBaseErrorRecord();
-    message.type = object.type ?? 0;
-    message.message = object.message ?? "";
-    message.httpStatusCode = object.httpStatusCode ?? undefined;
-    message.httpStatusText = object.httpStatusText ?? undefined;
-    message.timeoutMs = object.timeoutMs ?? undefined;
-    message.timestamp = object.timestamp ?? "";
-    message.task = (object.task !== undefined && object.task !== null)
-      ? ErrorTaskInfo.fromPartial(object.task)
-      : undefined;
-    return message;
-  },
-};
-
-function createBaseBrowserOptions(): BrowserOptions {
-  return { browserUrl: "" };
-}
-
-export const BrowserOptions: MessageFns<BrowserOptions> = {
-  encode(message: BrowserOptions, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.browserUrl !== "") {
-      writer.uint32(10).string(message.browserUrl);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): BrowserOptions {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseBrowserOptions();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.browserUrl = reader.string();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): BrowserOptions {
-    return {
-      browserUrl: isSet(object.browserUrl)
-        ? globalThis.String(object.browserUrl)
-        : isSet(object.browser_url)
-        ? globalThis.String(object.browser_url)
-        : "",
-    };
-  },
-
-  toJSON(message: BrowserOptions): unknown {
-    const obj: any = {};
-    if (message.browserUrl !== "") {
-      obj.browserUrl = message.browserUrl;
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<BrowserOptions>, I>>(base?: I): BrowserOptions {
-    return BrowserOptions.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<BrowserOptions>, I>>(object: I): BrowserOptions {
-    const message = createBaseBrowserOptions();
-    message.browserUrl = object.browserUrl ?? "";
-    return message;
-  },
-};
-
-function createBaseCurrentTask(): CurrentTask {
-  return { taskId: "", url: "", labels: [], correlationId: undefined, startedAt: "", elapsedMs: 0, retryCount: 0 };
-}
-
-export const CurrentTask: MessageFns<CurrentTask> = {
-  encode(message: CurrentTask, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    if (message.url !== "") {
-      writer.uint32(18).string(message.url);
-    }
-    for (const v of message.labels) {
-      writer.uint32(26).string(v!);
-    }
-    if (message.correlationId !== undefined) {
-      writer.uint32(34).string(message.correlationId);
-    }
-    if (message.startedAt !== "") {
-      writer.uint32(42).string(message.startedAt);
-    }
-    if (message.elapsedMs !== 0) {
-      writer.uint32(48).int32(message.elapsedMs);
-    }
-    if (message.retryCount !== 0) {
-      writer.uint32(56).int32(message.retryCount);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): CurrentTask {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseCurrentTask();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.url = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 26) {
-              break;
-            }
-
-            message.labels.push(reader.string());
-            continue;
-          }
-          case 4: {
-            if (tag !== 34) {
-              break;
-            }
-
-            message.correlationId = reader.string();
-            continue;
-          }
-          case 5: {
-            if (tag !== 42) {
-              break;
-            }
-
-            message.startedAt = reader.string();
-            continue;
-          }
-          case 6: {
-            if (tag !== 48) {
-              break;
-            }
-
-            message.elapsedMs = reader.int32();
-            continue;
-          }
-          case 7: {
-            if (tag !== 56) {
-              break;
-            }
-
-            message.retryCount = reader.int32();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): CurrentTask {
-    return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
-      url: isSet(object.url) ? globalThis.String(object.url) : "",
-      labels: globalThis.Array.isArray(object?.labels) ? object.labels.map((e: any) => globalThis.String(e)) : [],
-      correlationId: isSet(object.correlationId)
-        ? globalThis.String(object.correlationId)
-        : isSet(object.correlation_id)
-        ? globalThis.String(object.correlation_id)
-        : undefined,
-      startedAt: isSet(object.startedAt)
-        ? globalThis.String(object.startedAt)
-        : isSet(object.started_at)
-        ? globalThis.String(object.started_at)
-        : "",
-      elapsedMs: isSet(object.elapsedMs)
-        ? globalThis.Number(object.elapsedMs)
-        : isSet(object.elapsed_ms)
-        ? globalThis.Number(object.elapsed_ms)
-        : 0,
-      retryCount: isSet(object.retryCount)
-        ? globalThis.Number(object.retryCount)
-        : isSet(object.retry_count)
-        ? globalThis.Number(object.retry_count)
-        : 0,
-    };
-  },
-
-  toJSON(message: CurrentTask): unknown {
-    const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
-    if (message.url !== "") {
-      obj.url = message.url;
-    }
-    if (message.labels?.length) {
-      obj.labels = message.labels;
-    }
-    if (message.correlationId !== undefined) {
-      obj.correlationId = message.correlationId;
-    }
-    if (message.startedAt !== "") {
-      obj.startedAt = message.startedAt;
-    }
-    if (message.elapsedMs !== 0) {
-      obj.elapsedMs = Math.round(message.elapsedMs);
-    }
-    if (message.retryCount !== 0) {
-      obj.retryCount = Math.round(message.retryCount);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<CurrentTask>, I>>(base?: I): CurrentTask {
-    return CurrentTask.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<CurrentTask>, I>>(object: I): CurrentTask {
-    const message = createBaseCurrentTask();
-    message.taskId = object.taskId ?? "";
-    message.url = object.url ?? "";
-    message.labels = object.labels?.map((e) => e) || [];
-    message.correlationId = object.correlationId ?? undefined;
-    message.startedAt = object.startedAt ?? "";
-    message.elapsedMs = object.elapsedMs ?? 0;
-    message.retryCount = object.retryCount ?? 0;
-    return message;
-  },
-};
-
-function createBaseWorkerInfo(): WorkerInfo {
-  return {
-    index: 0,
-    browserOptions: undefined,
-    health: 0,
-    processedCount: 0,
-    errorCount: 0,
-    errorHistory: [],
-    currentTask: undefined,
-  };
-}
-
-export const WorkerInfo: MessageFns<WorkerInfo> = {
-  encode(message: WorkerInfo, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.index !== 0) {
-      writer.uint32(8).int32(message.index);
-    }
-    if (message.browserOptions !== undefined) {
-      BrowserOptions.encode(message.browserOptions, writer.uint32(18).fork()).join();
-    }
-    if (message.health !== 0) {
-      writer.uint32(24).int32(message.health);
-    }
-    if (message.processedCount !== 0) {
-      writer.uint32(32).int32(message.processedCount);
-    }
-    if (message.errorCount !== 0) {
-      writer.uint32(40).int32(message.errorCount);
-    }
-    for (const v of message.errorHistory) {
-      ErrorRecord.encode(v!, writer.uint32(50).fork()).join();
-    }
-    if (message.currentTask !== undefined) {
-      CurrentTask.encode(message.currentTask, writer.uint32(58).fork()).join();
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): WorkerInfo {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseWorkerInfo();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 8) {
-              break;
-            }
-
-            message.index = reader.int32();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.browserOptions = BrowserOptions.decode(reader, reader.uint32());
-            continue;
-          }
-          case 3: {
-            if (tag !== 24) {
-              break;
-            }
-
-            message.health = reader.int32() as any;
-            continue;
-          }
-          case 4: {
-            if (tag !== 32) {
-              break;
-            }
-
-            message.processedCount = reader.int32();
-            continue;
-          }
-          case 5: {
-            if (tag !== 40) {
-              break;
-            }
-
-            message.errorCount = reader.int32();
-            continue;
-          }
-          case 6: {
-            if (tag !== 50) {
-              break;
-            }
-
-            message.errorHistory.push(ErrorRecord.decode(reader, reader.uint32()));
-            continue;
-          }
-          case 7: {
-            if (tag !== 58) {
-              break;
-            }
-
-            message.currentTask = CurrentTask.decode(reader, reader.uint32());
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): WorkerInfo {
-    return {
-      index: isSet(object.index) ? globalThis.Number(object.index) : 0,
-      browserOptions: isSet(object.browserOptions)
-        ? BrowserOptions.fromJSON(object.browserOptions)
-        : isSet(object.browser_options)
-        ? BrowserOptions.fromJSON(object.browser_options)
-        : undefined,
-      health: isSet(object.health) ? workerHealthFromJSON(object.health) : 0,
-      processedCount: isSet(object.processedCount)
-        ? globalThis.Number(object.processedCount)
-        : isSet(object.processed_count)
-        ? globalThis.Number(object.processed_count)
-        : 0,
-      errorCount: isSet(object.errorCount)
-        ? globalThis.Number(object.errorCount)
-        : isSet(object.error_count)
-        ? globalThis.Number(object.error_count)
-        : 0,
-      errorHistory: globalThis.Array.isArray(object?.errorHistory)
-        ? object.errorHistory.map((e: any) => ErrorRecord.fromJSON(e))
-        : globalThis.Array.isArray(object?.error_history)
-        ? object.error_history.map((e: any) => ErrorRecord.fromJSON(e))
-        : [],
-      currentTask: isSet(object.currentTask)
-        ? CurrentTask.fromJSON(object.currentTask)
-        : isSet(object.current_task)
-        ? CurrentTask.fromJSON(object.current_task)
-        : undefined,
-    };
-  },
-
-  toJSON(message: WorkerInfo): unknown {
-    const obj: any = {};
-    if (message.index !== 0) {
-      obj.index = Math.round(message.index);
-    }
-    if (message.browserOptions !== undefined) {
-      obj.browserOptions = BrowserOptions.toJSON(message.browserOptions);
-    }
-    if (message.health !== 0) {
-      obj.health = workerHealthToJSON(message.health);
-    }
-    if (message.processedCount !== 0) {
-      obj.processedCount = Math.round(message.processedCount);
-    }
-    if (message.errorCount !== 0) {
-      obj.errorCount = Math.round(message.errorCount);
-    }
-    if (message.errorHistory?.length) {
-      obj.errorHistory = message.errorHistory.map((e) => ErrorRecord.toJSON(e));
-    }
-    if (message.currentTask !== undefined) {
-      obj.currentTask = CurrentTask.toJSON(message.currentTask);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<WorkerInfo>, I>>(base?: I): WorkerInfo {
-    return WorkerInfo.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<WorkerInfo>, I>>(object: I): WorkerInfo {
-    const message = createBaseWorkerInfo();
-    message.index = object.index ?? 0;
-    message.browserOptions = (object.browserOptions !== undefined && object.browserOptions !== null)
-      ? BrowserOptions.fromPartial(object.browserOptions)
-      : undefined;
-    message.health = object.health ?? 0;
-    message.processedCount = object.processedCount ?? 0;
-    message.errorCount = object.errorCount ?? 0;
-    message.errorHistory = object.errorHistory?.map((e) => ErrorRecord.fromPartial(e)) || [];
-    message.currentTask = (object.currentTask !== undefined && object.currentTask !== null)
-      ? CurrentTask.fromPartial(object.currentTask)
-      : undefined;
-    return message;
-  },
-};
-
-function createBasePendingTask(): PendingTask {
-  return { taskId: "", url: "", labels: [], correlationId: undefined, enqueuedAt: "", queuedMs: 0, retryCount: 0 };
-}
-
-export const PendingTask: MessageFns<PendingTask> = {
-  encode(message: PendingTask, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    if (message.url !== "") {
-      writer.uint32(18).string(message.url);
-    }
-    for (const v of message.labels) {
-      writer.uint32(26).string(v!);
-    }
-    if (message.correlationId !== undefined) {
-      writer.uint32(34).string(message.correlationId);
-    }
-    if (message.enqueuedAt !== "") {
-      writer.uint32(42).string(message.enqueuedAt);
-    }
-    if (message.queuedMs !== 0) {
-      writer.uint32(48).int32(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      writer.uint32(56).int32(message.retryCount);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): PendingTask {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBasePendingTask();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.url = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 26) {
-              break;
-            }
-
-            message.labels.push(reader.string());
-            continue;
-          }
-          case 4: {
-            if (tag !== 34) {
-              break;
-            }
-
-            message.correlationId = reader.string();
-            continue;
-          }
-          case 5: {
-            if (tag !== 42) {
-              break;
-            }
-
-            message.enqueuedAt = reader.string();
-            continue;
-          }
-          case 6: {
-            if (tag !== 48) {
-              break;
-            }
-
-            message.queuedMs = reader.int32();
-            continue;
-          }
-          case 7: {
-            if (tag !== 56) {
-              break;
-            }
-
-            message.retryCount = reader.int32();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): PendingTask {
-    return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
-      url: isSet(object.url) ? globalThis.String(object.url) : "",
-      labels: globalThis.Array.isArray(object?.labels) ? object.labels.map((e: any) => globalThis.String(e)) : [],
-      correlationId: isSet(object.correlationId)
-        ? globalThis.String(object.correlationId)
-        : isSet(object.correlation_id)
-        ? globalThis.String(object.correlation_id)
-        : undefined,
-      enqueuedAt: isSet(object.enqueuedAt)
-        ? globalThis.String(object.enqueuedAt)
-        : isSet(object.enqueued_at)
-        ? globalThis.String(object.enqueued_at)
-        : "",
-      queuedMs: isSet(object.queuedMs)
-        ? globalThis.Number(object.queuedMs)
-        : isSet(object.queued_ms)
-        ? globalThis.Number(object.queued_ms)
-        : 0,
-      retryCount: isSet(object.retryCount)
-        ? globalThis.Number(object.retryCount)
-        : isSet(object.retry_count)
-        ? globalThis.Number(object.retry_count)
-        : 0,
-    };
-  },
-
-  toJSON(message: PendingTask): unknown {
-    const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
-    if (message.url !== "") {
-      obj.url = message.url;
-    }
-    if (message.labels?.length) {
-      obj.labels = message.labels;
-    }
-    if (message.correlationId !== undefined) {
-      obj.correlationId = message.correlationId;
-    }
-    if (message.enqueuedAt !== "") {
-      obj.enqueuedAt = message.enqueuedAt;
-    }
-    if (message.queuedMs !== 0) {
-      obj.queuedMs = Math.round(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      obj.retryCount = Math.round(message.retryCount);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<PendingTask>, I>>(base?: I): PendingTask {
-    return PendingTask.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<PendingTask>, I>>(object: I): PendingTask {
-    const message = createBasePendingTask();
-    message.taskId = object.taskId ?? "";
-    message.url = object.url ?? "";
-    message.labels = object.labels?.map((e) => e) || [];
-    message.correlationId = object.correlationId ?? undefined;
-    message.enqueuedAt = object.enqueuedAt ?? "";
-    message.queuedMs = object.queuedMs ?? 0;
-    message.retryCount = object.retryCount ?? 0;
-    return message;
-  },
-};
-
-function createBaseProcessingTask(): ProcessingTask {
-  return {
-    taskId: "",
-    url: "",
-    labels: [],
-    correlationId: undefined,
-    enqueuedAt: "",
-    queuedMs: 0,
-    retryCount: 0,
-    workerIndex: 0,
-    startedAt: "",
-    elapsedMs: 0,
-  };
-}
-
-export const ProcessingTask: MessageFns<ProcessingTask> = {
-  encode(message: ProcessingTask, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.taskId !== "") {
-      writer.uint32(10).string(message.taskId);
-    }
-    if (message.url !== "") {
-      writer.uint32(18).string(message.url);
-    }
-    for (const v of message.labels) {
-      writer.uint32(26).string(v!);
-    }
-    if (message.correlationId !== undefined) {
-      writer.uint32(34).string(message.correlationId);
-    }
-    if (message.enqueuedAt !== "") {
-      writer.uint32(42).string(message.enqueuedAt);
-    }
-    if (message.queuedMs !== 0) {
-      writer.uint32(48).int32(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      writer.uint32(56).int32(message.retryCount);
-    }
-    if (message.workerIndex !== 0) {
-      writer.uint32(64).int32(message.workerIndex);
-    }
-    if (message.startedAt !== "") {
-      writer.uint32(74).string(message.startedAt);
-    }
-    if (message.elapsedMs !== 0) {
-      writer.uint32(80).int32(message.elapsedMs);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): ProcessingTask {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseProcessingTask();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.taskId = reader.string();
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.url = reader.string();
-            continue;
-          }
-          case 3: {
-            if (tag !== 26) {
-              break;
-            }
-
-            message.labels.push(reader.string());
-            continue;
-          }
-          case 4: {
-            if (tag !== 34) {
-              break;
-            }
-
-            message.correlationId = reader.string();
-            continue;
-          }
-          case 5: {
-            if (tag !== 42) {
-              break;
-            }
-
-            message.enqueuedAt = reader.string();
-            continue;
-          }
-          case 6: {
-            if (tag !== 48) {
-              break;
-            }
-
-            message.queuedMs = reader.int32();
-            continue;
-          }
-          case 7: {
-            if (tag !== 56) {
-              break;
-            }
-
-            message.retryCount = reader.int32();
-            continue;
-          }
-          case 8: {
-            if (tag !== 64) {
-              break;
-            }
-
-            message.workerIndex = reader.int32();
-            continue;
-          }
-          case 9: {
-            if (tag !== 74) {
-              break;
-            }
-
-            message.startedAt = reader.string();
-            continue;
-          }
-          case 10: {
-            if (tag !== 80) {
-              break;
-            }
-
-            message.elapsedMs = reader.int32();
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): ProcessingTask {
-    return {
-      taskId: isSet(object.taskId)
-        ? globalThis.String(object.taskId)
-        : isSet(object.task_id)
-        ? globalThis.String(object.task_id)
-        : "",
-      url: isSet(object.url) ? globalThis.String(object.url) : "",
-      labels: globalThis.Array.isArray(object?.labels) ? object.labels.map((e: any) => globalThis.String(e)) : [],
-      correlationId: isSet(object.correlationId)
-        ? globalThis.String(object.correlationId)
-        : isSet(object.correlation_id)
-        ? globalThis.String(object.correlation_id)
-        : undefined,
-      enqueuedAt: isSet(object.enqueuedAt)
-        ? globalThis.String(object.enqueuedAt)
-        : isSet(object.enqueued_at)
-        ? globalThis.String(object.enqueued_at)
-        : "",
-      queuedMs: isSet(object.queuedMs)
-        ? globalThis.Number(object.queuedMs)
-        : isSet(object.queued_ms)
-        ? globalThis.Number(object.queued_ms)
-        : 0,
-      retryCount: isSet(object.retryCount)
-        ? globalThis.Number(object.retryCount)
-        : isSet(object.retry_count)
-        ? globalThis.Number(object.retry_count)
-        : 0,
-      workerIndex: isSet(object.workerIndex)
-        ? globalThis.Number(object.workerIndex)
-        : isSet(object.worker_index)
-        ? globalThis.Number(object.worker_index)
-        : 0,
-      startedAt: isSet(object.startedAt)
-        ? globalThis.String(object.startedAt)
-        : isSet(object.started_at)
-        ? globalThis.String(object.started_at)
-        : "",
-      elapsedMs: isSet(object.elapsedMs)
-        ? globalThis.Number(object.elapsedMs)
-        : isSet(object.elapsed_ms)
-        ? globalThis.Number(object.elapsed_ms)
-        : 0,
-    };
-  },
-
-  toJSON(message: ProcessingTask): unknown {
-    const obj: any = {};
-    if (message.taskId !== "") {
-      obj.taskId = message.taskId;
-    }
-    if (message.url !== "") {
-      obj.url = message.url;
-    }
-    if (message.labels?.length) {
-      obj.labels = message.labels;
-    }
-    if (message.correlationId !== undefined) {
-      obj.correlationId = message.correlationId;
-    }
-    if (message.enqueuedAt !== "") {
-      obj.enqueuedAt = message.enqueuedAt;
-    }
-    if (message.queuedMs !== 0) {
-      obj.queuedMs = Math.round(message.queuedMs);
-    }
-    if (message.retryCount !== 0) {
-      obj.retryCount = Math.round(message.retryCount);
-    }
-    if (message.workerIndex !== 0) {
-      obj.workerIndex = Math.round(message.workerIndex);
-    }
-    if (message.startedAt !== "") {
-      obj.startedAt = message.startedAt;
-    }
-    if (message.elapsedMs !== 0) {
-      obj.elapsedMs = Math.round(message.elapsedMs);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<ProcessingTask>, I>>(base?: I): ProcessingTask {
-    return ProcessingTask.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<ProcessingTask>, I>>(object: I): ProcessingTask {
-    const message = createBaseProcessingTask();
-    message.taskId = object.taskId ?? "";
-    message.url = object.url ?? "";
-    message.labels = object.labels?.map((e) => e) || [];
-    message.correlationId = object.correlationId ?? undefined;
-    message.enqueuedAt = object.enqueuedAt ?? "";
-    message.queuedMs = object.queuedMs ?? 0;
-    message.retryCount = object.retryCount ?? 0;
-    message.workerIndex = object.workerIndex ?? 0;
-    message.startedAt = object.startedAt ?? "";
-    message.elapsedMs = object.elapsedMs ?? 0;
-    return message;
-  },
-};
-
-function createBaseQueueSnapshot(): QueueSnapshot {
-  return { pendingTasks: [], processingTasks: [] };
-}
-
-export const QueueSnapshot: MessageFns<QueueSnapshot> = {
-  encode(message: QueueSnapshot, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    for (const v of message.pendingTasks) {
-      PendingTask.encode(v!, writer.uint32(10).fork()).join();
-    }
-    for (const v of message.processingTasks) {
-      ProcessingTask.encode(v!, writer.uint32(18).fork()).join();
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): QueueSnapshot {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
-    if (previousRecursionDepth >= 100) {
-      throw new globalThis.Error("protobuf decode recursion limit exceeded");
-    }
-    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
-    try {
-      const end = length === undefined ? reader.len : reader.pos + length;
-      const message = createBaseQueueSnapshot();
-      while (reader.pos < end) {
-        const tag = reader.uint32();
-        switch (tag >>> 3) {
-          case 1: {
-            if (tag !== 10) {
-              break;
-            }
-
-            message.pendingTasks.push(PendingTask.decode(reader, reader.uint32()));
-            continue;
-          }
-          case 2: {
-            if (tag !== 18) {
-              break;
-            }
-
-            message.processingTasks.push(ProcessingTask.decode(reader, reader.uint32()));
-            continue;
-          }
-        }
-        if ((tag & 7) === 4 || tag === 0) {
-          break;
-        }
-        reader.skip(tag & 7);
-      }
-      return message;
-    } finally {
-      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
-    }
-  },
-
-  fromJSON(object: any): QueueSnapshot {
-    return {
-      pendingTasks: globalThis.Array.isArray(object?.pendingTasks)
-        ? object.pendingTasks.map((e: any) => PendingTask.fromJSON(e))
-        : globalThis.Array.isArray(object?.pending_tasks)
-        ? object.pending_tasks.map((e: any) => PendingTask.fromJSON(e))
-        : [],
-      processingTasks: globalThis.Array.isArray(object?.processingTasks)
-        ? object.processingTasks.map((e: any) => ProcessingTask.fromJSON(e))
-        : globalThis.Array.isArray(object?.processing_tasks)
-        ? object.processing_tasks.map((e: any) => ProcessingTask.fromJSON(e))
-        : [],
-    };
-  },
-
-  toJSON(message: QueueSnapshot): unknown {
-    const obj: any = {};
-    if (message.pendingTasks?.length) {
-      obj.pendingTasks = message.pendingTasks.map((e) => PendingTask.toJSON(e));
-    }
-    if (message.processingTasks?.length) {
-      obj.processingTasks = message.processingTasks.map((e) => ProcessingTask.toJSON(e));
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<QueueSnapshot>, I>>(base?: I): QueueSnapshot {
-    return QueueSnapshot.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<QueueSnapshot>, I>>(object: I): QueueSnapshot {
-    const message = createBaseQueueSnapshot();
-    message.pendingTasks = object.pendingTasks?.map((e) => PendingTask.fromPartial(e)) || [];
-    message.processingTasks = object.processingTasks?.map((e) => ProcessingTask.fromPartial(e)) || [];
+    message.connected = object.connected ?? false;
+    message.version = object.version ?? undefined;
     return message;
   },
 };
@@ -6424,16 +4370,8 @@ export const ServerLimits: MessageFns<ServerLimits> = {
 
 function createBaseGetServerStatusResponse(): GetServerStatusResponse {
   return {
-    pending: 0,
-    processing: 0,
-    succeeded: 0,
-    failed: 0,
-    operationalWorkers: 0,
-    totalWorkers: 0,
-    isRunning: false,
-    isDegraded: false,
-    workers: [],
-    queue: undefined,
+    busy: false,
+    browser: undefined,
     build: undefined,
     limits: undefined,
     defaultUrlPolicies: [],
@@ -6443,47 +4381,23 @@ function createBaseGetServerStatusResponse(): GetServerStatusResponse {
 
 export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
   encode(message: GetServerStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.pending !== 0) {
-      writer.uint32(8).int32(message.pending);
+    if (message.busy !== false) {
+      writer.uint32(8).bool(message.busy);
     }
-    if (message.processing !== 0) {
-      writer.uint32(16).int32(message.processing);
-    }
-    if (message.succeeded !== 0) {
-      writer.uint32(24).int32(message.succeeded);
-    }
-    if (message.failed !== 0) {
-      writer.uint32(32).int32(message.failed);
-    }
-    if (message.operationalWorkers !== 0) {
-      writer.uint32(40).int32(message.operationalWorkers);
-    }
-    if (message.totalWorkers !== 0) {
-      writer.uint32(48).int32(message.totalWorkers);
-    }
-    if (message.isRunning !== false) {
-      writer.uint32(56).bool(message.isRunning);
-    }
-    if (message.isDegraded !== false) {
-      writer.uint32(64).bool(message.isDegraded);
-    }
-    for (const v of message.workers) {
-      WorkerInfo.encode(v!, writer.uint32(74).fork()).join();
-    }
-    if (message.queue !== undefined) {
-      QueueSnapshot.encode(message.queue, writer.uint32(82).fork()).join();
+    if (message.browser !== undefined) {
+      BrowserStatus.encode(message.browser, writer.uint32(18).fork()).join();
     }
     if (message.build !== undefined) {
-      BuildInfo.encode(message.build, writer.uint32(90).fork()).join();
+      BuildInfo.encode(message.build, writer.uint32(26).fork()).join();
     }
     if (message.limits !== undefined) {
-      ServerLimits.encode(message.limits, writer.uint32(98).fork()).join();
+      ServerLimits.encode(message.limits, writer.uint32(34).fork()).join();
     }
     for (const v of message.defaultUrlPolicies) {
-      UrlPolicy.encode(v!, writer.uint32(106).fork()).join();
+      UrlPolicy.encode(v!, writer.uint32(42).fork()).join();
     }
     for (const v of message.defaultContentTypePolicies) {
-      ContentTypePolicy.encode(v!, writer.uint32(114).fork()).join();
+      ContentTypePolicy.encode(v!, writer.uint32(50).fork()).join();
     }
     return writer;
   },
@@ -6506,107 +4420,43 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
               break;
             }
 
-            message.pending = reader.int32();
+            message.busy = reader.bool();
             continue;
           }
           case 2: {
-            if (tag !== 16) {
+            if (tag !== 18) {
               break;
             }
 
-            message.processing = reader.int32();
+            message.browser = BrowserStatus.decode(reader, reader.uint32());
             continue;
           }
           case 3: {
-            if (tag !== 24) {
-              break;
-            }
-
-            message.succeeded = reader.int32();
-            continue;
-          }
-          case 4: {
-            if (tag !== 32) {
-              break;
-            }
-
-            message.failed = reader.int32();
-            continue;
-          }
-          case 5: {
-            if (tag !== 40) {
-              break;
-            }
-
-            message.operationalWorkers = reader.int32();
-            continue;
-          }
-          case 6: {
-            if (tag !== 48) {
-              break;
-            }
-
-            message.totalWorkers = reader.int32();
-            continue;
-          }
-          case 7: {
-            if (tag !== 56) {
-              break;
-            }
-
-            message.isRunning = reader.bool();
-            continue;
-          }
-          case 8: {
-            if (tag !== 64) {
-              break;
-            }
-
-            message.isDegraded = reader.bool();
-            continue;
-          }
-          case 9: {
-            if (tag !== 74) {
-              break;
-            }
-
-            message.workers.push(WorkerInfo.decode(reader, reader.uint32()));
-            continue;
-          }
-          case 10: {
-            if (tag !== 82) {
-              break;
-            }
-
-            message.queue = QueueSnapshot.decode(reader, reader.uint32());
-            continue;
-          }
-          case 11: {
-            if (tag !== 90) {
+            if (tag !== 26) {
               break;
             }
 
             message.build = BuildInfo.decode(reader, reader.uint32());
             continue;
           }
-          case 12: {
-            if (tag !== 98) {
+          case 4: {
+            if (tag !== 34) {
               break;
             }
 
             message.limits = ServerLimits.decode(reader, reader.uint32());
             continue;
           }
-          case 13: {
-            if (tag !== 106) {
+          case 5: {
+            if (tag !== 42) {
               break;
             }
 
             message.defaultUrlPolicies.push(UrlPolicy.decode(reader, reader.uint32()));
             continue;
           }
-          case 14: {
-            if (tag !== 114) {
+          case 6: {
+            if (tag !== 50) {
               break;
             }
 
@@ -6627,34 +4477,8 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
 
   fromJSON(object: any): GetServerStatusResponse {
     return {
-      pending: isSet(object.pending) ? globalThis.Number(object.pending) : 0,
-      processing: isSet(object.processing) ? globalThis.Number(object.processing) : 0,
-      succeeded: isSet(object.succeeded) ? globalThis.Number(object.succeeded) : 0,
-      failed: isSet(object.failed) ? globalThis.Number(object.failed) : 0,
-      operationalWorkers: isSet(object.operationalWorkers)
-        ? globalThis.Number(object.operationalWorkers)
-        : isSet(object.operational_workers)
-        ? globalThis.Number(object.operational_workers)
-        : 0,
-      totalWorkers: isSet(object.totalWorkers)
-        ? globalThis.Number(object.totalWorkers)
-        : isSet(object.total_workers)
-        ? globalThis.Number(object.total_workers)
-        : 0,
-      isRunning: isSet(object.isRunning)
-        ? globalThis.Boolean(object.isRunning)
-        : isSet(object.is_running)
-        ? globalThis.Boolean(object.is_running)
-        : false,
-      isDegraded: isSet(object.isDegraded)
-        ? globalThis.Boolean(object.isDegraded)
-        : isSet(object.is_degraded)
-        ? globalThis.Boolean(object.is_degraded)
-        : false,
-      workers: globalThis.Array.isArray(object?.workers)
-        ? object.workers.map((e: any) => WorkerInfo.fromJSON(e))
-        : [],
-      queue: isSet(object.queue) ? QueueSnapshot.fromJSON(object.queue) : undefined,
+      busy: isSet(object.busy) ? globalThis.Boolean(object.busy) : false,
+      browser: isSet(object.browser) ? BrowserStatus.fromJSON(object.browser) : undefined,
       build: isSet(object.build) ? BuildInfo.fromJSON(object.build) : undefined,
       limits: isSet(object.limits) ? ServerLimits.fromJSON(object.limits) : undefined,
       defaultUrlPolicies: globalThis.Array.isArray(object?.defaultUrlPolicies)
@@ -6672,35 +4496,11 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
 
   toJSON(message: GetServerStatusResponse): unknown {
     const obj: any = {};
-    if (message.pending !== 0) {
-      obj.pending = Math.round(message.pending);
+    if (message.busy !== false) {
+      obj.busy = message.busy;
     }
-    if (message.processing !== 0) {
-      obj.processing = Math.round(message.processing);
-    }
-    if (message.succeeded !== 0) {
-      obj.succeeded = Math.round(message.succeeded);
-    }
-    if (message.failed !== 0) {
-      obj.failed = Math.round(message.failed);
-    }
-    if (message.operationalWorkers !== 0) {
-      obj.operationalWorkers = Math.round(message.operationalWorkers);
-    }
-    if (message.totalWorkers !== 0) {
-      obj.totalWorkers = Math.round(message.totalWorkers);
-    }
-    if (message.isRunning !== false) {
-      obj.isRunning = message.isRunning;
-    }
-    if (message.isDegraded !== false) {
-      obj.isDegraded = message.isDegraded;
-    }
-    if (message.workers?.length) {
-      obj.workers = message.workers.map((e) => WorkerInfo.toJSON(e));
-    }
-    if (message.queue !== undefined) {
-      obj.queue = QueueSnapshot.toJSON(message.queue);
+    if (message.browser !== undefined) {
+      obj.browser = BrowserStatus.toJSON(message.browser);
     }
     if (message.build !== undefined) {
       obj.build = BuildInfo.toJSON(message.build);
@@ -6722,17 +4522,9 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
   },
   fromPartial<I extends Exact<DeepPartial<GetServerStatusResponse>, I>>(object: I): GetServerStatusResponse {
     const message = createBaseGetServerStatusResponse();
-    message.pending = object.pending ?? 0;
-    message.processing = object.processing ?? 0;
-    message.succeeded = object.succeeded ?? 0;
-    message.failed = object.failed ?? 0;
-    message.operationalWorkers = object.operationalWorkers ?? 0;
-    message.totalWorkers = object.totalWorkers ?? 0;
-    message.isRunning = object.isRunning ?? false;
-    message.isDegraded = object.isDegraded ?? false;
-    message.workers = object.workers?.map((e) => WorkerInfo.fromPartial(e)) || [];
-    message.queue = (object.queue !== undefined && object.queue !== null)
-      ? QueueSnapshot.fromPartial(object.queue)
+    message.busy = object.busy ?? false;
+    message.browser = (object.browser !== undefined && object.browser !== null)
+      ? BrowserStatus.fromPartial(object.browser)
       : undefined;
     message.build = (object.build !== undefined && object.build !== null)
       ? BuildInfo.fromPartial(object.build)
@@ -6750,71 +4542,41 @@ export const GetServerStatusResponse: MessageFns<GetServerStatusResponse> = {
 /**
  * BrowserHive の capture API。
  *
- * HTTP との対応で決めたことが 2 つある:
+ * **1 往復で結果が返る。** `Capture` は取り込みが終わるまで返らず、応答に結果を載せる。
+ * 以前は HTTP の 202 に倣って「受理して taskId を返し、あとで GetCapture で取りに来る」
+ * 形だったが、その理由(proxy の timeout)は gRPC + HTTP/2 の LAN 内配備には無く、
+ * 形だけが残って呼ぶ側にポーリングを強いていた。
  *
- *   1. 202 を state に移した。HTTP では「受理 = 202」「取得は処理中なら 202、
- *      完了で 200」とステータスコードで進行を表していた。gRPC に 202 は無いので、
- *      GetCaptureResponse.state に持たせる。呼ぶ側は code ではなく state を見る。
- *   2. 失敗は gRPC の status code で返す。RFC 7807 の Problem は落とした。
- *      対応は request-mapper / handlers 側のコメントに書いてある。
+ * この server は **browser 1 台ぶん** しか知らない。並列は呼ぶ側(orchestrator)が
+ * endpoint を並べて作る。だから queue も pool も無く、走行中に呼ばれたら待たせずに
+ * RESOURCE_EXHAUSTED を返す —— 空いている台を探すのは呼ぶ側の仕事。
+ *
+ * 失敗は gRPC の status code で返す。対応は handlers 側のコメントに書いてある。
  */
 export type CaptureServiceService = typeof CaptureServiceService;
 export const CaptureServiceService = {
   /**
-   * capture を投入する。fire-and-forget —— 受理した時点で返り、実際の capture は
-   * worker pool が非同期に進める。結果は GetCapture で取る。
-   */
-  submitCapture: {
-    path: "/browserhive.v1.CaptureService/SubmitCapture" as const,
-    requestStream: false as const,
-    responseStream: false as const,
-    requestSerialize: (value: SubmitCaptureRequest): Buffer => Buffer.from(SubmitCaptureRequest.encode(value).finish()),
-    requestDeserialize: (value: Buffer): SubmitCaptureRequest => SubmitCaptureRequest.decode(value),
-    responseSerialize: (value: SubmitCaptureResponse): Buffer =>
-      Buffer.from(SubmitCaptureResponse.encode(value).finish()),
-    responseDeserialize: (value: Buffer): SubmitCaptureResponse => SubmitCaptureResponse.decode(value),
-  },
-  /**
-   * 投入した capture の現在。まだ終わっていなければ state が PENDING か PROCESSING で
-   * report は空。
-   */
-  getCapture: {
-    path: "/browserhive.v1.CaptureService/GetCapture" as const,
-    requestStream: false as const,
-    responseStream: false as const,
-    requestSerialize: (value: GetCaptureRequest): Buffer => Buffer.from(GetCaptureRequest.encode(value).finish()),
-    requestDeserialize: (value: Buffer): GetCaptureRequest => GetCaptureRequest.decode(value),
-    responseSerialize: (value: GetCaptureResponse): Buffer => Buffer.from(GetCaptureResponse.encode(value).finish()),
-    responseDeserialize: (value: Buffer): GetCaptureResponse => GetCaptureResponse.decode(value),
-  },
-  /**
-   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
-   * こちらは「途中」を返す —— 結果は運ばない。
+   * 取り込んで、**結果を返す**。受理では返らない。
    *
-   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
-   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
-   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *   検証エラー            -> INVALID_ARGUMENT
+   *   走行中(1 台 1 件)      -> RESOURCE_EXHAUSTED  呼ぶ側は別の台へ、無ければ少し待って再度
+   *   browser に繋がらない   -> UNAVAILABLE
    *
-   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
-   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
-   * 効いてくる。
+   * client が途中で切っても取り込みは最後まで走る(manifest は書かれる)。
    */
-  getCaptureProgress: {
-    path: "/browserhive.v1.CaptureService/GetCaptureProgress" as const,
+  capture: {
+    path: "/browserhive.v1.CaptureService/Capture" as const,
     requestStream: false as const,
     responseStream: false as const,
-    requestSerialize: (value: GetCaptureProgressRequest): Buffer =>
-      Buffer.from(GetCaptureProgressRequest.encode(value).finish()),
-    requestDeserialize: (value: Buffer): GetCaptureProgressRequest => GetCaptureProgressRequest.decode(value),
-    responseSerialize: (value: GetCaptureProgressResponse): Buffer =>
-      Buffer.from(GetCaptureProgressResponse.encode(value).finish()),
-    responseDeserialize: (value: Buffer): GetCaptureProgressResponse => GetCaptureProgressResponse.decode(value),
+    requestSerialize: (value: CaptureRequest): Buffer => Buffer.from(CaptureRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CaptureRequest => CaptureRequest.decode(value),
+    responseSerialize: (value: CaptureResponse): Buffer => Buffer.from(CaptureResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CaptureResponse => CaptureResponse.decode(value),
   },
   /**
-   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
-   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
-   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
-   * だけで補っていた。
+   * この台の現在。**server 全体**の話で、取り込み 1 件のことは言わない —— 結果は
+   * Capture の応答にしか無い。health と版の probe、それと呼ぶ側が「いま塞がっているか」
+   * を投げる前に知るために在る。
    */
   getServerStatus: {
     path: "/browserhive.v1.CaptureService/GetServerStatus" as const,
@@ -6831,108 +4593,52 @@ export const CaptureServiceService = {
 
 export interface CaptureServiceServer extends UntypedServiceImplementation {
   /**
-   * capture を投入する。fire-and-forget —— 受理した時点で返り、実際の capture は
-   * worker pool が非同期に進める。結果は GetCapture で取る。
-   */
-  submitCapture: handleUnaryCall<SubmitCaptureRequest, SubmitCaptureResponse>;
-  /**
-   * 投入した capture の現在。まだ終わっていなければ state が PENDING か PROCESSING で
-   * report は空。
-   */
-  getCapture: handleUnaryCall<GetCaptureRequest, GetCaptureResponse>;
-  /**
-   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
-   * こちらは「途中」を返す —— 結果は運ばない。
+   * 取り込んで、**結果を返す**。受理では返らない。
    *
-   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
-   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
-   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *   検証エラー            -> INVALID_ARGUMENT
+   *   走行中(1 台 1 件)      -> RESOURCE_EXHAUSTED  呼ぶ側は別の台へ、無ければ少し待って再度
+   *   browser に繋がらない   -> UNAVAILABLE
    *
-   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
-   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
-   * 効いてくる。
+   * client が途中で切っても取り込みは最後まで走る(manifest は書かれる)。
    */
-  getCaptureProgress: handleUnaryCall<GetCaptureProgressRequest, GetCaptureProgressResponse>;
+  capture: handleUnaryCall<CaptureRequest, CaptureResponse>;
   /**
-   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
-   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
-   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
-   * だけで補っていた。
+   * この台の現在。**server 全体**の話で、取り込み 1 件のことは言わない —— 結果は
+   * Capture の応答にしか無い。health と版の probe、それと呼ぶ側が「いま塞がっているか」
+   * を投げる前に知るために在る。
    */
   getServerStatus: handleUnaryCall<GetServerStatusRequest, GetServerStatusResponse>;
 }
 
 export interface CaptureServiceClient extends Client {
   /**
-   * capture を投入する。fire-and-forget —— 受理した時点で返り、実際の capture は
-   * worker pool が非同期に進める。結果は GetCapture で取る。
-   */
-  submitCapture(
-    request: SubmitCaptureRequest,
-    callback: (error: ServiceError | null, response: SubmitCaptureResponse) => void,
-  ): ClientUnaryCall;
-  submitCapture(
-    request: SubmitCaptureRequest,
-    metadata: Metadata,
-    callback: (error: ServiceError | null, response: SubmitCaptureResponse) => void,
-  ): ClientUnaryCall;
-  submitCapture(
-    request: SubmitCaptureRequest,
-    metadata: Metadata,
-    options: Partial<CallOptions>,
-    callback: (error: ServiceError | null, response: SubmitCaptureResponse) => void,
-  ): ClientUnaryCall;
-  /**
-   * 投入した capture の現在。まだ終わっていなければ state が PENDING か PROCESSING で
-   * report は空。
-   */
-  getCapture(
-    request: GetCaptureRequest,
-    callback: (error: ServiceError | null, response: GetCaptureResponse) => void,
-  ): ClientUnaryCall;
-  getCapture(
-    request: GetCaptureRequest,
-    metadata: Metadata,
-    callback: (error: ServiceError | null, response: GetCaptureResponse) => void,
-  ): ClientUnaryCall;
-  getCapture(
-    request: GetCaptureRequest,
-    metadata: Metadata,
-    options: Partial<CallOptions>,
-    callback: (error: ServiceError | null, response: GetCaptureResponse) => void,
-  ): ClientUnaryCall;
-  /**
-   * 投入した capture が **いまどこにいるか**。GetCapture が「結果」を返すのに対し、
-   * こちらは「途中」を返す —— 結果は運ばない。
+   * 取り込んで、**結果を返す**。受理では返らない。
    *
-   * GetCapture と違って PROCESSING を実際に返す。待っている側にとって
-   * 「キューで順番待ち」と「worker が抱えて走っている」は別の意味を持つため
-   * (前者は混雑、後者は取り込みそのものが遅い or 詰まっている)。
+   *   検証エラー            -> INVALID_ARGUMENT
+   *   走行中(1 台 1 件)      -> RESOURCE_EXHAUSTED  呼ぶ側は別の台へ、無ければ少し待って再度
+   *   browser に繋がらない   -> UNAVAILABLE
    *
-   * GetServerStatus ではなくこちらを使うこと。あちらは全 worker とキュー全体を
-   * 返すので、待っている client が 2 秒ごとに引くと、キューの長さ × client 数で
-   * 効いてくる。
+   * client が途中で切っても取り込みは最後まで走る(manifest は書かれる)。
    */
-  getCaptureProgress(
-    request: GetCaptureProgressRequest,
-    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
+  capture(
+    request: CaptureRequest,
+    callback: (error: ServiceError | null, response: CaptureResponse) => void,
   ): ClientUnaryCall;
-  getCaptureProgress(
-    request: GetCaptureProgressRequest,
+  capture(
+    request: CaptureRequest,
     metadata: Metadata,
-    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
+    callback: (error: ServiceError | null, response: CaptureResponse) => void,
   ): ClientUnaryCall;
-  getCaptureProgress(
-    request: GetCaptureProgressRequest,
+  capture(
+    request: CaptureRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
-    callback: (error: ServiceError | null, response: GetCaptureProgressResponse) => void,
+    callback: (error: ServiceError | null, response: CaptureResponse) => void,
   ): ClientUnaryCall;
   /**
-   * キューと coordinator の現在。**サーバ全体**の話で、タスク 1 件のことは言わない
-   * —— 投入した capture の現在は GetCapture のほう。名前に Server が入っているのは
-   * その境界を名前で言うためで、以前は GetStatus という名前だったものをこのコメント
-   * だけで補っていた。
+   * この台の現在。**server 全体**の話で、取り込み 1 件のことは言わない —— 結果は
+   * Capture の応答にしか無い。health と版の probe、それと呼ぶ側が「いま塞がっているか」
+   * を投げる前に知るために在る。
    */
   getServerStatus(
     request: GetServerStatusRequest,

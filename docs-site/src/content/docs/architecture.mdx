@@ -16,13 +16,16 @@ flowchart LR
     API --> DIS
   end
   DIS -->|"webhook + token"| WM["Windmill flow<br/>(capture-scheduler)"]
-  WM -->|SubmitCapture| BH
-  subgraph BH["BrowserHive"]
-    COORD[coordinator + worker pool]
+  WM -->|Capture| BH1
+  WM -->|Capture| BH2
+  subgraph BH["BrowserHive — one process per browser"]
+    BH1[browserhive-1]
+    BH2[browserhive-2]
   end
-  COORD -->|CDP| C1[chromium-server-1]
-  COORD -->|CDP| C2[chromium-server-2]
-  COORD -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
+  BH1 -->|CDP| C1[chromium-1]
+  BH2 -->|CDP| C2[chromium-2]
+  BH1 -->|PutObject| S3[(SeaweedFS<br/>bucket: browserhive)]
+  BH2 -->|PutObject| S3
   WM -->|"POST /api/crawls/:id/pages"| API
   S3 -.->|".links.json / .result.json"| API
 ```
@@ -30,8 +33,11 @@ flowchart LR
 ## From submission to outcome
 
 **capture-ledger does not speak gRPC to BrowserHive any more.** The Windmill flow
-submits, waits, and reports; capture-ledger plans the next level and records what
-happened. There is no BrowserHive address in capture-ledger's configuration at all.
+calls `Capture`, waits for the answer, and reports; capture-ledger plans the next
+level and records what happened. There is no BrowserHive address in capture-ledger's
+configuration at all. Each BrowserHive drives one browser and runs one capture at
+a time — a busy one refuses with `RESOURCE_EXHAUSTED` — so picking a free endpoint
+is the flow's job too.
 
 One level is one round trip. The flow captures the URLs it was handed and posts
 `POST /api/crawls/:id/pages` with a `taskId` and a status per page. capture-ledger writes
@@ -40,8 +46,8 @@ the budget, and answers with the next level — or with a `stopReason`.
 
 The level report does **not** carry artifact locations, so capture-ledger re-reads the
 `{taskId}_{correlationId}[_{labels}].result.json` manifest BrowserHive writes
-next to the artifacts. That file survives a BrowserHive restart and outlives the
-server's bounded result cache, which is what makes it usable here.
+next to the artifacts. That file survives a BrowserHive restart, which is what
+makes it usable here.
 
 Consequences worth knowing:
 
@@ -137,14 +143,15 @@ The stack runs on Apple Container. The project name is the DNS domain, so every
 service is `<service>.capture-ledger` — resolvable between containers **and from the
 host**, which is why capture-ledger itself needs no container.
 
-| Service        | DNS name                     | Container port     | Host port         |
-| -------------- | ---------------------------- | ------------------ | ----------------- |
-| postgres       | `postgres.capture-ledger`    | 5432               | 5432              |
-| seaweedfs      | `seaweedfs.capture-ledger`   | 8333 / 8888 / 9333 | — (internal only) |
-| chromium-1     | `chromium-1.capture-ledger`  | 9222 (CDP)         | 9222              |
-| chromium-2     | `chromium-2.capture-ledger`  | 9222 (CDP)         | 9223              |
-| browserhive    | `browserhive.capture-ledger` | 50051 (gRPC)       | 50051             |
-| capture-ledger | — (runs on the host)         | —                  | —                 |
+| Service        | DNS name                       | Container port     | Host port         |
+| -------------- | ------------------------------ | ------------------ | ----------------- |
+| postgres       | `postgres.capture-ledger`      | 5432               | 5432              |
+| seaweedfs      | `seaweedfs.capture-ledger`     | 8333 / 8888 / 9333 | — (internal only) |
+| chromium-1     | `chromium-1.capture-ledger`    | 9222 (CDP)         | 9222              |
+| chromium-2     | `chromium-2.capture-ledger`    | 9222 (CDP)         | 9223              |
+| browserhive-1  | `browserhive-1.capture-ledger` | 50051 (gRPC)       | 50051             |
+| browserhive-2  | `browserhive-2.capture-ledger` | 50051 (gRPC)       | 50052             |
+| capture-ledger | — (runs on the host)           | —                  | —                 |
 
 There is one compose file. The one-shot migrate/seed jobs are not services:
 `scripts/prod-smoke.sh` invokes them with `container run --rm`, because

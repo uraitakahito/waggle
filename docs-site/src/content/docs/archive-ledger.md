@@ -98,9 +98,9 @@ Only successful captures enter the ledger. A failed one uploaded nothing, and
 recording it would let the API hand out a URL for an object that is not there —
 authorization working perfectly on a 404.
 
-**"Failed" is the flow's word, not the bucket's.** A page can be reported
-`failed` because the result aged out of BrowserHive's result cache while the
-flow was waiting, with the artifacts sitting in the bucket all along. So the
+**"Failed" is the flow's word, not the bucket's.** The report relays what the
+flow made of BrowserHive's answer; the manifest is what BrowserHive itself wrote
+next to the artifacts, and where the two disagree the manifest wins. So the
 level handler looks the manifest up for **every** page that carried a task id,
 and corrects the `crawl_pages` row when the manifest says the capture succeeded.
 
@@ -360,10 +360,10 @@ Three settings, all per crawl:
 | `maxPages`        | 30      | total pages, seed included                                           |
 
 The delay is measured from the finish, not the submit, and that is the whole point.
-BrowserHive's queue has no capacity limit and never refuses a submission — only the
-number of browser workers decides what runs at once. Spacing out submissions
-therefore does nothing: three submitted together run back to back in the queue. The
-gap has to sit after the capture completes for the other end to feel it.
+How long a capture takes is not known up front — one page is two seconds, the next
+is two minutes — so a gap measured from the submit says nothing about the gap the
+other end feels: the next request can land the moment the previous capture ends.
+The gap has to sit after the capture completes for the other end to feel it.
 
 One capture is also not one request. The browser fetches sub-resources, so a page is
 a burst of dozens from the far side. 2000 ms is chosen against that, and a
