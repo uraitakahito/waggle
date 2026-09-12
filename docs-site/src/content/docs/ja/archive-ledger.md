@@ -98,6 +98,12 @@ pnpm run fga:drain       # 溜まったタプルを配送（API も定期的に�
 `taskId` を持つ**全件**について manifest を引き、成功していたと分かれば
 `crawl_pages` の記録を直します。
 
+**その手で拾えない食い違いが 1 つあります —— 切られた取り込み。** flow の deadline が
+取り込みの途中で尽きると、BrowserHive は（v9.1.0 以降）ページを壊して
+`ERROR_TYPE_CANCELLED` の manifest を書きます。成果物は無いので拾い直す先も無く、
+ページは失敗のまま —— それで正しい。bucket にこれが並ぶときは、flow の deadline が
+取り込みに要る時間より短いという意味で、直すのは flow の側です。
+
 ### 帰属
 
 マニフェストに組織の情報はありません。BrowserHive にその概念が無いからです。
