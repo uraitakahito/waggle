@@ -104,9 +104,10 @@ that rule too.
 
 ```sh
 pnpm run stack:up
-# grpcurl reads the vendored contract; GetStatus is the readiness probe.
+# grpcurl reads the vendored contract; GetServerStatus is the readiness probe.
+# browserhive-2 is the same on localhost:50052.
 until grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  localhost:50051 browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1; do sleep 1; done
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus >/dev/null 2>&1; do sleep 1; done
 ```
 
 **There is no dev container.** container-compose has exactly four subcommands —
@@ -119,8 +120,9 @@ stack. `setup.sh` writes the connection string into `.env`:
 DATABASE_URL=postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger
 ```
 
-There is no BrowserHive address here any more. The one gRPC endpoint the stack
-publishes, `localhost:50051`, is for grpcurl and for the flow — not for capture-ledger.
+There is no BrowserHive address here any more. The two gRPC endpoints the stack
+publishes, `localhost:50051` and `localhost:50052` — one BrowserHive per Chromium —
+are for grpcurl and for the flow, not for capture-ledger.
 
 The `pnpm run` scripts read that `.env` themselves
 (`node --env-file-if-exists=.env`) — no shell `export` needed. **Variables
@@ -132,16 +134,16 @@ Postgres is also published on `127.0.0.1:5432`, so `localhost` works too.
 
 Coming from Docker Compose, the everyday commands map like this:
 
-| Docker Compose                    | Apple Container                              |
-| --------------------------------- | -------------------------------------------- |
-| `docker compose up -d --build`    | `container-compose up -d -b`                 |
-| `docker compose down`             | `container-compose down`                     |
-| `docker compose ps`               | `container ls`                               |
-| `docker compose logs browserhive` | `container logs browserhive.capture-ledger`  |
-| `docker compose exec <svc> sh`    | `container exec -it <svc>.capture-ledger sh` |
-| `docker compose run --rm <svc> …` | `container run --rm <image> …`               |
+| Docker Compose                      | Apple Container                               |
+| ----------------------------------- | --------------------------------------------- |
+| `docker compose up -d --build`      | `container-compose up -d -b`                  |
+| `docker compose down`               | `container-compose down`                      |
+| `docker compose ps`                 | `container ls`                                |
+| `docker compose logs browserhive-1` | `container logs browserhive-1.capture-ledger` |
+| `docker compose exec <svc> sh`      | `container exec -it <svc>.capture-ledger sh`  |
+| `docker compose run --rm <svc> …`   | `container run --rm <image> …`                |
 
-The Chromium workers are **headless**. To watch one render, open
+Both Chromiums are **headless**. To watch one render, open
 `chrome://inspect` in a local Chrome, add `localhost:9222` and `localhost:9223`
 under _Configure…_, and inspect the target.
 
@@ -151,7 +153,7 @@ under _Configure…_, and inspect the target.
 ./scripts/prod-smoke.sh
 ```
 
-It brings the stack up, polls `GetStatus` until BrowserHive answers, builds
+It brings the stack up, polls `GetServerStatus` until both BrowserHives answer, builds
 `capture-ledger:latest`, then runs migrate → seed → the API with `container run --rm`,
 asks the API for `/healthz`, tears the stack down through an `EXIT` trap, and
 forwards the exit code as its own.

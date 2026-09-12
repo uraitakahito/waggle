@@ -73,7 +73,7 @@ evidence-grade archives" is answerable without opening a single zip.
 
 ## What capture-ledger no longer decides
 
-The old CLI mapped a flag onto every field of the `SubmitCapture` request:
+The old CLI mapped a flag onto every field of BrowserHive's `CaptureRequest`:
 `--device-pixel-ratios`, `--operation-delay-ms`, `--behaviors`,
 `--no-site-behaviors`, `--dismiss-banners`, `--accept-language`, `--session`.
 **None of those exist any more.** capture-ledger sends `captureFormats` and `signing`,

@@ -514,9 +514,9 @@ export const registerCrawlRoutes = (app: FastifyInstance, deps: CrawlRouteDeps):
         // ここが無いと、クロールしたページは `reconcile` を走らせるまで存在しない。
         // 詳しくは `crawl/admit-level.ts`。
         //
-        // **失敗の報告も渡す。** flow は 15 分待つので、BrowserHive の結果キャッシュ
-        // から押し出されて `NOT_FOUND` になることがある —— そのとき報告は `failed`
-        // だが、取り込みは成功していて manifest が S3 に在る。
+        // **失敗の報告も渡す。** 報告は flow の言い分で、正本は BrowserHive が成果物の
+        // 隣に書く manifest。`failed` と報告されたページに成功の manifest が在れば、
+        // 取り込みは成功している。
         const keyPrefix = keyPrefixFor(crawl, sink);
         const admitted = await admitLevel(submitted, {
           db,

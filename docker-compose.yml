@@ -147,7 +147,7 @@ services:
       - ./.upstream/seaweedfs/etc:/etc/seaweedfs:ro
       - seaweedfs-data:/data
 
-  chromium-1: &worker
+  chromium-1: &chromium
     build:
       # browserhive 自身が動作確認された版の chromium —— submodule の submodule なので、
       # この 2 つは一緒に動く。
@@ -155,10 +155,20 @@ services:
       dockerfile: docker/Dockerfile
       target: production
     mem_limit: 4gb
+    ports:
+      # CDP を host にも出す (loopback のみ)。headless の描画を chrome://inspect で
+      # 覗くため —— docs が案内している 9222 / 9223 はここ。
+      - "127.0.0.1:9222:9222"
   chromium-2:
-    <<: *worker
+    <<: *chromium
+    ports:
+      - "127.0.0.1:9223:9222"
 
-  browserhive:
+  # BrowserHive v9 は **browser 1 台に endpoint 1 つ** —— queue も pool も無く、走行中に
+  # 呼ばれれば RESOURCE_EXHAUSTED で断る。並列に取り込むにはこの対 (browserhive-N と
+  # chromium-N) を増やし、空いている口を選ぶのは呼ぶ側 (Windmill の flow) の仕事。
+  # 2 つ目以降は anchor との差分 (browser、host 側の port、depends_on) だけを書く。
+  browserhive-1: &browserhive
     build:
       context: ./.upstream/browserhive
       dockerfile: Dockerfile.prod
@@ -176,32 +186,32 @@ services:
     ports:
       # gRPC。BrowserHive は v3 で HTTP の提供をやめた。
       - "127.0.0.1:50051:50051"
-    environment:
-      # プラットフォームの DNS (<service>.capture-ledger) を使った、名前による結線。
-      - BROWSERHIVE_BROWSER_URLS=http://chromium-1.capture-ledger:9222,http://chromium-2.capture-ledger:9222
-      - BROWSERHIVE_S3_ENDPOINT=http://seaweedfs.capture-ledger:8333
-      - BROWSERHIVE_S3_REGION=us-east-1
-      - BROWSERHIVE_S3_BUCKET=browserhive
-      - BROWSERHIVE_S3_ACCESS_KEY_ID=browserhive
-      - BROWSERHIVE_S3_SECRET_ACCESS_KEY=browserhive
+    # プラットフォームの DNS (<service>.capture-ledger) を使った、名前による結線。
+    environment: &browserhive-env
+      BROWSERHIVE_BROWSER_URL: http://chromium-1.capture-ledger:9222
+      BROWSERHIVE_S3_ENDPOINT: http://seaweedfs.capture-ledger:8333
+      BROWSERHIVE_S3_REGION: us-east-1
+      BROWSERHIVE_S3_BUCKET: browserhive
+      BROWSERHIVE_S3_ACCESS_KEY_ID: browserhive
+      BROWSERHIVE_S3_SECRET_ACCESS_KEY: browserhive
       # 同梱の SeaweedFS には bucket のサブドメイン用の wildcard DNS が無いので、
       # virtual-hosted 形式のアドレス指定は失敗する。path 形式なら同梱のスタックが
       # そのまま動く。AWS へ向けるときは設定しないでおくこと。
-      - BROWSERHIVE_S3_FORCE_PATH_STYLE=true
-      - LOG_LEVEL=info
+      BROWSERHIVE_S3_FORCE_PATH_STYLE: "true"
+      LOG_LEVEL: info
       # entrypoint の shim が、server を起動する前にここを叩いて待つ —— depends_on は
       # 起動順序でしかなく、起動時の HeadBucket は失敗すると致命的なため。
-      - WAIT_FOR_S3=http://seaweedfs.capture-ledger:8333
+      WAIT_FOR_S3: http://seaweedfs.capture-ledger:8333
       # プラットフォームの DNS は AAAA レコードも publish するが、VM 間に v6 の経路は
-      # 無い —— v4 を先に引かせないと、worker の WS URL が到達できない v6 アドレスに
+      # 無い —— v4 を先に引かせないと、browser の WS URL が到達できない v6 アドレスに
       # 着地する。
-      - NODE_OPTIONS=--dns-result-order=ipv4first
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
       # 取り込み対象がこのスタックの中に居るので、私設アドレスへの取り込みを許す
       # (seaweedfs の filer、replay など。クロールの往復もこれが無いと組めない)。
       # **メタデータ(169.254)とループバックはこれでも閉じたまま。**
       # 開発スタック限定で、本番の既定は off (SSRF 対策)。browserhive の compose にも
       # 同じ設定が同じ理由で入っている。
-      - BROWSERHIVE_ALLOW_PRIVATE_TARGETS=true
+      BROWSERHIVE_ALLOW_PRIVATE_TARGETS: "true"
       #
       # **署名の設定はここに書かない。** `signing.env` に在り、`scripts/stack.sh` が
       # `CAPTURE_LEDGER_CAPTURE_SIGNING=1` のときだけ `--env-file` で注ぐ。
@@ -220,6 +230,17 @@ services:
     depends_on:
       - seaweedfs
       - chromium-1
+
+  browserhive-2:
+    <<: *browserhive
+    ports:
+      - "127.0.0.1:50052:50051"
+    environment:
+      <<: *browserhive-env
+      BROWSERHIVE_BROWSER_URL: http://chromium-2.capture-ledger:9222
+    depends_on:
+      - seaweedfs
+      - chromium-2
 
   # WACZ のビューア。picker がここへ ?source=/wacz/<key> で渡す。
   #
@@ -299,7 +320,7 @@ services:
   #   container-compose --profile capture-fixtures up -d -b
   #
   # port は publish しない —— browserhive も host 側の道具も、プラットフォーム DNS が
-  # 配る capture-capture-fixtures.capture-ledger:8080 という **同じ名前** で引ける。browserhive の compose の
+  # 配る capture-fixtures.capture-ledger:8080 という **同じ名前** で引ける。browserhive の compose の
   # capture-fixtures と同じ形。
   #
   # 取り込み対象がここに居るので、browserhive 側に

@@ -4,7 +4,7 @@ description: Bring the Compose stack up, seed the capture_targets table, and sta
 ---
 
 The stack brings up everything capture-ledger needs — Postgres, SeaweedFS, two headless
-Chromium workers, and a BrowserHive built from the
+Chromiums, and a BrowserHive in front of each, built from the
 [pinned submodule](/capture-ledger/upgrading-browserhive/). It runs on
 [Apple Container](https://github.com/apple/container), driven by
 `container-compose`.
@@ -45,11 +45,16 @@ expect several minutes. Check the state — until the stack is up, grpcurl repor
 the failure itself:
 
 ```sh
-grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  localhost:50051 browserhive.v1.CaptureService/GetStatus \
-  | jq '{isRunning, workers: [.workers[].health]}'
-# → { "isRunning": true, "workers": ["WORKER_HEALTH_READY", "WORKER_HEALTH_READY"] }
+grpcurl -plaintext -emit-defaults -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus \
+  | jq '{busy, browser: .browser.url}'
+# → { "busy": false, "browser": "http://chromium-1.capture-ledger:9222/" }
 ```
+
+That is `browserhive-1`. The stack runs two — a BrowserHive drives exactly one
+browser, so there is one per Chromium — and the second answers on `localhost:50052`.
+`-emit-defaults` is what makes `busy: false` visible: grpcurl otherwise drops
+fields at their default value, and an idle server would print `null`.
 
 `-import-path proto -proto …` points grpcurl at the contract vendored in this
 repo. BrowserHive does not serve reflection — a deliberate choice, not a gap:
@@ -57,7 +62,7 @@ enabling it would mean shipping a descriptor set and reading it at runtime,
 making the `.proto` a runtime asset. So the `.proto` is how a caller learns the
 service — the same file the client is generated from.
 
-The workers are headless. To watch one render, open `chrome://inspect` in a
+Both Chromiums are headless. To watch one render, open `chrome://inspect` in a
 local Chrome and add `localhost:9222` and `localhost:9223` under _Configure…_.
 
 ## 4. Prepare the database
@@ -166,18 +171,19 @@ See [Archive ledger](/capture-ledger/archive-ledger/) for the whole surface, and
 
 **A page reaches the ledger only after the flow reports the level it was in.**
 If it is not in the picker, the level is either still open or the page failed.
-**Progress lives only in BrowserHive** — that is the system of record; what
-capture-ledger holds is a copy of finished facts. capture-ledger does not poll it, but you
-still can:
+There is nothing to poll for a capture in flight: a capture is one gRPC call, and
+its result goes back to the caller — the Windmill run — and into the
+`.result.json` manifest next to the artifacts. What a BrowserHive will tell you
+is whether it is busy:
 
 ```sh
-grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-  -d '{"taskId":"<taskId>"}' \
-  localhost:50051 browserhive.v1.CaptureService/GetCapture \
-  | jq -c '{state, status: .report.status, artifacts: .report.artifacts}'
+grpcurl -plaintext -emit-defaults -import-path proto -proto browserhive/v1/capture.proto \
+  localhost:50051 browserhive.v1.CaptureService/GetServerStatus \
+  | jq '{busy, browser: .browser.url}'
 ```
 
-`CAPTURE_STATE_PENDING` or `_PROCESSING` means it is still working.
+`"busy": true` means that browser is in the middle of a page; `localhost:50052`
+is the other one.
 
 Artifacts land in the bundled SeaweedFS bucket (`browserhive`). Naming and WACZ
 contents are on BrowserHive's storage page.

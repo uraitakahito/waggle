@@ -23,13 +23,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DATABASE_URL="postgres://capture_ledger:capture_ledger@postgres.capture-ledger:5432/capture_ledger"
-HEALTH_TARGET="localhost:50051"
+# One BrowserHive per browser (docker-compose.yml), so readiness is both of them.
+HEALTH_TARGETS=("localhost:50051" "localhost:50052")
 HEALTH_TIMEOUT_S="${BROWSERHIVE_HEALTHCHECK_TIMEOUT_S:-180}"
 
-# The capture does not stop at "accepted": it polls GetCapture, reads the
-# durable `.result.json` manifest when a result has aged out of BrowserHive's
-# cache, and registers the archive in the ledger. All of that needs the bucket,
-# so the S3 settings belong to the capture run and not just to BrowserHive.
+# The API reads the bucket itself: the level handler picks up each capture's
+# `.result.json` manifest and `.links.json`, reconcile lists what landed, and
+# the picker serves the archives. So the S3 settings belong to the API run and
+# not just to BrowserHive.
 # They match docker-compose.yml's seaweedfs service; path-style because the
 # bundled SeaweedFS has no wildcard DNS for the bucket subdomain.
 S3_ENV=(
@@ -67,26 +68,30 @@ container-compose up -d -b
 
 # container-compose has no healthcheck support, so readiness is ours to check.
 # BrowserHive serves no HTTP and no gRPC health service, so the probe is a real
-# GetStatus call over the vendored contract — which is also the strongest
-# readiness signal available: it only answers once the coordinator is up.
+# GetServerStatus call over the vendored contract — which is also the strongest
+# readiness signal available: the server only starts listening once it has
+# connected to its browser, so an answer means the whole pair is up.
 if ! command -v grpcurl >/dev/null 2>&1; then
   log "ERROR: grpcurl is required to probe BrowserHive (brew install grpcurl)"
   exit 1
 fi
 probe() {
-  grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
-    "${HEALTH_TARGET}" browserhive.v1.CaptureService/GetStatus >/dev/null 2>&1
+  local target
+  for target in "${HEALTH_TARGETS[@]}"; do
+    grpcurl -plaintext -import-path proto -proto browserhive/v1/capture.proto \
+      "${target}" browserhive.v1.CaptureService/GetServerStatus >/dev/null 2>&1 || return 1
+  done
 }
 log "Waiting for BrowserHive (up to ${HEALTH_TIMEOUT_S}s)..."
 deadline=$((SECONDS + HEALTH_TIMEOUT_S))
 until probe; do
   if (( SECONDS >= deadline )); then
-    log "ERROR: BrowserHive never answered at ${HEALTH_TARGET}"
+    log "ERROR: BrowserHive never answered at ${HEALTH_TARGETS[*]}"
     exit 1
   fi
   sleep 1
 done
-log "BrowserHive is ready."
+log "Both BrowserHives are ready."
 
 log "Building the capture-ledger image..."
 container build -t capture-ledger:latest .

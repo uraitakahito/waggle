@@ -15,8 +15,6 @@ const v3Manifest = {
   status: "CAPTURE_STATUS_SUCCESS",
   timestamp: "2026-08-19T00:00:00.000Z",
   captureProcessingTimeMs: 4210,
-  retryCount: 0,
-  workerIndex: 1,
   artifacts: { wacz: "s3://archives/01J8Z0.wacz" },
   completeness: { complete: true },
 };
